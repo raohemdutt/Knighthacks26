@@ -27,7 +27,7 @@ from contracts.agent import ActionProposed
 
 KIND = "connector_write"
 TARGET_PREFIX = "spot."
-TARGETS = {"reinspect": "spot.reinspect", "work_order": "spot.work_order"}
+TARGETS = {"reinspect": "spot.reinspect", "work_order": "spot.work_order", "mission_request": "spot.mission_request"}
 SAFE = re.compile(r"[^A-Za-z0-9_-]")
 
 
@@ -55,6 +55,19 @@ class WorkOrders:
                                      "Recorded as a local work order on this box; nothing is sent anywhere.",
                               params={"order": "re-inspection", "asset_id": asset_id, "asset": asset.asset_name, "criticality": asset.criticality,
                                       "location_id": asset.location_id, "evidence": ", ".join(evidence) or "none", "stays_on_this_box": True})
+
+    def propose_plan(self, route: list[str], turn_back_at: float, summary: str = "") -> ActionProposed:
+        """A planned round from Shift Run, as a mission request. Like the others: a card first, then one local file."""
+        kit = self.spot.kit
+        route = [a.upper() for a in route]
+        if kit is None or not route or any(a not in kit.asset for a in route):
+            raise ValueError("a plan needs at least one known asset")
+        names = ", ".join(f"{a} {kit.asset[a].asset_name}" for a in route)
+        return ActionProposed(action_id=uuid4().hex, kind=KIND, target=TARGETS["mission_request"],
+                              reason=f"Request a round for SPOT: {len(route)} stop(s) in this order: {names}. Turn back at {turn_back_at:.0f}% battery. "
+                                     f"{summary} Recorded as a local mission request on this box; nothing is sent anywhere and SPOT is not commanded.".replace("  ", " "),
+                              params={"order": "mission request", "asset_id": route[0], "route": ", ".join(route), "turn_back_at": turn_back_at,
+                                      "stops": len(route), "stays_on_this_box": True})
 
     def propose_work_order(self, anomaly_id: str) -> ActionProposed:
         kit = self.spot.kit
@@ -86,7 +99,7 @@ class WorkOrders:
         return run
 
     def write(self, req) -> str:
-        kind = "reinspect" if req.target == TARGETS["reinspect"] else "work_order"
+        kind = {v: k for k, v in TARGETS.items()}.get(req.target, "work_order")
         now = self.clock()
         order_id = f"WO-{now.strftime('%Y%m%dT%H%M%S')}-{SAFE.sub('', str(req.id))[:6]}"
         self.folder.mkdir(parents=True, exist_ok=True)

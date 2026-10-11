@@ -119,7 +119,7 @@ class WorkOrderCreated(SpotEvent):
     TYPE: ClassVar[str] = "spot.work_order.created"
     type: Literal["spot.work_order.created"] = "spot.work_order.created"
     work_order_id: str
-    kind: Literal["reinspect", "work_order"]
+    kind: Literal["reinspect", "work_order", "mission_request"]  # mission_request: a round planned in Shift Run
     asset_id: str = ""
     anomaly_id: str | None = None
     reason: str = ""

@@ -17,6 +17,7 @@ from pathlib import Path
 from contexts.spot.application.assistant import Assistant
 from contexts.spot.application.replay import Player, SpotLive, build_stream
 from contexts.spot.application.service import Spot
+from contexts.spot.application.shiftrun import ShiftRun
 from contexts.spot.application.workorders import KIND, WorkOrders
 from contexts.spot.infrastructure.kit import kit_path, load_kit
 
@@ -31,6 +32,7 @@ class SpotContext:
     assistant: Assistant
     orders: WorkOrders
     runtime: object | None = None
+    shiftrun: ShiftRun | None = None  # plan-your-round simulation (pure; built on first use)
 
 
 def build_spot(data_dir: str | Path, bus, runtime=None, approvals=None, kit_folder: str | Path | None = None) -> SpotContext:
@@ -54,4 +56,5 @@ def build_spot(data_dir: str | Path, bus, runtime=None, approvals=None, kit_fold
     bus.subscribe("spot.", live.on_event, replay=True)  # state only: the picture rebuilds from the log
     if approvals is not None:  # live only, and only after a person approves the card
         approvals.executors[KIND] = orders.executor(approvals.executors.get(KIND))
-    return SpotContext(read=read, live=live, player=player, assistant=Assistant(read, runtime), orders=orders, runtime=runtime)
+    return SpotContext(read=read, live=live, player=player, assistant=Assistant(read, runtime), orders=orders, runtime=runtime,
+                       shiftrun=ShiftRun(read))

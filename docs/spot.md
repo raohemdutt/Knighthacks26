@@ -10,6 +10,59 @@ The code is one bounded context, `contexts/spot/`, a dashboard at `/spot/` (More
 (SPOT)"), and the sponsor's kit under `fixtures/spot/kit/`. All data is the sponsor's synthetic,
 fictional kit.
 
+## NextEra brief check
+
+The track brief: "Help plant operators understand what SPOT is seeing! Build a tool that turns Boston
+Dynamics SPOT robot mission data into a clear, readable view of locations, timestamps, readings, and
+anomaly flags, both in real time and after a mission. Make the information actionable and help
+operators build confidence in SPOT without needing to become technical experts."
+
+The screen at `/spot/` has three tabs: **Your shift** (what to do, the floor plan, a round step by
+step), **Shift Run** (plan a round and see how it would go) and **Analysis** (the evidence, as
+animated explainers with the tables behind them).
+
+| The brief says | Where it is met | Honest gap |
+| --- | --- | --- |
+| locations | Your shift: the floor plan with one mark per piece of equipment, on the kit's plan image, both floors. Every sentence names the place ("Pipe Gallery (WP05)"). A round shows SPOT's route and where it is at each step. | The plan is the kit's fictional picture. Pin positions were read off it by eye; the kit's x/y do not match it (see below). Equipment is drawn at its home waypoint, although 61 of 270 actions were recorded somewhere else. |
+| timestamps | Every step of a round starts with its time ("10:12 AM"). Rounds are labelled "Round 27 · today 10:00 AM". Equipment panels say "12 minutes ago", "2 days ago". The status line says when the data ends. | "Now" is the newest moment in the data, not the wall clock. The kit's times have no time zone and are shown as written. |
+| readings | The equipment panel gives the last good reading in words with its number and unit ("Temperature 75.5 °C, in its usual range"), and how old it is. Each step of a round shows its reading. | The kit has no engineering limits. "Usual range" is our own band (site median ± 3 robust sd) and the panel says so. 50 actions have no reading at all. A reading does not explain the alarm raised with it. |
+| anomaly flags | An anomaly is called an "alarm" and defined once on the card. Each one says whether it stands (the check that raised it worked) or is not confirmed (that check failed), and what to do: send a technician, or send SPOT back. | The kit does not say whether an alarm on a failed check is real. We call it not confirmed, never false. 32 of 40 alarms are of that kind. |
+| in real time | A round, step by step: press Play and the box replays the recorded events in order; SPOT moves on the plan, each check arrives as it happened, the battery drains, and the label reads "Live · following SPOT". | It is a replay of recorded data. There is no live robot and no robot feed. The kit's event stream stops at event 500; the last 94 events are rebuilt from the tables and marked as rebuilt. |
+| after a mission | The same section with the round picker: any of the 27 rounds as ten steps (tick, cross, alarm), one sentence per step, Back, Next and a slider. | One robot, 27 rounds, 270 actions. |
+| clear, readable | One status sentence, three cards of at most three items, three levels that differ by shape as well as colour, 44 px targets, phone first. No statistics words on the shift screen; a test checks every sentence for raw enums, row ids and jargon. | The sentences are templates: correct but not graceful. Ask still answers some questions in the analyst's wording ("Exact wording" shows it). |
+| actionable | "Do this first" gives one button per item: Send SPOT back or Send a technician. It raises an approval card; after "Yes, do it" a work order file is written on the box. Shift Run turns a planned round into a mission request the same way. The shift handoff is one button. | Nothing reaches a robot or a maintenance system: the result is a JSON file on the box. That is deliberate, and it is all there is. |
+| build confidence in SPOT | The trust line at the top ("21 of 26 completed rounds still had a failed check inside. We show you the checks, not just the round"), "Looks fine" with how many were checked recently, every "Why?" playing a short explainer, and Shift Run, where a trainee sees why order and battery matter. | Confidence here means knowing when not to trust a result. The data does not let us say SPOT is reliable: 49 of 270 checks failed. Shift Run is a toy model from 27 rounds, a training aid, not a prediction. |
+| without needing to become technical experts | Words come from a glossary (round, check, alarm, not confirmed, usual range). Six animated explainers show the analysis one idea at a time; "Show the numbers" opens the intervals and rows for whoever wants them. | The Analysis tab's tables are still analyst material. Not tested with a real operator. |
+| Kit Part Two (Spot User Guide R1.1): how we used it | Vocabulary: a round is one Autowalk mission (p. 39), a check is an action (p. 40), and the section that plays a round back is no longer called "replay", because in the guide "replaying a mission" means SPOT walking it (p. 43). "The manual says…" notes on failed steps and two patterns: stuck at an obstacle (p. 44), lost (p. 44), connection lost and a weak battery (p. 11, p. 44), unevenly lit fiducials (p. 41), dusty floors (p. 11). Shift Run's hard mode is the guide's "skip part of the mission" (p. 43). | We were given pp. 1 to 12 and from p. 23 on (Autowalk is pp. 39 to 44); pp. 13 to 22, with battery life and charging, were not in the files. The pages we read state no battery life, runtime, walking speed or return-to-dock rule, so Shift Run uses only the kit's measured battery drop and minutes per step. The guide says not to use Autowalk on stairs (p. 40); the kit's rounds cross two floors and do not say how. The notes are the vendor's general guidance, never a diagnosis of this fictional plant. |
+
+### What is new on the screen
+
+- **Plain words from data** (`contexts/spot/application/plain.py`, `GET /api/spot/shift`,
+  `GET /api/spot/shift/rounds/{id}`, `plain: true` on `POST /api/spot/ask`). Every triage item, finding and
+  asset becomes `{headline, sentence, level: act | watch | ok, why_ref, action}` from templates and a
+  glossary. No model call. A level is a stated rule: **needs you** when an alarm stands on a good check, a
+  serious alarm has not been re-checked, or important equipment has had no good check for 24 hours;
+  **keep an eye** for an alarm still waiting for a clean re-check, a serious alarm in the last 3 days, a
+  failed last check, or no good check for 24 hours; **looks fine** otherwise.
+- **Explainers** (`web/components/spot/Explainers.tsx`): completed hides failures, alarms not confirmed,
+  battery, is the new setup better, weak spots on the plan, what the data is missing. SVG and CSS, drawn
+  from the API's numbers, still with "reduce motion" on.
+- **Shift Run** (`contexts/spot/domain/shiftrun.py`, `application/shiftrun.py`;
+  `GET /api/spot/shiftrun/board`, `GET /api/spot/shiftrun/recommended`, `POST /api/spot/shiftrun/simulate`,
+  `POST /api/spot/actions/plan`). A check's chance of failing is the site rate (49 of 270) with its odds
+  multiplied by a capped ratio for the kind of check, one for the waypoint, and one for "late and low" (the
+  larger of the battery-band and position ratios, never both: they are the same actions in the kit).
+  Groups under 8 actions count for nothing. Battery drop (about 4.7 points) and time (about 2.7 minutes) per
+  step are the kit's averages. The score is an expected value: what each asset is worth (triage score,
+  importance, days since a good check, a little less for every stop it waits) times its chance of a good
+  check, minus failed checks and checks on a low battery. Stars compare it with Atlas's plan, found by the
+  same score. The seeded draw only drives the animation. The weights are judgement and are returned part
+  by part.
+- **Loading**: the first screen needs `GET /api/spot/shift` and the replay state. Findings, locations and
+  the overview load when a "Why?" or the Analysis tab is first opened; the tables load when their fold is opened.
+- **Links**: `?asset=HX-202`, `?round=M017&step=8`, `?why=battery` (`&at=end` or `&at=mid`),
+  `?numbers=battery`, `?tab=analysis`, `?tab=run&route=last&turn=40&show=result`, `?floor=2`, `?all=1`.
+
 ## Run it
 
 ```
@@ -130,6 +183,11 @@ would run. We have not run that fine-tune, and the rephrasing path has only been
 stand-in model in tests, not on the Jetson.
 
 ## 75-second demo
+
+On the operator screen the same beats are: (1) the status line and "Do this first"; (2) Play under "A round,
+step by step"; (3) tap HX-202 on the plan, then "Why?"; (4) Analysis, the explainer "Is the new setup really
+better?", then "Show the numbers"; (5) Ask; (6) "Send SPOT back", then "Yes, do it". The steps below are the
+analyst wording of each, which is what the Analysis tab's tables still show.
 
 1. (0:00) `/spot/` on the big display. "Three things to do, in order. Mission status says 96%; 81% of those missions hide a failed action."
 2. (0:10) Press **Play** at 60×. The robot walks M001; two actions fail; the mission ends with the amber badge **completed, 2 actions failed**; alerts arrive as they happen.

@@ -16,15 +16,7 @@
   min-width: 0;
 }
 
-/* The shell is a 760 px phone column. On a laptop or a wall display this page breaks out of it. */
-@media (min-width: 900px) {
-  .page {
-    --w: min(1480px, calc(100vw - 40px));
-    width: var(--w);
-    margin-left: calc(50% - var(--w) / 2);
-    align-self: flex-start;
-  }
-}
+/* The page sits inside the shell (a phone column, or the sidebar layout from 1024 px): it no longer breaks out of it. */
 
 .head {
   display: flex;
