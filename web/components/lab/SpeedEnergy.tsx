@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ErrorBox, Loading } from "@/components/States";
 import ui from "@/components/ui.module.css";
 import { api } from "@/lib/api";
-import { type BenchPoint, type BenchPowerNode, type BenchSweep, type LabBench, batchReadout, fmt, shortRef, when } from "@/lib/labBench";
+import { type LabChip, chipLabel, chipRole, chipShort } from "@/lib/lab";
+import { type BenchChipRows, type BenchPoint, type BenchPowerNode, type BenchSweep, type LabBench, batchReadout, fmt, shortRef, when } from "@/lib/labBench";
 import { useFetch } from "@/lib/useFetch";
 import { LabelKey, PointDetail, Tag, useReduced, useWidth } from "./Labels";
 import { Sheet } from "./LabRun";
@@ -18,15 +19,36 @@ import b from "./bench.module.css";
  * them and rewrites the sentence above from the rows at that batch size. A low-confidence point is hollow and its
  * line dashed; tapping any point shows the row it came from.
  *
+ * Every row carries the chip it was measured on (lib/lab.ts LabChip). The main chart is the current lab's sweep. A
+ * sweep from any other chip is a section of its own under that chip's name ("Reference: NVIDIA A100 (Colab)",
+ * "Earlier lab cards: Radeon R9700") and is never joined to the lab's curve. Where another chip recorded the same
+ * metrics at the same batch sizes, "Compare with" lays its rows beside the lab's as a grey series with its own marker.
+ *
  *   /lab/?tab=speed&batch=16      open at a batch size
  *   /lab/?tab=speed&ttft=1        with the time-to-first-token chart
  *   /lab/?tab=speed&point=joules_per_token   with that point's source open
+ *   /lab/?tab=speed&compare=1     with the first comparison on (or compare=<chip key>, such as nvidia-a100)
+ *   /lab/?tab=speed&sweep=<chip key>         open another chip's own section
  */
 
 type Shape = "circle" | "square" | "diamond" | "triangle";
 type Tone = "speed" | "energy" | "neutral";
 const PAD = { left: 46, right: 20 };
 const SOLID: Record<Tone, string> = { speed: b.dotSolidSpeed!, energy: b.dotSolidEnergy!, neutral: b.dotSolidNeutral! };
+const CMP = "cmp:"; // a comparison series' name: the other chip's rows of the same metric
+
+/** "metrics.jsonl:7, 8, 17" as it is; a long list as "metrics.jsonl:1 to 22", or "between metrics.jsonl:102 and 129" when lines between them are not in it. */
+function lineList(lines: number[]): string {
+  if (lines.length <= 6) return `metrics.jsonl:${lines.join(", ")}`;
+  const first = lines[0]!;
+  const last = lines[lines.length - 1]!;
+  return last - first + 1 === lines.length ? `metrics.jsonl:${first} to ${last}` : `between metrics.jsonl:${first} and ${last}`;
+}
+
+/** "3 from Radeon R9700 (the lab's earlier cards, …); 11 from NVIDIA A100 (Colab) (a reference, …)". */
+function chipCounts(groups: BenchChipRows[], withLines = false): string {
+  return groups.map((g) => `${g.rows} from ${chipShort(g)} (${chipRole(g)}${withLines ? `; ${lineList(g.lines)}` : ""})`).join("; ");
+}
 
 function mark(shape: Shape, x: number, y: number, r: number, className: string, key?: string) {
   if (shape === "square") return <rect key={key} className={className} x={x - r} y={y - r} width={2 * r} height={2 * r} rx={1.5} />;
@@ -67,7 +89,7 @@ function Panel({
   title: string;
   hint: string;
   unit: string;
-  series: { name: string; label: string; points: BenchPoint[]; tone: Tone; shape: Shape; lineless?: boolean }[];
+  series: { name: string; label: string; short?: string; points: BenchPoint[]; tone: Tone; shape: Shape; lineless?: boolean }[];
   batches: number[];
   cursor: number;
   selected: number;
@@ -109,6 +131,8 @@ function Panel({
   const j = Math.min(batches.length - 1, i + 1);
   const cx = x(batches[i]!) + (x(batches[j]!) - x(batches[i]!)) * (cursor - i);
   const now = series[0]?.points.find((p) => p.x === selected);
+  const beside = series.find((s) => s.name.startsWith(CMP));
+  const besideNow = beside?.points.find((p) => p.x === selected);
 
   return (
     <>
@@ -119,6 +143,12 @@ function Panel({
         {now ? (
           <span className={b.panelNow}>
             {fmt(now.value)} {unit}
+            {beside && besideNow ? (
+              <span className={b.note}>
+                {" "}
+                · {beside.short}: {fmt(besideNow.value)}
+              </span>
+            ) : null}
           </span>
         ) : null}
       </div>
@@ -210,8 +240,28 @@ function LegendMark({ shape, tone, hollow }: { shape: Shape; tone: Tone; hollow?
   );
 }
 
-function Batching({ sweep, bench, initialBatch, initialTtft, initialPoint, reduced }: { sweep: BenchSweep; bench: LabBench; initialBatch: number | null; initialTtft: boolean; initialPoint: string | null; reduced: boolean }) {
+function Batching({
+  sweep,
+  bench,
+  initialBatch,
+  initialTtft,
+  initialPoint,
+  initialCompare,
+  reduced,
+}: {
+  sweep: BenchSweep;
+  bench: LabBench;
+  initialBatch: number | null;
+  initialTtft: boolean;
+  initialPoint: string | null;
+  initialCompare: string | null;
+  reduced: boolean;
+}) {
   const batches = sweep.batches;
+  // other chips' sweeps that can be read beside this one; only the current lab's sweep offers any
+  const offers = useMemo(() => sweep.comparisons.flatMap((c) => bench.sweeps.filter((s) => s.id === c.id).map((other) => ({ ...c, other }))), [sweep, bench]);
+  const [compareId, setCompareId] = useState<string | null>(() => (initialCompare ? (sweep.comparisons.find((c) => c.chip.key === initialCompare) ?? (initialCompare === "1" ? sweep.comparisons[0] : undefined))?.id ?? null : null));
+  const cmp = offers.find((c) => c.id === compareId) ?? null;
   const start = Math.max(0, initialBatch !== null ? batches.indexOf(initialBatch) : batches.length > 3 ? 3 : batches.length - 1);
   const [sel, setSel] = useState(start);
   const [cursor, setCursor] = useState(start);
@@ -258,12 +308,24 @@ function Batching({ sweep, bench, initialBatch, initialTtft, initialPoint, reduc
   const pick = useCallback((key: string) => setPicked((p) => (p === key ? null : key)), []);
   const pickedPoint = useMemo(() => {
     if (!picked) return null;
-    const [name, at] = picked.split("@");
-    return m[name ?? ""]?.find((p) => String(p.x) === at) ?? null;
-  }, [picked, m]);
+    const [name = "", at] = picked.split("@");
+    const from = name.startsWith(CMP) ? cmp?.other.metrics[name.slice(CMP.length)] : m[name];
+    return from?.find((p) => String(p.x) === at) ?? null;
+  }, [picked, m, cmp]);
   const readout = batchReadout(sweep, batch);
   const shared = { batches, cursor, selected: batch, picked, onPick: pick, width };
   const allLow = sweep.low_confidence === sweep.points;
+  // the other chip's rows of one metric, at the batch sizes both ran, as a grey series with a marker of its own
+  const cmpShort = cmp ? chipShort(cmp.chip) : "";
+  const beside = (name: string, label: string) => {
+    const pts = cmp && cmp.metrics.includes(name) ? (cmp.other.metrics[name] ?? []).filter((p) => p.x !== null && p.x !== undefined && cmp.batches.includes(p.x)) : [];
+    return pts.length ? [{ name: CMP + name, label: `${cmpShort}: ${label}`, short: cmpShort, points: pts, tone: "neutral" as Tone, shape: "triangle" as Shape }] : [];
+  };
+  const mineAt = (name: string) => m[name]?.find((p) => p.x === batch);
+  const theirsAt = (name: string) => (cmp && cmp.metrics.includes(name) ? cmp.other.metrics[name]?.find((p) => p.x === batch) : undefined);
+  const wMine = mineAt("watts_avg");
+  const wTheirs = theirsAt("watts_avg");
+  const scale = cmp ? ", log scale while comparing" : "";
 
   return (
     <div className={b.card}>
@@ -273,12 +335,20 @@ function Batching({ sweep, bench, initialBatch, initialTtft, initialPoint, reduc
       </div>
       {sweep.other_chip ? (
         <p className={`${b.banner} ${b.bannerWatch}`}>
-          <b>Other chip (R9700).</b> These rows were measured on the lab&apos;s earlier cards, not on the Strix Halo pods it runs now.
+          <span>
+            <b>{chipLabel(sweep.chip)}.</b>{" "}
+            {sweep.chip.role === "earlier"
+              ? "These rows were measured on the lab's earlier cards, not on the Strix Halo pods it runs now."
+              : sweep.chip.role === "reference"
+                ? `These rows were measured on a different chip${sweep.chip.where ? `, on ${sweep.chip.where}` : ""}, not on the lab's Strix Halo pods.${sweep.chip_note ? ` The rows say: ${sweep.chip_note}.` : ""}`
+                : "These rows mark themselves as measured on another chip and do not name it. They are not the lab's Strix Halo pods."}
+            {sweep.chip.reason ? <span className={b.note}> How we know: {sweep.chip.reason}.</span> : null}
+          </span>
         </p>
       ) : null}
       <p className={b.note}>
         {sweep.model ?? "The teacher"} on {sweep.node}
-        {sweep.chip ? ` (${sweep.chip})` : ""}, measured {when(sweep.ts)}. Batch size is how many requests it answers at the same time.
+        {sweep.gpu ? ` (${sweep.gpu})` : ""}, measured {when(sweep.ts)}. Batch size is how many requests it answers at the same time.
       </p>
 
       <div className={b.stepper} role="group" aria-label="Batch size">
@@ -318,6 +388,46 @@ function Batching({ sweep, bench, initialBatch, initialTtft, initialPoint, reduc
           <span className={b.readoutSub}>
             Computed from {["decode_tok_s", "joules_per_token"].map((n) => shortRef(m[n]?.find((p) => p.x === batch)?.source.ref)).join(" and ")}.
           </span>
+          {cmp && (theirsAt("decode_tok_s") || theirsAt("joules_per_token")) ? (
+            <span className={b.readoutSub}>
+              For comparison, {cmpShort} at batch {batch}:{" "}
+              {[
+                [theirsAt("decode_tok_s"), "tokens a second for each request"],
+                [theirsAt("joules_per_token"), "J for each token"],
+              ]
+                .filter((x): x is [BenchPoint, string] => !!x[0])
+                .map(([p, words]) => `${fmt(p.value)} ${words} (${shortRef(p.source.ref)})`)
+                .join(", ")}
+              . A different chip, not the lab&apos;s.
+            </span>
+          ) : null}
+        </p>
+      ) : null}
+
+      {offers.length ? (
+        <div className={ui.chips} role="group" aria-label="Compare with another chip">
+          {offers.map((c) => (
+            <button key={c.id} type="button" className={`${ui.chip} ${c.id === compareId ? ui.chipOn : ""}`} aria-pressed={c.id === compareId} onClick={() => (setPicked(null), setCompareId(c.id === compareId ? null : c.id))}>
+              Compare with: {chipShort(c.chip)}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {cmp ? (
+        <p className={b.banner}>
+          <span>
+            <b>
+              {chipLabel(cmp.chip)}, in grey. Not the lab&apos;s hardware.
+            </b>{" "}
+            A different{wMine && wTheirs && wTheirs.value >= 2 * wMine.value ? ", much larger" : ""} chip{cmp.other.gpu ? ` (${cmp.other.gpu})` : ""}
+            {cmp.chip.where ? `, measured on ${cmp.chip.where}` : ", measured elsewhere"} {when(cmp.other.ts)}
+            {cmp.other.chip_note ? `. The rows say: ${cmp.other.chip_note}` : ""}.{" "}
+            {wMine && wTheirs
+              ? `At batch ${batch} it drew ${fmt(wTheirs.value)} W against ${fmt(wMine.value)} W on ${sweep.node}${cmp.other.power_source ? `, and its power is read another way (${cmp.other.power_source})` : ""}. `
+              : ""}
+            {cmp.same_model ? `The same model (${cmp.other.model})` : `A different model (${cmp.other.model ?? "not named"})`}
+            {cmp.other.build ? `, ${cmp.other.build}` : ""}; {cmp.batches.length === batches.length ? "the same batch sizes" : `batch sizes ${cmp.batches.join(", ")} only`}. {cmp.other.confidence_note} Tap a grey point to see its row.
+          </span>
         </p>
       ) : null}
 
@@ -328,19 +438,21 @@ function Batching({ sweep, bench, initialBatch, initialTtft, initialPoint, reduc
               <Panel
                 {...shared}
                 title="Speed for each person"
-                hint="tokens a second per request: falls as more share the card"
+                hint={`tokens a second per request: falls as more share the card${scale}`}
                 unit="tok/s"
-                series={[{ name: "decode_tok_s", label: "Tokens a second per request", points: m.decode_tok_s, tone: "speed", shape: "circle" }]}
-                edgeNote={student?.tok_s ? `Jetson student: ${fmt(student.tok_s.value)} tok/s, above this scale` : null}
+                log={!!cmp}
+                series={[{ name: "decode_tok_s", label: "Tokens a second per request", points: m.decode_tok_s, tone: "speed", shape: "circle" }, ...beside("decode_tok_s", "tokens a second per request")]}
+                edgeNote={student?.tok_s && !cmp && student.tok_s.value > niceMax(Math.max(...m.decode_tok_s.map((p) => p.value))) ? `Jetson student: ${fmt(student.tok_s.value)} tok/s, above this scale` : null}
               />
             ) : null}
             {m.decode_tok_s_total ? (
               <Panel
                 {...shared}
                 title="Speed in total"
-                hint="tokens a second across all requests: rises"
+                hint={`tokens a second across all requests: rises${scale}`}
                 unit="tok/s"
-                series={[{ name: "decode_tok_s_total", label: "Tokens a second in total", points: m.decode_tok_s_total, tone: "speed", shape: "square" }]}
+                log={!!cmp}
+                series={[{ name: "decode_tok_s_total", label: "Tokens a second in total", points: m.decode_tok_s_total, tone: "speed", shape: "square" }, ...beside("decode_tok_s_total", "tokens a second in total")]}
               />
             ) : null}
             {m.joules_per_token ? (
@@ -352,28 +464,30 @@ function Batching({ sweep, bench, initialBatch, initialTtft, initialPoint, reduc
                 log
                 height={170}
                 refBand={band}
-                series={[{ name: "joules_per_token", label: "Joules per token", points: m.joules_per_token, tone: "energy", shape: "diamond" }]}
+                series={[{ name: "joules_per_token", label: "Joules per token", points: m.joules_per_token, tone: "energy", shape: "diamond" }, ...beside("joules_per_token", "joules per token")]}
               />
             ) : null}
             {ttft && m.ttft_s ? (
               <Panel
                 {...shared}
                 title="Wait before the first word"
-                hint="seconds to the first token: the price of sharing"
+                hint={`seconds to the first token: the price of sharing${scale}`}
                 unit="s"
-                series={[{ name: "ttft_s", label: "Time to first token", points: m.ttft_s, tone: "neutral", shape: "triangle" }]}
+                log={!!cmp}
+                series={[{ name: "ttft_s", label: "Time to first token", points: m.ttft_s, tone: cmp ? "speed" : "neutral", shape: cmp ? "circle" : "triangle" }, ...beside("ttft_s", "time to first token")]}
               />
             ) : null}
             {m.watts_avg ? (
               <Panel
                 {...shared}
                 title="Power drawn"
-                hint="watts, average (line) and peak (squares): flat, so more answers per watt"
+                hint={cmp ? "watts, average (line) and the lab's peak (squares)" : `watts, average (line) and peak (squares)${sweep.other_chip ? "" : ": flat, so more answers per watt"}`}
                 unit="W"
-                height={96}
+                height={cmp ? 132 : 96}
                 series={[
                   { name: "watts_avg", label: "Average watts", points: m.watts_avg, tone: "energy", shape: "circle" },
-                  ...(m.watts_peak ? [{ name: "watts_peak", label: "Peak watts", points: m.watts_peak, tone: "neutral" as Tone, shape: "square" as Shape, lineless: true }] : []),
+                  ...(m.watts_peak ? [{ name: "watts_peak", label: "Peak watts", points: m.watts_peak, tone: (cmp ? "energy" : "neutral") as Tone, shape: "square" as Shape, lineless: true }] : []),
+                  ...beside("watts_avg", "average watts"),
                 ]}
               />
             ) : null}
@@ -394,6 +508,11 @@ function Batching({ sweep, bench, initialBatch, initialTtft, initialPoint, reduc
           </svg>
           Jetson student, for reference
         </span>
+        {cmp ? (
+          <span>
+            <LegendMark shape="triangle" tone="neutral" hollow={cmp.other.low_confidence > 0} /> grey: {cmpShort}, a different chip, for comparison
+          </span>
+        ) : null}
       </div>
       <p className={`${b.banner} ${allLow ? b.bannerWatch : ""}`}>
         <span>
@@ -505,8 +624,8 @@ function PowerCard({ bench }: { bench: LabBench }) {
       </div>
       {bench.power.other_chip.length ? (
         <p className={b.note}>
-          Not drawn: {bench.power.other_chip.length} power row{bench.power.other_chip.length === 1 ? "" : "s"} from the other chip (R9700) or untagged from before the lab moved (
-          <span className={b.code}>metrics.jsonl:{bench.power.other_chip.map((p) => p.line).join(", ")}</span>). They are in &ldquo;All rows&rdquo;.
+          Not drawn: {bench.power.other_chip.length} power row{bench.power.other_chip.length === 1 ? "" : "s"} that {bench.power.other_chip.length === 1 ? "is" : "are"} not from the current lab:{" "}
+          {chipCounts(bench.power.other_chips, true)}. They are in &ldquo;All rows&rdquo;.
         </p>
       ) : null}
       {bench.power.absent.length ? <p className={b.note}>No power row yet for {bench.power.absent.join(", ")}. Nothing is drawn for a machine the file does not cover.</p> : null}
@@ -526,6 +645,10 @@ function What({ bench, sweep }: { bench: LabBench; sweep: BenchSweep | undefined
     ["The card draws about the same power either way, so each token costs far less energy.", `${ref("joules_per_token")}; ${ref("watts_avg")}`],
     ["The green band is the small model on the box: derived from its watts and its speed, not measured.", bench.student?.j_per_token?.source.ref.replace(/lab\/refine\//g, "") ?? "no row"],
     ["Hollow points and dashed lines are low confidence. Tap any point for its row and the reason.", `${bench.low_confidence_rows} of ${bench.rows} rows in ${shortRef(bench.file)}`],
+    ...(sweep?.comparisons ?? []).map((c): [string, string] => [
+      `"Compare with: ${chipShort(c.chip)}" adds grey triangles: the same measurement on a different chip that is not the lab's. They are never joined to the lab's line.`,
+      `${c.chip.reason ?? "the rows' own chip"}; sweep ${c.id}`,
+    ]),
   ];
   return (
     <ol className={b.howto}>
@@ -546,7 +669,8 @@ function AllRows({ bench }: { bench: LabBench }) {
     <>
       <p className={ui.muted}>
         {bench.rows} rows in {bench.file}; {bench.charted_rows} are drawn on this screen or on the Training tab. The rest are listed here so none is dropped silently. {bench.other_chip_rows} rows
-        are from the other chip (R9700) or untagged from before the lab moved to the Strix Halo pods; they are never drawn on the current lab&apos;s charts.
+        were not measured on the lab&apos;s Strix Halo pods: {chipCounts(bench.chips.filter((g) => !g.current), true)}. They are never drawn as the current lab&apos;s; a chip with a sweep of its own
+        has its own named section.
       </p>
       <h3>Present but not charted</h3>
       <div className={b.list}>
@@ -563,7 +687,7 @@ function AllRows({ bench }: { bench: LabBench }) {
             <span className={b.note}>
               {x.rows} row{x.rows === 1 ? "" : "s"}: <span className={b.code}>metrics.jsonl:{x.lines.join(", ")}</span>
               {x.latest.low_confidence ? " · newest is low confidence" : ""}
-              {x.other_chip ? ` · ${x.other_chip === x.rows ? "all" : x.other_chip} from the other chip (R9700), not the current lab` : ""}
+              {x.other_chip ? ` · not the current lab: ${x.other_chips.map((g) => `${g.rows === x.rows ? "all" : g.rows} from ${chipShort(g)}`).join(", ")}` : ""}
             </span>
           </div>
         ))}
@@ -589,7 +713,23 @@ function AllRows({ bench }: { bench: LabBench }) {
   );
 }
 
-export function SpeedEnergy({ initialBatch, initialTtft, initialPoint, initialDrawer, forceReduced }: { initialBatch: number | null; initialTtft: boolean; initialPoint: string | null; initialDrawer: string | null; forceReduced: boolean }) {
+export function SpeedEnergy({
+  initialBatch,
+  initialTtft,
+  initialPoint,
+  initialDrawer,
+  initialCompare = null,
+  initialSweep = null,
+  forceReduced,
+}: {
+  initialBatch: number | null;
+  initialTtft: boolean;
+  initialPoint: string | null;
+  initialDrawer: string | null;
+  initialCompare?: string | null;
+  initialSweep?: string | null;
+  forceReduced: boolean;
+}) {
   const bench = useFetch((signal) => api.labBench(signal), "bench");
   const reduced = useReduced(forceReduced);
   const [sweepId, setSweepId] = useState<string | null>(null);
@@ -598,7 +738,14 @@ export function SpeedEnergy({ initialBatch, initialTtft, initialPoint, initialDr
   if (bench.loading && !bench.data) return <Loading what="the lab's measurements" />;
   if (bench.error && !bench.data) return <ErrorBox what="the lab's measurements" error={bench.error} onRetry={bench.reload} />;
   const data = bench.data!;
-  const sweep = data.sweeps.find((s) => s.id === sweepId) ?? data.sweeps[0];
+  const sweep = data.sweeps.find((s) => s.id === sweepId) ?? (initialSweep ? data.sweeps.find((s) => s.chip.key === initialSweep || s.id === initialSweep) : undefined) ?? data.sweeps[0];
+  // the runs, one group per chip: the current lab first, then each other chip under its own name
+  const groups: { chip: LabChip; sweeps: BenchSweep[] }[] = [];
+  for (const s of data.sweeps) {
+    const mine = groups.find((g) => (g.chip.current && s.chip.current) || (g.chip.key === s.chip.key && (g.chip.role !== "reference" || g.chip.where === s.chip.where)));
+    if (mine) mine.sweeps.push(s);
+    else groups.push({ chip: s.chip, sweeps: [s] });
+  }
   return (
     <div className={b.page}>
       <div className={ui.pageHead}>
@@ -616,18 +763,30 @@ export function SpeedEnergy({ initialBatch, initialTtft, initialPoint, initialDr
       <LabelKey kinds={["measured", "derived"]} />
       {data.rows === 0 ? <p className={b.banner}>{data.empty_reason}</p> : null}
       {data.sweeps.length > 1 ? (
-        <div className={ui.chips} role="group" aria-label="Which measurement run">
-          {data.sweeps.map((s) => (
-            <button key={s.id} type="button" className={`${ui.chip} ${s.id === sweep?.id ? ui.chipOn : ""}`} aria-pressed={s.id === sweep?.id} onClick={() => setSweepId(s.id)}>
-              {s.family.replace(/_/g, " ")} · {s.node} · {when(s.ts)}
-              {s.other_chip ? " · other chip (R9700)" : ""}
-            </button>
-          ))}
+        <div className={b.col} style={{ gap: 12 }}>
+          {groups.map((g) => {
+            const title = g.chip.current ? `The lab now: ${g.chip.name}` : chipLabel(g.chip);
+            return (
+              <div key={`${g.chip.key}|${g.chip.where ?? ""}`} className={b.col} style={{ gap: 6 }}>
+                <span className={b.note}>
+                  {title}
+                  {g.chip.current ? "" : ` · ${chipRole(g.chip)}`}
+                </span>
+                <div className={ui.chips} role="group" aria-label={`Measurement runs, ${title}`}>
+                  {g.sweeps.map((s) => (
+                    <button key={s.id} type="button" className={`${ui.chip} ${s.id === sweep?.id ? ui.chipOn : ""}`} aria-pressed={s.id === sweep?.id} onClick={() => setSweepId(s.id)}>
+                      {s.family.replace(/_/g, " ")} · {s.node} · {when(s.ts)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       ) : null}
       <div className={b.two}>
         {sweep ? (
-          <Batching key={sweep.id} sweep={sweep} bench={data} initialBatch={initialBatch} initialTtft={initialTtft} initialPoint={initialPoint} reduced={reduced} />
+          <Batching key={sweep.id} sweep={sweep} bench={data} initialBatch={initialBatch} initialTtft={initialTtft} initialPoint={initialPoint} initialCompare={initialCompare} reduced={reduced} />
         ) : (
           <div className={b.card}>
             <h2>No batching measurement yet</h2>

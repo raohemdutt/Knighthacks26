@@ -1,0 +1,1345 @@
+/*
+ * Today's Plan (/dayrun/). Tokens from app/globals.css; shared pieces from components/ui.module.css.
+ *
+ * The screen follows the Calendar screen's grammar. Rules marked "from Calendar" are copies of the designer's rules
+ * in components/calendar/screen.module.css and components/calendar/calendar.module.css (and the fold in
+ * app/now/now.module.css), copied here rather than moved out of his files; keep them in step with those.
+ */
+
+/* ---------- layout: one column on a phone, hero | plan on a wide screen (from Calendar: .split, .right) ---------- */
+.split {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+@media (min-width: 1100px) {
+  .split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    gap: 28px;
+    align-items: start;
+  }
+  .left {
+    position: sticky;
+    top: 20px;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+    padding: 4px 8px 20px 4px;
+    margin: -4px -8px 0 -4px;
+    scrollbar-width: thin;
+  }
+}
+
+/* ---------- the date strip ---------- */
+.dates {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dateRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dateScroll {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--sh-inset);
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+  flex: 1;
+  min-width: 0;
+}
+
+.dateScroll::-webkit-scrollbar {
+  display: none;
+}
+
+.date {
+  flex: none;
+  width: 52px;
+  min-height: 56px;
+  padding: 6px 0 7px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  scroll-snap-align: center;
+  transition: color var(--t-fast), box-shadow var(--ease-press);
+}
+
+.date b {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.date span {
+  font-size: 12.5px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+/* one small mark under the number: how the day went, or how hard the deadlines press on a day ahead */
+.date i {
+  display: block;
+  width: 18px;
+  height: 4px;
+  margin-top: 3px;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.dateGood i {
+  background: var(--accent);
+}
+
+.dateOff i {
+  background: var(--danger);
+}
+
+.date:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+.date:disabled i {
+  visibility: hidden;
+}
+
+/* the selected day (from Calendar: .switchOn) */
+.dateOn {
+  background: var(--surface);
+  color: var(--accent-text);
+  box-shadow: var(--sh-raised-sm);
+}
+
+.dateOn b {
+  color: var(--accent-text);
+}
+
+.dateNav {
+  flex: none;
+  width: 36px;
+  height: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.dateNote {
+  font-size: 14px;
+  color: var(--muted);
+  padding: 0 4px;
+  min-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 700px) {
+  .dateNav {
+    display: none;
+  }
+}
+
+/* ---------- the hero (from Calendar: .next, .nextWarn, .nextTop, .nextLabel, .nextTitle, .lead, .nextRow) ---------- */
+.hero {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, var(--accent-soft), transparent 75%), var(--surface);
+  box-shadow: var(--sh-raised-lg);
+  min-width: 0;
+}
+
+.heroFix {
+  background: linear-gradient(180deg, var(--danger-soft), transparent 75%), var(--surface);
+  box-shadow: var(--sh-raised-lg), inset 0 0 0 2px var(--danger);
+}
+
+.heroTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.heroLabel {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--accent-text);
+}
+
+.heroTitle {
+  font-size: 26px;
+  line-height: 1.2;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.lead {
+  font-size: 16px;
+  line-height: 1.45;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.stars {
+  font-size: 15px;
+  letter-spacing: 2px;
+  color: var(--accent-text);
+  white-space: nowrap;
+}
+
+.heroRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* the hero's two pill actions (from Calendar's "Brief me": now.module.css .speak, .speakOn) */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 18px 8px 14px;
+  border-radius: var(--radius-pill);
+  border: 0;
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--accent-text);
+  font-size: 16px;
+  font-weight: 650;
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
+}
+
+.pill:active:not(:disabled) {
+  box-shadow: var(--sh-inset-sm);
+  transform: scale(0.97);
+}
+
+.pill:disabled {
+  opacity: 0.5;
+  box-shadow: none;
+}
+
+.pill svg {
+  width: 20px;
+  height: 20px;
+}
+
+.pillMain {
+  background: var(--accent-grad);
+  color: var(--accent-ink);
+  box-shadow: var(--glow), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.pillQuiet {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.pillOn {
+  box-shadow: var(--sh-selected);
+  color: var(--accent-text);
+}
+
+/* ---------- what needs fixing: rows inside the hero, parted by hairlines (never cards in a card) ---------- */
+.fixes {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.fix {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  min-width: 0;
+}
+
+.fix + .fix {
+  border-top: 1px solid var(--line);
+}
+
+.fixText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.fixText b {
+  font-size: 16px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.fixText span {
+  font-size: 14px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.fixBtn {
+  flex: none;
+  min-height: 40px;
+  padding: 6px 16px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--accent-text);
+  font-size: 15px;
+  font-weight: 700;
+  transition: box-shadow var(--ease-press);
+}
+
+.fixBtn:active {
+  box-shadow: var(--sh-inset-sm);
+}
+
+/* ---------- the map: a well inside the hero, driven by the plan ---------- */
+.mapWell {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  width: 100%;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  min-width: 0;
+}
+
+@media (min-width: 1100px) {
+  .mapWell {
+    max-height: calc(100vh - 600px);
+    min-height: 200px;
+  }
+}
+
+.mapSvg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: pan-y; /* a vertical drag still scrolls the page past the map; sideways pans it, two fingers pinch it */
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+}
+
+.mapSvg:active {
+  cursor: grabbing;
+}
+
+.mapEmpty {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 16px;
+  text-align: center;
+  font-size: 15px;
+  color: var(--muted);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset);
+  border-radius: var(--radius-sm);
+}
+
+/* names of the places in today's plan: fixed sizes, whatever the width of the well */
+.place {
+  font-size: 12.5px;
+  font-weight: 700;
+  fill: var(--text);
+  paint-order: stroke;
+  stroke: var(--map-label-halo);
+  stroke-width: 3.4px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.placeDim {
+  opacity: 0.45;
+}
+
+.placeShut {
+  fill: var(--danger);
+}
+
+.spot {
+  cursor: pointer;
+  outline: none;
+}
+
+.spot:focus-visible circle {
+  stroke: var(--accent-bright);
+  stroke-width: 3;
+}
+
+.dim {
+  opacity: 0.35;
+  transition: opacity var(--t) var(--ease-out);
+}
+
+.mapTools {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  gap: 6px;
+}
+
+.mapTool {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--map-plate);
+  color: var(--text);
+  box-shadow: 0 0 0 1px var(--line);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.mapTool:disabled {
+  opacity: 0.4;
+}
+
+.mapCredit {
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--map-plate);
+  font-size: 10.5px;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+/* what went wrong, as pills over the map (hard mode, and a day that changed) */
+.mapPills {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.mapPill {
+  padding: 3px 11px;
+  border-radius: 999px;
+  background: var(--map-plate);
+  box-shadow: inset 0 0 0 1.5px var(--danger);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+/* the line under the map: the selected walk, or the narration while the day plays */
+.caption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 24px;
+  font-size: 16px;
+  color: var(--muted);
+  min-width: 0;
+}
+
+.caption b {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.caption > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.legendLine {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ---------- the day as one bar (from Calendar: calendar.module.css .bar, .seg, .now, .ends, .key) ---------- */
+.strip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.energy {
+  display: block;
+  width: 100%;
+  height: 20px;
+  overflow: visible;
+}
+
+.energy path {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.7;
+}
+
+.bar {
+  position: relative;
+  height: 34px;
+  border-radius: 17px;
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.seg {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  border-radius: 12px;
+  background: var(--c);
+  box-shadow: 0 0 0 1.5px var(--surface-2);
+  pointer-events: none;
+}
+
+.segMove {
+  opacity: 0.6;
+}
+
+.segOn {
+  opacity: 1;
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.now {
+  position: absolute;
+  top: -6px;
+  bottom: -6px;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 2px;
+  background: var(--accent-text);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.now i {
+  position: absolute;
+  top: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: var(--accent-grad);
+  color: var(--accent-ink);
+  box-shadow: var(--glow);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.nowStart i {
+  left: 0;
+  transform: none;
+}
+
+.nowEnd i {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+.ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.key li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.key i {
+  width: 11px;
+  height: 11px;
+  border-radius: 4px;
+}
+
+.key em {
+  display: inline-block;
+  width: 16px;
+  height: 0;
+  border-top: 1.5px solid var(--muted);
+  opacity: 0.7;
+}
+
+/* ---------- tell Atlas what to change ---------- */
+.tell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tellRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.tellInput {
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--text);
+  box-shadow: var(--sh-inset);
+  font-size: 16px;
+}
+
+.tellInput::placeholder {
+  color: var(--muted);
+}
+
+.tellInput:focus {
+  outline: none;
+  box-shadow: var(--sh-inset), 0 0 0 2px var(--accent);
+}
+
+.tellBtn {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--accent-text);
+  display: grid;
+  place-items: center;
+}
+
+.tellBtn svg {
+  width: 22px;
+  height: 22px;
+}
+
+.tellBtn:disabled {
+  opacity: 0.45;
+  box-shadow: none;
+}
+
+.tellBtnOn {
+  background: var(--accent-grad);
+  color: var(--accent-ink);
+  box-shadow: var(--glow);
+}
+
+.heard {
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.heardWarn {
+  color: var(--danger);
+}
+
+/* ---------- your plan: the agenda (from Calendar: .rows, .row, .rowTime, .rowRail, .rowDot*, .rowCard, .rowFixed,
+   .rowWarn, .rowTop, .rowTitle, .rowTags, .rowMeta, .rowReason, .tagPill, .tagNext, .tagWarn) ---------- */
+.paneTitle {
+  font-size: 24px;
+  font-weight: 750;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 68px 16px minmax(0, 1fr);
+  column-gap: 8px;
+  min-width: 0;
+  scroll-margin-top: 90px;
+}
+
+.rowTime {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding-top: 14px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rowTime b {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.rowTime span {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.rowRail {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+.rowRail::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--line);
+}
+
+.rows > .row:first-child .rowRail::before {
+  top: 20px;
+}
+
+.rows > .row:last-child .rowRail::before {
+  bottom: calc(100% - 20px);
+}
+
+.rowDot {
+  position: relative;
+  z-index: 1;
+  margin-top: 16px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--c, var(--muted));
+  background: var(--surface-solid);
+}
+
+.rowDotFixed {
+  background: var(--c, var(--text));
+}
+
+.rowDotGap {
+  width: 8px;
+  height: 8px;
+  margin-top: 20px;
+  border: 0;
+  background: var(--line);
+}
+
+.rowCell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.rowCard {
+  margin: 5px 0;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  text-align: left;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font: inherit;
+  color: inherit;
+  transition: box-shadow var(--t-fast) var(--ease-out);
+}
+
+button.rowCard {
+  cursor: pointer;
+}
+
+/* every block of the plan is real and tappable: raised, with its kind as a pastel strip */
+.rowBlock {
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm), inset 5px 0 0 var(--c, var(--text));
+}
+
+button.rowBlock:active {
+  box-shadow: var(--sh-inset-sm), inset 5px 0 0 var(--c, var(--text));
+}
+
+.rowOn {
+  box-shadow: var(--sh-raised-sm), inset 5px 0 0 var(--c, var(--text)), inset 0 0 0 2px var(--accent);
+}
+
+.rowWarn {
+  background: var(--danger-soft);
+  box-shadow: var(--sh-inset-sm), inset 0 0 0 2px var(--danger);
+}
+
+.rowPast {
+  opacity: 0.6;
+}
+
+/* the row an edit just touched: one soft pulse of the accent ring */
+.rowFlash {
+  animation: flash 1400ms var(--ease-out) both;
+}
+
+@keyframes flash {
+  0%,
+  45% {
+    box-shadow: var(--sh-raised-sm), inset 5px 0 0 var(--c, var(--text)), 0 0 0 3px var(--accent);
+  }
+  100% {
+    box-shadow: var(--sh-raised-sm), inset 5px 0 0 var(--c, var(--text)), 0 0 0 3px transparent;
+  }
+}
+
+.rowTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rowTitle {
+  font-size: 17px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.rowTags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rowMeta {
+  font-size: 14px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.rowReason {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+  font-size: 15px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.tagPill {
+  display: inline-block;
+  padding: 1px 11px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.tagGood {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.tagWarn {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* an open gap, and something that could go in it: sunken and dashed, never a commitment */
+.rowAdd {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--line);
+  border: 0;
+  outline: 1.5px dashed var(--line);
+  outline-offset: -1.5px;
+  box-shadow: none;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 650;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  min-height: 44px;
+}
+
+.rowAdd b {
+  color: var(--accent-text);
+  font-weight: 700;
+}
+
+.rowSuggest {
+  background: var(--surface-2);
+  outline: 1.5px dashed var(--line);
+  outline-offset: -1.5px;
+  box-shadow: none;
+}
+
+.rowSuggest .rowTitle {
+  font-size: 15.5px;
+  color: var(--text);
+}
+
+.rowSuggest .rowTitle b {
+  color: var(--accent-text);
+}
+
+/* the controls a selected block opens: a stepper for its length, earlier or later, remove */
+.edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 2px 0 8px 2px;
+}
+
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+}
+
+.stepper button {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  background: transparent;
+  color: var(--accent-text);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.stepper button:disabled {
+  opacity: 0.35;
+}
+
+.stepper span {
+  min-width: 78px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.miniBtn {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--text);
+  font-size: 14.5px;
+  font-weight: 650;
+}
+
+.miniBtn:disabled {
+  opacity: 0.4;
+  box-shadow: none;
+}
+
+.miniBtn:active:not(:disabled) {
+  box-shadow: var(--sh-inset-sm);
+}
+
+.miniDanger {
+  color: var(--danger);
+}
+
+/* one quiet "Why?" that opens one plain sentence in a sunken well */
+.whyBtn {
+  min-height: 36px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.well {
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.well + .well {
+  margin-top: 6px;
+}
+
+/* ---------- keep this plan (from Calendar: now.module.css .action, .primary, .hint) ---------- */
+.action {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.primary {
+  width: 100%;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.hint {
+  font-size: 15px;
+  color: var(--muted);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- folded detail (from Calendar: now.module.css .why > summary, .whyBody) ---------- */
+.fold {
+  min-width: 0;
+}
+
+.fold > summary {
+  cursor: pointer;
+  list-style: none;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.fold > summary::after {
+  content: "+";
+  font-size: 20px;
+  line-height: 1;
+}
+
+.fold[open] > summary::after {
+  content: "–";
+}
+
+.foldBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0 8px;
+  min-width: 0;
+}
+
+/* rows of numbers, parted by hairlines */
+.facts {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--sh-raised);
+  padding: 4px 16px;
+  min-width: 0;
+}
+
+.fact {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0;
+  min-width: 0;
+}
+
+.fact + .fact {
+  border-top: 1px solid var(--line);
+}
+
+.factTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.factName {
+  font-size: 16px;
+  font-weight: 650;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.factName span {
+  display: block;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.factSide {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+/* the small chart: fixed height, labels are text beside it, never scaled with the card */
+.chart {
+  position: relative;
+  height: 140px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  overflow: hidden;
+}
+
+.chart svg {
+  position: absolute;
+  inset: 12px 10px;
+  width: calc(100% - 20px);
+  height: calc(100% - 24px);
+  overflow: visible;
+}
+
+.chart path {
+  fill: none;
+  stroke-width: 1.75;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.lineEnergy {
+  stroke: var(--accent-text);
+}
+
+.lineFocus {
+  stroke: var(--muted);
+  stroke-dasharray: 5 4;
+}
+
+.chartNow {
+  stroke: var(--line);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.chartKey {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.chartKey span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chartKey i {
+  display: inline-block;
+  width: 18px;
+  border-top: 2px solid var(--accent-text);
+}
+
+.chartKey i.dash {
+  border-top: 2px dashed var(--muted);
+}
+
+/* ---------- the next few days ---------- */
+.ahead {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--sh-raised);
+  padding: 4px 16px 10px;
+  min-width: 0;
+}
+
+.aheadRow {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr) 72px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  min-width: 0;
+}
+
+.aheadRow + .aheadRow {
+  border-top: 1px solid var(--line);
+}
+
+.aheadRow:disabled {
+  opacity: 0.45;
+}
+
+.aheadDay {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.aheadWhat {
+  font-size: 14px;
+  color: var(--muted);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.aheadWhat b {
+  display: block;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.press {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  overflow: hidden;
+}
+
+.press i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--accent-bright), var(--accent));
+}
+
+/* ---------- the add sheet ---------- */
+.options {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  padding: 8px 2px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.option + .option {
+  border-top: 1px solid var(--line);
+}
+
+.option b {
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.option span {
+  font-size: 14px;
+  color: var(--muted);
+  text-align: right;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rowFlash {
+    animation: none;
+  }
+}
