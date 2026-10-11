@@ -145,7 +145,8 @@ export const SCREENS: Record<string, string> = {
   "/dayrun/": "Day Run",
   "/circle/": "Circle",
   "/impact/": "Impact",
-  "/map/": "Room map",
+  "/home/": "Home",
+  "/map/": "the Room screen",
   "/play/": "Sort It",
   "/approvals/": "Approvals",
   "/teach/": "Teach",
@@ -197,9 +198,17 @@ const ROWS: Row[] = [
   { id: "impact:practice", route: "/impact/", label: "Practise in Sort It", names: ["practice set", "practise", "practice", "practise in sort it", "what i got wrong"], at: [section("^Practise in Sort It"), HEAD], say: ["Look at the part called Practise in Sort It.", "The things that went in the wrong bin, ready to practise."] },
   { id: "impact:where", route: "/impact/", label: "What went where", names: ["what went where", "disposals", "which bin things went"], at: [section("^What went where"), HEAD], say: ["Look at the part called What went where.", "Every disposal the camera saw."] },
   // Room map and Sort It
-  { id: "map:room", route: "/map/", label: "The room map", names: ["room map", "the room", "map of the room", "zones map", "the map", "room twin", "3d room"], at: [{ id: "map:room" }, { sel: "main svg[role=img]" }, HEAD], say: ["Look at the drawing at the top of the Room map.", "Each panel is one camera's view. A numbered pin is one of your things."] },
+  { id: "map:room", route: "/map/", label: "The room", names: ["room map", "the room", "map of the room", "zones map", "the map", "room twin", "3d room", "walk the room"], at: [{ id: "map:room" }, HEAD], say: ["Look at the room on the Room screen.", "The room, drawn from its floor plan. A pin is one of your things; drag to look around."] },
+  { id: "map:now", route: "/map/", label: "Right now in the room", names: ["right now", "who is in view", "who is in the room", "who the cameras see", "in view"], at: [section("^Right now"), HEAD], say: ["Look at the part called Right now.", "Who and what the cameras see at this moment."] },
+  { id: "map:cameras", route: "/map/", label: "Camera views", names: ["camera views", "camera panels", "the zones", "cameras and zones"], reveal: [{ op: "press", at: { sel: "main [role=group][aria-label='View'] button", text: "^Camera views" }, key: "cameras" }], at: [{ id: "map:room" }, HEAD], say: ["Look at the room card, switched to Camera views.", "Each panel is one camera, with its zones where they sit in the picture."] },
   { id: "map:things", route: "/map/", label: "Where are my things?", names: ["my things", "where are my things", "things list", "last seen", "lost things"], at: [section("^Where are my things"), HEAD], say: ["Look at the part called Where are my things.", "Tap a name to see where the cameras last saw it."] },
-  { id: "map:sort", route: "/map/", label: "Which bin?", names: ["which bin", "the bin", "bin route", "way to the bin", "where does this go"], at: [section("^Sort It: which bin"), HEAD], say: ["Look at the part called Sort It: which bin.", "Pick what you are holding and the map draws the way to its bin."] },
+  { id: "map:sort", route: "/map/", label: "Which bin?", names: ["which bin", "the bin", "bin route", "way to the bin", "where does this go"], reveal: [{ op: "open", at: { id: "map:bins" }, key: "bins" }], at: [{ id: "map:bins" }, HEAD], say: ["Look under the room, at Which bin does it go in.", "Pick what you are holding and the way to its bin is drawn in the room."] },
+  // Home
+  { id: "home:top", route: "/home/", label: "Home", names: ["home", "home screen", "landing", "start screen", "the box", "the device", "atlas box", "exploded view", "what is inside the box"], at: [HEAD], say: ["Look at the top of Home.", "The Atlas box. Scroll and it pulls apart to show what is inside."] },
+  { id: "home:what", route: "/home/", label: "What Atlas does", names: ["what atlas does", "what it does", "features", "what can atlas do"], at: [{ sel: "main section[aria-labelledby='what']" }, HEAD], say: ["Look further down Home.", "What Atlas does, in four parts: it sees, remembers, plans the day and asks first."] },
+  { id: "home:numbers", route: "/home/", label: "The numbers", names: ["the numbers", "by the numbers", "stats", "figures"], at: [{ sel: "main section[aria-label='By the numbers']" }, HEAD], say: ["Look at the row of numbers on Home.", "The few numbers that matter about the box."] },
+  { id: "home:flow", route: "/home/", label: "How a question travels", names: ["how a question travels", "how it works", "the flow", "how atlas works", "see detect remember"], at: [{ sel: "main section[aria-labelledby='flow']" }, HEAD], say: ["Look at the drawing near the foot of Home.", "How a question travels through the box: see, detect, remember, ask, answer, act."] },
+  { id: "home:start", route: "/home/", label: "A way in", names: ["a way in", "try it", "get started", "where do i start on home"], at: [{ sel: "main section[aria-labelledby='go']" }, HEAD], say: ["Look at the foot of Home.", "Two ways in: Ask Atlas, or See today."] },
   { id: "play:game", route: "/play/", label: "Sort It", names: ["sort it", "sorting game", "sort game", "sorting"], at: [{ sel: "main [role=group][aria-label='Item']" }, HEAD], say: ["Look at the row of things to sort.", "Pick one and the board shows the way to its bin."] },
   { id: "play:practice", route: "/play/", label: "Practise what you got wrong", names: ["practise what i got wrong", "my mistakes", "wrong bin"], at: [{ sel: "main section[aria-label='Practise what you got wrong']" }, HEAD], say: ["Look at the card at the top of Sort It.", "These are the ones that went in the wrong bin."] },
   { id: "play:better", route: "/play/", label: "Are you getting better?", names: ["am i getting better", "getting better", "my score", "sorting score"], at: [section("^Are you getting better"), HEAD], say: ["Look at the part called Are you getting better.", "Your sorting, week by week."] },
@@ -240,10 +249,11 @@ export function pinTarget(thing: string): GuideTarget {
   return {
     id: `pin:${thing}`,
     route: "/map/",
-    label: `${label} on the room map`,
+    label: `${label} in the room`,
+    // picking the thing in the Room screen's own finder focuses its pin in the room and opens its card: the guide drives that, and adds the dot and the words
     reveal: [{ op: "press", at: chip, key: "pick" }],
-    at: [{ id: `pin:${thing}` }, section("^Where are my things"), HEAD],
-    steps: [{ say: "Look at the drawing of the room." }, { say: `The ringed pin is where the cameras last saw your ${thing}. It sits inside its zone, not at the exact spot.` }],
+    at: [{ id: `pin:${thing}` }, { id: `thing:${thing}` }, section("^Where are my things"), HEAD],
+    steps: [{ say: "Look at the room." }, { say: `This is where the cameras last saw your ${thing}.` }],
   };
 }
 
@@ -313,6 +323,7 @@ export type PlaceSource =
   | "picture" // "it is somewhere in this picture": a frame with no box for the thing
   | "words" // a position given in words ("left of the laptop")
   | "zone-pin" // a pin placed inside a zone, not at the spot
+  | "floor-default" // a floor position from a camera still on the room file's placeholder calibration
   | "route-traced" // a route over a map traced from a picture, or over legs with no geometry
   | "unscaled"; // a length with no defensible scale
 
@@ -332,6 +343,7 @@ const ABOUT: Partial<Record<PlaceSource, string>> = {
   picture: "the box keeps the zone and a description, not where it is in the picture",
   words: "its place is known only in words",
   "zone-pin": "the pin sits inside its zone, not at the exact spot",
+  "floor-default": "this camera is not calibrated for the room yet",
   "route-traced": "the route follows what the data shows, not a surveyed path",
   unscaled: "the plan has no scale",
 };
@@ -340,6 +352,15 @@ const ABOUT: Partial<Record<PlaceSource, string>> = {
 export function precisionOf(source: PlaceSource): Precision {
   const why = EXACT[source];
   return why ? { precision: "exact", reason: why } : { precision: "about", reason: ABOUT[source] ?? "its place is not measured" };
+}
+
+/**
+ * A pin in the room twin: exact only when the box projected the spot from a camera track AND that camera's calibration
+ * was really set (GET /api/room, `calibration[camera].source`). A placeholder calibration makes every position about.
+ */
+export function roomPrecision(projected: boolean, calibration: "set" | "default" | undefined): Precision {
+  if (!projected) return precisionOf("zone-pin");
+  return precisionOf(calibration === "default" ? "floor-default" : "floor");
 }
 
 /** The two or three words on the spotlight: "Here it is" only when exact, "About here" otherwise. */
