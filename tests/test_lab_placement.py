@@ -488,8 +488,8 @@ def test_with_a_measured_interference_file_the_sharing_line_gives_the_measured_c
     assert ("Measured on pod D with the teacher at a share of 0.63 "
             "(fixtures/lab/interference/interference-gfx1151-2026-10-11.json): beside the LoRA the teacher's decode "
             "went from 40 tok/s to 26.67 tok/s (-33.33 %) and the LoRA's samples per second from 0.4 samples/s to "
-            "0.32 samples/s (-20 %); doing the work together changed its time by -16.67 % and its energy by "
-            "-8.33 % against one after the other, so sharing pays.") in text
+            "0.32 samples/s (-20 %); doing the work together changed its time by -28.57 % and its energy by "
+            "-21.43 % against one after the other, so sharing pays.") in text
     assert share.view()["measured"]["file"] == "fixtures/lab/interference/interference-gfx1151-2026-10-11.json"
     assert share.view()["measured"]["decode_change"]["value"] == -33.33
     assert any("the decode slowdown measured beside a LoRA is -33.33 %" in placement.plain(lever)
@@ -544,5 +544,5 @@ def test_python_m_lab_placement_takes_an_interference_file(capsys):
                                         "--interference", str(INTERFERENCE)])
     assert code == 0
     share = next(s for s in answer["sharing"] if s["jobs"] == ["teacher", "lora"])
-    assert share["measured"]["time_change"]["value"] == -16.67
+    assert share["measured"]["time_change"]["value"] == -28.57
     assert "so sharing pays" in placement.plain(text)
