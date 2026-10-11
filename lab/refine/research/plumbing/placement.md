@@ -6,6 +6,8 @@ benchmark runs, the Ax trials and the LoRA jobs go, and which jobs may share one
 margin. Opened 2026-10-10 by R46, which builds the plan offline from recorded facts. What a job running beside
 another costs each of them (the interference) is left out: nothing measured gives it on gfx1151, and R43 measures
 it on pod D and replaces the two judgement settings below (the margin and the host reserve) with measured numbers.
+The section on the interference run says what that measurement records, the format of its data file, and how the
+plan reads it once it exists.
 
 Labels as in `hub-api-lifecycle.md`. The metrics named are the plan's own (free memory per pod, the teacher's share,
 the LoRA budget) and, where a rule protects a measurement, the kernels track's `teacher.decode_tok_s`, the learning
@@ -117,13 +119,55 @@ track's `trainer.samples_per_s` and this track's `link.failed_call_rate` (O3 rub
     Expected movement: the total wall-clock is equal or longer together, and each run's samples per second about
     halves. Minimum sample size: 3 pairs.
 
+## The interference run and how the plan reads it
+
+- **[practitioner]** `python -m lab interference` is PL1 as it runs: one pod script under one 30-minute GPU Queue slot
+  on pod D starts its own teacher at a share of 0.63, then measures three arms on the same chip, a teacher-style
+  decode load alone (lab/bench.py's prompt set, 4 streams of 128 tokens, rounds for 120 s), a 20-step LoRA alone
+  (lab/train.py, batch 4, gradient accumulation 1, the tool-calling rows) and the two together, each with decode
+  tok/s, answers per second, samples per second, watts and joules per answer or per step. `collect` writes
+  `lab/refine/research/kernels/data/interference-gfx1151-<date>.json` (schema `lab.interference/1`: `serve.share`,
+  `arms.decode`, `arms.train`, `arms.both.decode`, `arms.both.train`, each arm's `watts`, and `compare` with
+  `decode_tok_s_change_pct`, `samples_per_s_change_pct`, `time_change_pct`, `energy_change_pct` and `verdict`), its
+  Markdown table and ledger rows `interference.arm` and `interference.summary` on node pod-b. Source:
+  `lab/interference.py`, module docstring, `build_result` and `ledger_rows`
+  - Implication: one file gives the plan the teacher's decode rate and the LoRA's samples per second alone and
+    shared, and the time and energy of doing both together against one after the other; the plan's teacher + lora
+    line cites those fields, each traced to the file, in place of the paper estimate.
+  - Candidate experiment: PL1 as specified in "What the teacher's vLLM holds", run as above: one run per arm in the
+    first slot, then the same command twice more. Expected movement: `teacher.decode_tok_s` beside the LoRA falls
+    below its solo value and `trainer.samples_per_s` below its own; `time_change_pct` is negative when the two use
+    different parts of the chip. Minimum sample size: 3 runs per arm (1 in the first slot, so its rows are low
+    confidence).
+- **[opinion]** The plan's sharing rule with a measurement: the teacher and a LoRA job may share a pod only when the
+  memory fits (the memory margin section) and the newest interference file shows the shared work took less time
+  (`time_change_pct` below 0) for no more energy (`energy_change_pct` at most 0); a file that misses either keeps
+  LoRA jobs off the teacher's pod even when they fit, and with no file the memory rule alone decides and the line
+  says the cost is unmeasured. Source: `lab/placement.py::build_plan`, `read_interference` and
+  `interference_sentence`
+  - Implication: the share lever (serve the teacher at 0.63 and let pod A take LoRA jobs) is offered only while it
+    pays in both time and energy; the joules-per-answer metric of the teacher is never traded for training speed
+    without the energy side saying so.
+  - Candidate experiment: none beyond PL1. Expected movement: the plan's `where.lora` gains the teacher's pod when a
+    measured file says `share` at the share the teacher runs at, and keeps pod B alone when it says `serial`.
+- **[anecdote]** The dispatcher's brief of 2026-10-11 gives L16's run on pod D as peaking at 11.1 GiB of 64 at 0.32
+  examples per second, and the teacher at a 0.90 share as holding 57.6 of the pod's 58 GiB free; the brief carries no
+  ledger row, and none is on main yet. Source: `lab/interference.py::SLOT_FACTS`, which records them with that
+  provenance
+  - Implication: at a share of 0.63 the teacher holds about 40.3 GiB and leaves about 6.6 GiB beside the LoRA's
+    peak, so PL1 runs at 0.63; 20 steps of 4 examples take about 250 s at that rate, and with pod D's 523 s cold
+    start the three arms fit a 30-minute slot (`python -m lab interference --dry-run`).
+  - Candidate experiment: PL2 as specified in the memory margin section, on the same trainer. Expected movement: the
+    share ceiling and the slot estimate move with L16's ledger values once they land.
+
 ## Open questions
 
 - How much of the 64 GiB torch reports does `torch.cuda.mem_get_info()` call free on these pods with nothing
   running, and does it fall with MemAvailable when a process allocates host memory? Nothing has read it yet.
 - The smallest share at which the 27B INT4 teacher still starts at its 16,384-token context on gfx1151, and how
   many concurrent sequences it then holds; the plan's 0.63 is a memory bound, not a tested start.
-- What a LoRA job beside the teacher costs each of them (R43).
+- What a LoRA job beside the teacher costs each of them: PL1's pod run answers it once its data file is on main
+  (R43; the script and the plan's reading of the file are built, the slot is not run).
 
 ## Search log
 
@@ -131,3 +175,6 @@ track's `trainer.samples_per_s` and this track's `link.failed_call_rate` (O3 rub
   `vllm/v1/worker/utils.py` at b1388b1 (S51, S60); the R29 and R30 task pages (S57, S61); `lab/refine/metrics.jsonl`,
   `lab/README.md`, `lab/pod_a_teacher.sh`, `lab/machine/slots.py`, `lab/pod_power.py` and `contention.md` on main
   at 7208c59. Stopped because the open questions need measurements on a pod, not more reading.
+- 2026-10-11, R43: budget 1 h, used about 20 minutes. Opened: `lab/profile_decode.py`, `lab/profile_decode_pod.py`,
+  `lab/bench.py`, `lab/train.py`, `lab/sampler_overhead.py` and `lab/R44_REAL_RUN.md` on main at 69aa5b4, and the
+  R43 and L16 task pages. Stopped because what is left is the run on pod D.

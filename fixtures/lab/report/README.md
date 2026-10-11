@@ -1,0 +1,1 @@
+A small committed tree for tests/test_lab_report.py: three batch-1 decode rows (one from the old chip, one from an A100 reference), a two-level batching sweep, a line that is not JSON, a chip sheet with a cache-sized and a memory-sized copy, and the byte budget line. Nothing here is a real measurement.

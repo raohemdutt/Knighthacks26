@@ -17,6 +17,7 @@ Notes in this folder:
 | `strix_halo_hardware.md` (strix) | The gfx1151 chip in the SJC pods from AMD, LLVM, Linux and library sources: CUs, wavefronts, registers and occupancy, LDS, caches, memory split, WMMA, power files, ROCm settings, and the questions for R33 |
 | `settings_inference_gfx1151.md` (settings) | Every runtime setting that can change vLLM decode on the gfx1151 teacher, its mechanism, value today, pinned baseline, and the ten-setting Ax shortlist |
 | `graphics_pipeline_for_ml.md` (graphics) | Graphics-pipeline techniques (Brook, texture units, block-compressed weights, Vulkan engines) for inference and fine-tuning on the Strix Halo, with the G1 to G3 proposals |
+| `energy_model_gfx1151.md` (energy) | The joules-per-token model for the gfx1151 teacher and student from the chip sheet, its knees, its check against R26's measured frontier, the measurement protocol and the optimizer's objective and constraints |
 
 Short names in the "Cited in" column refer to the notes above. "Code" sources are files read at the
 commit named in the link; "b1388b1" is the vLLM commit our pod runs
@@ -571,12 +572,25 @@ Re-opened on 2026-10-11 and cited under its existing id: S121 (transformers `mod
 | L18 | our files | `lab/train.py` (L3 trainer): module docstring ("Settings", "Per step"), `BASELINE`, `PINNED`, `VISION_MODULES` and the `SFTConfig` it builds (batch 4 x accumulation 4, checkpointing on, SDPA, fused AdamW, torch Gated DeltaNet, no torch.compile; `trainer.samples_per_s` and `trainer.energy_j`) | this repo, `lab/train.py` (main at e81bccd) | 2026-10-11 | predictions/train_step_gfx1151.md |
 | L19 | our measurement | `lab/refine/metrics.jsonl` lines 13 and 14: the R9700 smoke step of Qwen3.5-4B (`lab/smoke_lora.py`, batch 4, 256 tokens, 20 steps, 0.51 samples/s, 8.7 GiB peak), another chip, never a gfx1151 baseline | this repo, `lab/refine/metrics.jsonl` (main at e81bccd) | 2026-10-11 | predictions/train_step_gfx1151.md |
 
+## Added by R56, the gfx1151 energy model note (2026-10-11)
+
+Re-opened by R56 and cited under their existing ids: S62 (the ML.ENERGY Benchmark paper) and L10 (the gfx1151
+chip sheet). "energy" in the Cited in column means `energy_model_gfx1151.md`.
+
+| Id | Kind | Source | Link or location | Opened | Cited in |
+| --- | --- | --- | --- | --- | --- |
+| S182 | project doc | ml-energy/zeus `docs/measure/index.md` at 42d76ac (2026-10-10), the GPU paragraphs and section "ROCm and AMDSMI Versions": AMD GPUs through AMDSMI with ROCm 6.3 or later, older versions returned wrong power and energy values, `current_socket_power` can read N/A and the average socket power is used instead | https://github.com/ml-energy/zeus/blob/42d76ac/docs/measure/index.md | 2026-10-11 | energy |
+| L20 | our files | `lab/energy_model.py` (this task's branch `ctx/runtime/energy-model-gfx1151`): `chip_inputs`, `sheet_knees`, `knees`, `predict`, `check` and `OBJECTIVE`; every prediction in the note is its output on the committed chip sheet | this repo, `lab/energy_model.py` | 2026-10-11 | energy |
+| L21 | our measurement | `lab/README.md`, section "Batching sweep on the pod C teacher (R26, Strix Halo, gfx1151)" (PR #269, 081c496): 2.62 to 49.53 tok/s total at 1 to 64 streams, flat 96.0 W, 36.66 to 1.94 J/token gross, the 82.4 W idle read caught an earlier attempt's requests, the real loaded idle 10.44 W | this repo, `lab/README.md` (main at 9ed11fc) | 2026-10-11 | energy |
+| L22 | our measurement | `fixtures/lab/energy_model/attach-sweep-pod-c-2026-10-10.jsonl` with `source.json`: R26's `lab/bench.py` rows (session bench-20261010T215122Z-2c65) trimmed to the fields the checker reads, values as the harness wrote them | this repo, `fixtures/lab/energy_model/` | 2026-10-11 | energy |
+| L23 | our files | `lab/README.md`, section "Request-side settings sweep: `lab/sweep_request.py` (R52)": the grid, its slot minutes and the collect command; no result committed on main at 9ed11fc | this repo, `lab/README.md` (main at 9ed11fc) | 2026-10-11 | energy |
+
 ## Added by R54, speculative decoding on gfx1151 (2026-10-11)
 
 | Id | Kind | Source | Link or location | Opened | Cited in |
 | --- | --- | --- | --- | --- | --- |
-| S182 | code | vLLM commit 4a5299c93, "feat: spec decode with draft models" (#24322), 2026-01-19; in the pinned b1388b1 | https://github.com/vllm-project/vllm/commit/4a5299c93ff97c26def537b92562df5ada530fea | 2026-10-11 | speculative |
-| S183 | code | vLLM commit a9ec46d4b, "[ROCm][Perf] Support N=5 in wvSplitK skinny GEMM kernels for speculative decoding" (#40687), 2026-05-28; on main, not in b1388b1 | https://github.com/vllm-project/vllm/commit/a9ec46d4b7db6ae1d0cb0f27ce1a7ddb0f749ef8 | 2026-10-11 | speculative |
-| S184 | code | vLLM b1388b1 `vllm/v1/spec_decode/ngram_proposer.py::_find_longest_matched_ngram_and_propose_tokens`, `vllm/config/speculative.py` (methods, prompt-lookup defaults, equal-vocabulary check), `vllm/v1/attention/backends/gdn_attn.py` (speculative state indices), `vllm/model_executor/layers/utils.py::rocm_unquantized_gemm_impl`, `vllm/model_executor/models/qwen3_5_mtp.py`, `docs/features/speculative_decoding/` | https://github.com/vllm-project/vllm/blob/b1388b1fbf5aaef47937fabe98931211684666a6/vllm/v1/spec_decode/ngram_proposer.py | 2026-10-11 | speculative |
-| S185 | our files | `lab/speculative_estimate.py` and `lab/refine/research/kernels/data/speculative-acceptance-2026-10-11.json` (R54): vLLM's prompt-lookup rule on 314 assistant turns, proxy tokenizer | this repo, PR #323 | 2026-10-11 | speculative |
-| S186 | our files | `lab/refine/research/kernels/data/chipsheet-gfx1151-2026-10-11.md` (R33 run on pod-b): copy bandwidth, fp16, bf16 and int4 dequant matmul at 1, 4, 8 and 16 rows, loaded and idle watts | this repo | 2026-10-11 | speculative |
+| S183 | code | vLLM commit 4a5299c93, "feat: spec decode with draft models" (#24322), 2026-01-19; in the pinned b1388b1 | https://github.com/vllm-project/vllm/commit/4a5299c93ff97c26def537b92562df5ada530fea | 2026-10-11 | speculative |
+| S184 | code | vLLM commit a9ec46d4b, "[ROCm][Perf] Support N=5 in wvSplitK skinny GEMM kernels for speculative decoding" (#40687), 2026-05-28; on main, not in b1388b1 | https://github.com/vllm-project/vllm/commit/a9ec46d4b7db6ae1d0cb0f27ce1a7ddb0f749ef8 | 2026-10-11 | speculative |
+| S185 | code | vLLM b1388b1 `vllm/v1/spec_decode/ngram_proposer.py::_find_longest_matched_ngram_and_propose_tokens`, `vllm/config/speculative.py` (methods, prompt-lookup defaults, equal-vocabulary check), `vllm/v1/attention/backends/gdn_attn.py` (speculative state indices), `vllm/model_executor/layers/utils.py::rocm_unquantized_gemm_impl`, `vllm/model_executor/models/qwen3_5_mtp.py`, `docs/features/speculative_decoding/` | https://github.com/vllm-project/vllm/blob/b1388b1fbf5aaef47937fabe98931211684666a6/vllm/v1/spec_decode/ngram_proposer.py | 2026-10-11 | speculative |
+| S186 | our files | `lab/speculative_estimate.py` and `lab/refine/research/kernels/data/speculative-acceptance-2026-10-11.json` (R54): vLLM's prompt-lookup rule on 314 assistant turns, proxy tokenizer | this repo, PR #323 | 2026-10-11 | speculative |
+| S187 | our files | `lab/refine/research/kernels/data/chipsheet-gfx1151-2026-10-11.md` (R33 run on pod-b): copy bandwidth, fp16, bf16 and int4 dequant matmul at 1, 4, 8 and 16 rows, loaded and idle watts | this repo | 2026-10-11 | speculative |

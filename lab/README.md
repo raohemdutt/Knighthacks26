@@ -62,6 +62,7 @@ runtime still refuses the launch.
 
 **Accounts and addresses.** An account is any single letter whose `AUP_HUB_USER_<letter>` and
 `AUP_HUB_TOKEN_<letter>` keys exist in the environment or the workspace `.env` (the same search as `python -m lab ready`).
+`python -m lab ready` probes the accounts `LAB_POD_ROLES` names (C and D on SJC; unset, A and B on DUB), each at its own `AUP_HUB_URL_<letter>`, and reports per account whether the hub answered (`reachable`), lists a server (`running`) and calls it `ready`, with its `role` and `hub`. An account with no keys, or with keys but no role, is reported as `skipped` and not probed. The `env` gate wants the keys of those accounts only; the hub being down is a warning, not a hand-off (exit 0).
 The hub it lives on is its `AUP_HUB_URL_<letter>` when that key is set, else `LAB_HUB_URL`, else DUB, so C and D
 (`AUP_HUB_URL_C`, `AUP_HUB_URL_D` = `https://sjc.aupcloud.io`) work without renaming a key. `--account both` still means
 A and B, which is also the default of `status`, `quota` and `keep-alive`: ask for the SJC pair by letter. The ledger
@@ -214,7 +215,7 @@ python -m lab.controller quota --transactions         # balances, rates, recent 
 python -m lab.controller launch --account B --minutes 600 [--dry-run] [--no-wait]
 python -m lab.controller wait --account B
 python -m lab.controller keep-alive --minutes 90      # a ping every 10 minutes so the idle culler never fires
-python -m lab.controller run-script --account B lab/pod_b_trainer.sh smoke
+python -m lab.controller run-script --account B --with lab/smoke_lora.py lab/pod_b_trainer.sh smoke
 python -m lab.controller stop --account B
 ```
 
@@ -1178,6 +1179,36 @@ python -m lab quark-compare record --result F --control-rows R20_ROWS [--referen
 against A's greedy outputs, writes a `quark-compare` ledger row, T0's E5 result (arms A and B) and
 `R23_T0_result.txt`, and releases the slot; `all` does the four in one process. Steps for the real run:
 `lab/R23_REAL_RUN.md`.
+### Baseline matrix on pod D (R20, partial)
+
+The stock build on pod D (SJC account D, Strix Halo, gfx1151; node `pod-b` in the ledger): vLLM 0.19.2+gfx1151 at
+b1388b1 plus `lab/vllm-gfx1201.diff` (sha256 0b5ac113...), `Qwen3.8-27B-INT4` (compressed-tensors, W4A16 through
+`ConchLinearKernel`), max model length 16384, the `pod_a_teacher.sh` serve flags (`--mm-encoder-attn-backend
+TRITON_ATTN`, `--gpu-memory-utilization 0.90`, bfloat16), port 8100, `GPU_MAX_HW_QUEUES` unset, thinking off, greedy,
+128 tokens per request, the bench-v1 prompt set, 4 requests per stream. Every cell is a cold spawn with its warm-up
+discarded. 2026-10-10 evening ET, run with `python3 -m lab bench run ... --node pod-b --hub sjc --account D` from
+`~/Knighthacks26` on the pod. Raw per-spawn rows: `fixtures/lab/bench/pod-b-2026-10-10/`. Medians also went to
+`lab/refine/metrics.jsonl` as `teacher.*` on node `pod-b` (low_confidence: under the 5 spawns `verdict()` needs).
+
+| Batch | Spawns | tok/s per stream (median, min, max) | tok/s total (median) | TTFT s (median) | J/token gross (median, min, max) | Watts avg |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 3 (J: 2) | 2.73 (2.73, 2.73) | 2.67 | 0.96 | 36.4 (36.0, 36.8) | 97 |
+| 4 | 2 | 2.58 (2.58, 2.58) | 9.48 | 5.15 | 10.3 (10.1, 10.5) | 98 |
+| 8 | 2 | 2.37 (2.36, 2.38) | 16.5 | 8.49 | 5.81 (5.80, 5.81) | 96 |
+| 16 | 2 | 2.06 (2.01, 2.12) | 27.4 | 11.9 | 3.50 (3.49, 3.50) | 96 |
+| 64 | 2 | 0.88 (0.86, 0.90) | 49.0 | 24.2 | 1.96 (1.93, 2.00) | 96 |
+
+Partial: 3 spawns per batch size were asked for (15 spawns); this table holds 11 that measured: three at batch 1 (J/token on two of them) and two each at batch 4, 8, 16 and 64. The third spawn of batch 4, 8, 16 and 64 was cut by order (pod D went to other jobs); a medians-of-three matrix needs those four. Median of two is the
+mean of the two, so min and max bracket it. The batch-1 spawn at 03:58 UTC decoded 2.73 tok/s but its power samples
+did not cover the decode window (J/token null). Idle (no server) read 15 W, server loaded 16 W; the sampler reads a
+flat 96 to 97 W under load on this chip, so J/token is nearly watts / total tok/s. All spawns fall into one band (no
+decode-rate gap; `mem_busy_percent` is not exposed on the SJC image). The KV cache holds 304192 tokens (55.6 requests
+of 16384), and 64 streams of ~250 tokens fit. Three things went wrong: the first spawn died in the engine core during
+torch.compile (exit -2, no traceback), the third repeat was cut by SIGTERM, and a stray 64 arm was added to a batch-1
+run (stopped). The R30 teacher build serves on pod D from a cold start in about 5 minutes with a warm compile cache.
+
+What the harness could not read on pod D: ROCm version (`/opt/rocm/.info/version`), the amdgpu driver and ASIC serial
+(amd-smi prints N/A), the KFD queue count, `mem_busy_percent`. Attention backend per the serve log: `ROCM_ATTN`.
 
 ## Placement plan: `python -m lab placement` (R46)
 
@@ -1453,6 +1484,43 @@ Its steps were posted by hand with these same reads and posts while it trained (
 finished run from the pod (`--save` kept `telemetry.jsonl`, 5462 bytes, and `run.json`) and posted that copy: 200, 0 new,
 18 already there. Tests: `tests/test_lab_lab_push.py`, against the lab's fake pod (`lab/proxy_fake.py`, and once
 `lab/hub_fake.py`) and a small HTTP server that answers the import route with the box's own parsing.
+
+## Joules per token on the teacher: the energy model and the number of the night (R56)
+
+`lab/energy_model.py` predicts joules per generated token on the Strix Halo (gfx1151) from the committed chip sheet,
+and checks a measured batch curve against the prediction; `lab/refine/research/kernels/energy_model_gfx1151.md`
+derives it, gives the measurement protocol and the optimizer's objective. Standard library only, runs anywhere.
+
+```
+python -m lab.energy_model                       # predicted J/token at batch 1, 4, 8, 16 and the knees
+python -m lab.energy_model --batches 1,16,48,64 --json
+python -m lab.energy_model check fixtures/lab/energy_model/attach-sweep-pod-c-2026-10-10.jsonl
+python -m lab.energy_model check <lab/bench.py rows.jsonl | sweep-request-gfx1151-<date>.json>
+```
+
+- **Model.** J/token = P(B) / tok_s(B). Decode is weight-read bound, so the socket draws about the same watts at batch
+  1 as at 16 while tok/s grows almost with the batch. Predicted gross J/token decoding alone at a 512-token context:
+  April build 41.7, 10.6, 5.4, 2.8 at batch 1, 4, 8, 16; a build reading weights at the 210.5 GB/s ceiling 8.1, 2.2,
+  1.2, 0.7. The curve flattens near batch 45 to 52 for the teacher at the ceiling and 72 to 201 for the bf16 student.
+- **Checked against R26** (the attach sweep above, the fixture is its rows): stated as the April build (2.88 tok/s,
+  120 W at batch 1) the throughput holds within 7 % at every batch and the watts miss (96.0 W measured, flat, against
+  120 to 129 W predicted), so J/token holds at 1 and 4 and misses by 15 to 23 % at 8, 16 and 64; anchored on the
+  sweep's own batch-1 point every batch holds within 7 %. The real loaded idle is 10.44 W, read after the sweep; the
+  82.4 W read before it caught an earlier attempt's requests.
+- **Objective.** The night optimizer (`lab/refine/research/kernels/data/ax-config-night.json`) minimizes
+  `joules_per_token.b1`, gross, with `decode_tok_s.b1 >= 2.88` and `ttft_s.b1 <= 2.0` as outcome constraints.
+
+The before-and-after number of the night. Gross J/token from `lab/bench.py` (socket energy over the decode window
+over the tokens in it), medians of the runs named. The "after" row is filled from the best measured configuration on
+the rebuilt teacher (R53 / R60) once it is benchmarked; until then it is pending, not estimated.
+
+| | Build | Configuration | Batch | tok/s per stream | tok/s total | Avg W | J/token gross | J/token above idle | Conditions |
+|---|---|---|---|---|---|---|---|---|---|
+| Before | April build: vLLM 0.19.2 at b1388b1 plus `lab/vllm-gfx1201.diff`, Conch W4A16, `RedHatAI/Qwen3.8-27B-INT4` | stock serve line, thinking off, greedy | 1 | 2.70 | 2.62 | 96.0 | 36.66 | 32.67 | R26 attach sweep, pod C (SJC, account C), bench-v1, 4 x 128 tokens a stream, 3 repeats, idle 10.44 W, PR #269 (081c496) |
+| After | rebuilt teacher (R53 / R60) | best measured arm | pending | pending | pending | pending | pending | pending | pending: run, pod, prompt set, repeats, idle, commit |
+
+For reference, the April build's own batch-1 smoke on pod C read 2.88 tok/s at 120 W, about 41.7 J/token
+(teacher section above); the R26 row is the before number because it ran through the same harness the after row will.
 
 ## Eval gate: `python -m lab eval-gate` (L4)
 
@@ -1849,3 +1917,70 @@ and downloads the base at its pinned commit to `~/models/Qwen3.5-4B`; `train <ru
 and leaves the adapter, telemetry, `run.json`, the log and the ledger rows in `~/adapters/l16-<run id>/`.
 `fixtures/demo/` holds what came back: the trainer log, the loss curve, the ledger rows and the screen recording the
 "It learns" fallback uses (owner ruling 7).
+## Routing hook closed loop: `python -m lab routing-closed-loop` (T11)
+
+The same labeling requests routed under T5's two policies, arms interleaved request by request (A, B, A, B): A is
+policy one, capability (the control), B is policy two, energy, which reads the telemetry snapshot. The requests are
+at least 100 examples of the L11 fixture (`fixtures/learning/tool-calling-fixture`) drawn with a fixed seed, never a
+golden question. The snapshot is T4's joules projection, fed the power samples and one window per answer of either
+arm, so policy two decides on what the run has just measured; one probe request per node fills it first. Per
+request: arm, target, joules per answer, latency (`label.seconds`) and label agreement (`learning.label_agreement`,
+the tool calls against `expected.jsonl`); per arm their mean and spread; `lab/machine/verdict.py` says whether B
+changed energy or quality beyond the spread.
+
+```
+python -m lab routing-closed-loop --fake                  # the teacher and student fakes, on a fake clock
+python -m lab routing-closed-loop --account C --power-log data/events/<UTC day>.jsonl --window-clock jetson
+```
+
+- Writes `<out>/<run id>/requests.jsonl`, `report.json` and `t0_result.txt` (the T0 experiment result text with its
+  citation, for the dispatcher to post), one ledger row per arm (verb `routing-closed-loop`, task T11) and two T0
+  experiments with their results. A `--fake` run keeps its ledger in `<out>/<run id>/state`.
+- Whether telemetry rubric test 6 is met is a finding in the report and the T0 text; nothing under `lab/refine/` is
+  written. The real run's commands and what stays deferred: `lab/T11_REAL_RUN.md`.
+## Under the hood report: `python -m lab report` (O71)
+
+One self-contained HTML page and a JSON data pack beside it, built only from committed files, for a judge or
+the big display: `lab/refine/report/under-the-hood.html` and `lab/refine/report/under-the-hood.json`. Both are
+committed, so the demo opens the page from disk without running anything. Rebuild after new rows land:
+
+```bash
+python -m lab report                    # rewrites both files under lab/refine/report/
+python -m lab report --out /tmp/report  # somewhere else
+```
+
+It reads `lab/refine/metrics.jsonl`, the newest `chipsheet-gfx1151-<date>.json`, a `decode-profile-gfx1151-<date>.json`
+when one is committed, the public prior (`lab/public_prior.py` on `public-strix-halo-benchmarks.csv`) and any
+`ledger*.jsonl` copy, all under `lab/refine/research/kernels/data/`. Charts are inline SVG written by
+`lab/report.py`: no script, no font, no network. The page follows the system's light or dark setting and has
+Night and Day switches. Rows from the R9700 (by `lab/slide_numbers.py`'s `_old_chip`, the rule the Learning lab's
+bench reader imports) are shown in their own panel, never on a Strix Halo chart; a missing measurement says
+"not measured".
+
+Sections: (1) `ceiling`, the copy bandwidth over the largest buffer divided by the teacher's weight bytes per token
+against each build's batch-1 decode rows, with the public prior beside as a prior; (2) `frontier`, joules per token
+against concurrent streams for every sweep of two or more batch sizes, with the ratio between the fewest and the
+most streams; (3) `step`, milliseconds per decode step by bucket from the decode profile; (4) `engines`, the best
+batch-1 row per engine; (5) `finetune`, per-step loss and step time (rows with `conditions.step`); (6) `dropped`,
+experiment verdicts from a committed ledger copy and the move off the old chip.
+
+The data pack (`format: atlas.lab_report/1`), for the Learning lab screen or any other reader:
+
+| Key | What it holds |
+|---|---|
+| `format`, `title`, `data_as_of` | the pack's format, the page title, the newest row time in the metrics file |
+| `chip` | the current chip (`gfx1151`), the other chip, and the rule that sets its rows apart |
+| `sources` | every file read: `{file, sha256, lines}` |
+| `skipped` | metrics lines that are not rows: `{line, problem}` |
+| `sections` | six objects in page order, each `{id, title, reading, state, other_chip, awaiting, ...}`; `state` is `measured`, `partial` or `empty`; `reading` is the sentence to say aloud |
+| `numbers` | every number on the page once, by `id` |
+| `awaited` | the runs that fill a section when their rows land: `{task, what, where, sections, file_present}` |
+
+A number is `{id, label, value, unit, kind, source: {file, line, ref}, gpu, chip, conditions, ts, low_confidence,
+reason, other_chip}`; `kind` is `measured`, `derived` (with `formula` and `inputs`, the ids it was worked out
+from), `stated` (an estimate a committed file states), `prior` (never a measurement) or `not measured` (value
+null, with `why`). `gpu` is the row's `conditions.gpu` and `chip` its `conditions.chip`; either may be null.
+Section extras: `ceiling` has `inputs`, `ceiling`, `achieved`, `shares`, `priors`; `frontier` has `energy` and
+`throughput` (sweeps of `{metric, node, build, session, points: [{batch, number}]}`) and `ratios`; `step` has
+`batches` (`{batch, step_ms, parts}`); `engines` has `engines` (`{engine, best, rows}`), `not_measured` and
+`priors`; `finetune` has `loss`, `step_time`, `numbers`; `dropped` has `items`.

@@ -69,6 +69,7 @@ FIXTURE_FACTS = REPO_ROOT / "fixtures" / "lab" / "placement"
 CHIPSHEET_DIR = REPO_ROOT / "lab" / "refine" / "research" / "kernels" / "data"
 SAMPLE_CHIPSHEET = CHIPSHEET_DIR / "chipsheet-sample.json"
 METRICS_FILE = REPO_ROOT / "lab" / "refine" / "metrics.jsonl"
+INTERFERENCE_PREFIX = "interference-gfx1151"
 TEACHER_SCRIPT = REPO_ROOT / "lab" / "pod_a_teacher.sh"
 README_FILE = REPO_ROOT / "lab" / "README.md"
 NOTE = "lab/refine/research/plumbing/placement.md"
@@ -231,6 +232,61 @@ def text_number(pattern: str, unit: str, what: str, path: Path, kind: str = "rec
         if match:
             return Num(float(match.group(1)), unit, f"{relative(path)}:{number} ({what})", kind)
     return unknown(unit, f"no line in {relative(path)} gives {what}")
+
+
+# --- the measured interference -----------------------------------------------------------------------------------
+
+def newest_interference(folder: Path = CHIPSHEET_DIR) -> Path | None:
+    """The newest interference-gfx1151-<date>.json that lab/interference.py collect wrote, or None."""
+    found = sorted(p for p in Path(folder).glob(f"{INTERFERENCE_PREFIX}-*.json")
+                   if re.fullmatch(rf"{INTERFERENCE_PREFIX}-\d{{4}}-\d{{2}}-\d{{2}}\.json", p.name))
+    return found[-1] if found else None
+
+
+def read_interference(path: Path | str) -> dict[str, Num] | None:
+    """The numbers of an interference result the sharing line uses, each traced to its field in the file; None when
+    the file is not an interference result or its comparison is missing."""
+    path = Path(path)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, Mapping) or data.get("schema") != "lab.interference/1":
+        return None
+    arms, compare = data.get("arms") or {}, data.get("compare") or {}
+    both = arms.get("both") or {}
+    fields = {
+        "share": (((data.get("serve") or {}).get("share")), "", "serve.share"),
+        "decode_alone": ((arms.get("decode") or {}).get("decode_tok_s"), "tok/s", "arms.decode.decode_tok_s"),
+        "decode_shared": ((both.get("decode") or {}).get("decode_tok_s"), "tok/s", "arms.both.decode.decode_tok_s"),
+        "decode_change": (compare.get("decode_tok_s_change_pct"), "%", "compare.decode_tok_s_change_pct"),
+        "train_alone": ((arms.get("train") or {}).get("samples_per_s"), "samples/s", "arms.train.samples_per_s"),
+        "train_shared": ((both.get("train") or {}).get("samples_per_s"), "samples/s",
+                         "arms.both.train.samples_per_s"),
+        "train_change": (compare.get("samples_per_s_change_pct"), "%", "compare.samples_per_s_change_pct"),
+        "time_change": (compare.get("time_change_pct"), "%", "compare.time_change_pct"),
+        "energy_change": (compare.get("energy_change_pct"), "%", "compare.energy_change_pct"),
+    }
+    out: dict[str, Num] = {}
+    for key, (value, unit, field) in fields.items():
+        number = _number(value)
+        out[key] = (Num(number, unit, f"{relative(path)}: {field}", "measured") if number is not None
+                    else unknown(unit, f"{relative(path)} has no {field}"))
+    if not (out["time_change"].known and out["energy_change"].known):
+        return None
+    return out
+
+
+def interference_sentence(m: Mapping[str, Num], say: Callable[[Num], str], path: Path | str) -> str:
+    """What the measured run says about a teacher and a LoRA job on one chip, in one sentence."""
+    shares = m["time_change"].value < 0 and m["energy_change"].value <= 0
+    return (f"Measured on pod D with the teacher at a share of {say(m['share'])} ({relative(path)}): beside the LoRA "
+            f"the teacher's decode went from {say(m['decode_alone'])} to {say(m['decode_shared'])} "
+            f"({say(m['decode_change'])}) and the LoRA's samples per second from {say(m['train_alone'])} to "
+            f"{say(m['train_shared'])} ({say(m['train_change'])}); doing the work together changed its time by "
+            f"{say(m['time_change'])} and its energy by {say(m['energy_change'])} against one after the other, so "
+            "sharing "
+            + ("pays." if shares else "does not pay: run them one after the other."))
 
 
 # --- the rules ---------------------------------------------------------------------------------------------------
@@ -539,11 +595,14 @@ class Share:
     on_paper: bool
     reason: str
     margin: Num | None = None
+    measured: dict[str, Any] | None = None
 
     def view(self) -> dict[str, Any]:
         out = {"jobs": list(self.jobs), "allowed": self.allowed, "on_paper": self.on_paper, "reason": self.reason}
         if self.margin is not None:
             out["margin"] = self.margin.view()
+        if self.measured is not None:
+            out["measured"] = self.measured
         return out
 
 
@@ -602,9 +661,11 @@ def _min_num(a: Num, b: Num) -> Num:
 def build_plan(pods: Mapping[str, Pod], *, rows: Sequence[Any] | None = None, rules: Rules | None = None,
                manifest: Mapping[str, Any] | None = None, folder: Path | None = None,
                now: dt.datetime | None = None, metrics_path: Path = METRICS_FILE,
-               script_path: Path = TEACHER_SCRIPT, readme_path: Path = README_FILE) -> Plan:
+               script_path: Path = TEACHER_SCRIPT, readme_path: Path = README_FILE,
+               interference: Path | str | None = None, interference_dir: Path = CHIPSHEET_DIR) -> Plan:
     """The plan for these pods. rows are the GPU Queue's rows (lab/machine/slots.Slot); None when the queue was
-    not read. Pure apart from reading the metrics file and the teacher's script."""
+    not read. interference is the measured interference file (lab/interference.py), else the newest in
+    interference_dir, else none. Pure apart from reading the metrics file, the teacher's script and that file."""
     rules = rules or Rules()
     now = now or dt.datetime.now(dt.timezone.utc)
     t = Trace()
@@ -632,6 +693,8 @@ def build_plan(pods: Mapping[str, Pod], *, rows: Sequence[Any] | None = None, ru
     # pod-a row of that metric is the R9700's
     idle_loaded = metric("pod.idle_watts", node="pod-a", where={"sampler": "lab/pod_power.py 1"},
                          path=metrics_path)
+    interference_path = Path(interference) if interference is not None else newest_interference(interference_dir)
+    measured = read_interference(interference_path) if interference_path is not None else None
 
     def free_memory(pod: Pod) -> Num:
         base = pod.available
@@ -806,24 +869,34 @@ def build_plan(pods: Mapping[str, Pod], *, rows: Sequence[Any] | None = None, ru
                          f"{reserve.text()}") if lora_budget.known and weights.known
                  else unknown("GiB", "no LoRA peak or no checkpoint size"))
         allowed = bool(need.known and free.known and need.value <= free.value)
+        pays = measured is None or (measured["time_change"].value < 0 and measured["energy_change"].value <= 0)
         on_paper = bool(paper.known and free.known and paper.value <= free.value)
         margin_left = (derived(free.value - need.value, "GiB", f"free - needed: {free.text()} - {need.text()}")
                        if need.known and free.known else None)
-        if allowed:
+        if allowed and not pays:
+            allowed = False
+            reason = (f"not on {teacher_node}: they fit (the teacher's {t.say(hold)}, a LoRA budget of "
+                      f"{t.say(lora_budget)} and a {t.say(reserve)} host reserve come to {t.say(need)} of "
+                      f"{t.say(free)} free), but " + interference_sentence(measured, t.say, interference_path))
+        elif allowed:
             reason = (f"yes on {teacher_node}: the teacher's {t.say(hold)}, a LoRA budget of {t.say(lora_budget)} "
                       f"({t.say(lora_peak)} peak plus a {t.say(margin)} margin) and a {t.say(reserve)} host reserve "
                       f"come to {t.say(need)} of {t.say(free)} free. Start the teacher first: vLLM checks free memory "
-                      "only at start. What each slows the other is unmeasured (R43).")
+                      "only at start. " + (interference_sentence(measured, t.say, interference_path) if measured
+                                           else "What each slows the other is unmeasured (R43)."))
         else:
             reason = (f"not on {teacher_node} today: the teacher's {t.say(hold)} (share {t.say(share)}), a LoRA "
                       f"budget of {t.say(lora_budget)} ({t.say(lora_peak)} peak plus a {t.say(margin)} margin) and a "
                       f"{t.say(reserve)} host reserve come to {t.say(need)}, more than the {t.say(free)} free.")
             if on_paper and s_max is not None and s_max.known:
                 reason += (f" On paper they fit: the weights {t.say(weights)} plus the rest are {t.say(paper)}; with "
-                           f"the teacher served at a share of at most {t.say(s_max)} they would share. Whether the "
-                           "teacher starts at its 16k context at that share, and what each slows the other, is "
-                           "unmeasured (R43).")
-        teacher_lora = Share(("teacher", "lora"), allowed, on_paper, reason, margin_left)
+                           f"the teacher served at a share of at most {t.say(s_max)} they would share. "
+                           + (interference_sentence(measured, t.say, interference_path) if measured else
+                              "Whether the teacher starts at its 16k context at that share, and what each slows the "
+                              "other, is unmeasured (R43)."))
+        teacher_lora = Share(("teacher", "lora"), allowed, on_paper, reason, margin_left,
+                             {"file": relative(interference_path), **{k: v.view() for k, v in measured.items()}}
+                             if measured else None)
     if exclusive:
         epod = pods[exclusive]
         efree = free_now(epod)
@@ -883,7 +956,9 @@ def build_plan(pods: Mapping[str, Pod], *, rows: Sequence[Any] | None = None, ru
             f"reserves {t.say(teacher_hold(pods[teacher_node]))}. Serving it at a share of at most {t.say(s_max)} "
             f"instead of {t.say(share)} would let LoRA jobs run on {teacher_node} while {exclusive} runs "
             f"benchmarks, so training need not wait behind measurements. It costs a teacher restart "
-            f"({t.say(warm_start)} without the teacher) and Ilan's go; the decode slowdown is R43's measurement.")
+            f"({t.say(warm_start)} without the teacher) and Ilan's go; "
+            + (f"the decode slowdown measured beside a LoRA is {t.say(measured['decode_change'])}." if measured
+               else "the decode slowdown is R43's measurement."))
     if exclusive and not pods[exclusive].sampler_seen and SAMPLER_PORT not in pods[exclusive].listening:
         levers.append(f"Start the sampler on {exclusive} once and leave it up, so every slot there is measured "
                       "without a start-up in the slot.")
@@ -965,11 +1040,13 @@ def check(plan: Plan, *, gpu: str, text: str, kind: str | None = None) -> dict[s
 
 def default_plan(*, facts: str | os.PathLike[str] | None = None, chipsheets: Mapping[str, Any] | None = None,
                  rows: Sequence[Any] | None = None, rules: Rules | None = None,
-                 environ: Mapping[str, str] | None = None, now: dt.datetime | None = None) -> Plan:
+                 environ: Mapping[str, str] | None = None, now: dt.datetime | None = None,
+                 interference: str | os.PathLike[str] | None = None) -> Plan:
     """The plan from the facts folder (see facts_folder), the pods' chip sheets and the queue rows given."""
     folder = facts_folder(facts, environ)
     pods, manifest = load_pods(folder, chipsheets)
-    return build_plan(pods, rows=rows, rules=rules, manifest=manifest, folder=folder, now=now)
+    return build_plan(pods, rows=rows, rules=rules, manifest=manifest, folder=folder, now=now,
+                      interference=interference)
 
 
 def check_request(*, gpu: str, text: str, kind: str | None = None, environ: Mapping[str, str] | None = None,
@@ -1080,6 +1157,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help=f"GiB kept for the jobs' host memory (default {Rules.host_reserve_gib:g})")
     parser.add_argument("--teacher-share", type=_fraction, metavar="FRACTION",
                         help="the teacher's --gpu-memory-utilization (default: lab/pod_a_teacher.sh's)")
+    parser.add_argument("--interference", metavar="FILE", help="the measured interference file (default: the newest "
+                        f"{INTERFERENCE_PREFIX}-<date>.json beside the chip sheets)")
     parser.add_argument("--out", metavar="FILE", help="also write the plan as JSON to this file")
     parser.add_argument("--now", help="compute as of this time (ISO 8601 with a UTC offset; replays and tests)")
     return parser
@@ -1118,7 +1197,7 @@ def run(argv: Sequence[str], *, client: Any = None, environ: Mapping[str, str] |
     try:
         rows, queue_problem = _read_queue(args, client, environ)
         plan = default_plan(facts=args.facts, chipsheets=dict(args.chipsheet), rows=rows, rules=rules,
-                            environ=environ, now=now)
+                            environ=environ, now=now, interference=args.interference)
     except (OSError, ValueError, KeyError) as exc:
         answer = {"ok": False, "outcome": "error", "error": f"{type(exc).__name__}: {exc}"}
         return f"placement: {answer['error']}", answer, 1

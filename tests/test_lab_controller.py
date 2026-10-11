@@ -18,6 +18,7 @@ import threading
 from pathlib import Path
 from unittest import mock
 
+import httpx
 import pytest
 
 from lab import controller as ctl_module
@@ -665,7 +666,7 @@ def test_keep_alive_calls_a_pod_lost_when_pings_worked_though_the_hub_could_not_
     assert [row["outcome"] for row in world.rows("pod keep-alive")] == ["alive", "lost"]
 
 
-@pytest.mark.parametrize("interval", [0, 29, 1801, -600])
+@pytest.mark.parametrize("interval", [0, 29, 1201, 1800, -600])
 def test_keep_alive_refuses_an_interval_the_culler_would_make_useless_or_wasteful(world, interval):
     world.hub.start_server("A")
     with pytest.raises(ValueError):
@@ -1361,3 +1362,73 @@ def test_a_setting_that_names_a_machine_other_than_the_two_roles_is_refused(two_
     assert (code, answer["outcome"]) == (2, "no_pod_role")
     assert "LAB_POD_ROLES" in answer["error"]
     assert two_hubs.sjc.calls == [] and ledger.read() == []
+
+
+# --- O51 deferred findings ------------------------------------------------------------------
+
+def test_the_readme_smoke_command_uploads_smoke_lora_py_beside_the_script():
+    # pods-run-script-pod-scripts-report-ok-on-failure: run-script uploads only the script unless --with names the
+    # sibling, so the documented command for the smoke step must carry --with lab/smoke_lora.py.
+    lines = (REPO / "lab" / "README.md").read_text(encoding="utf-8").splitlines()
+    commands = [line for line in lines if "run-script" in line and "lab/pod_b_trainer.sh smoke" in line]
+    assert commands
+    assert all("--with lab/smoke_lora.py" in line for line in commands), commands
+
+
+def test_the_ledger_verb_names_are_the_ones_alerts_reads():
+    # modul-dup-ledger-verb-names: one definition, in alerts, restated nowhere.
+    assert ctl_module.BALANCE is alerts.BALANCE_METRIC
+    assert ctl_module.POD_LAUNCH is alerts.POD_LAUNCH
+    assert ctl_module.POD_STOP is alerts.POD_STOP
+
+
+def test_keep_alive_interval_leaves_room_for_one_failed_ping_inside_the_culler_hour(world, capsys):
+    # pods-keep-alive-max-interval-no-margin: _cycle does not retry a ping, so at 1800 s one failure is a gap of
+    # 3600 s, the culler's idle threshold. The longest interval is 1200 s.
+    world.hub.start_server("A")
+    with pytest.raises(ValueError):
+        world.controller.keep_alive(["A"], interval_s=1201, minutes=10)
+    assert world.hub.calls == []
+    with pytest.raises(SystemExit) as caught:
+        ctl_module.run(["keep-alive", "--interval", "1500"], environ=ENV, env_files=[], transport=world.hub.transport,
+                       sleep=world.clock.sleep, clock=world.clock.time)
+    assert caught.value.code == 2
+    assert "1200" in capsys.readouterr().err
+    world.controller.keep_alive(["A"], interval_s=1200, minutes=10)
+
+
+def test_an_account_name_that_the_address_quotes_is_scrubbed_in_both_forms(world):
+    # pods-scrub-misses-url-quoted-account-name: the transport error names the address with the user URL-quoted
+    # (amd%20user%401), and scrub replaced only the raw name.
+    user = "amd user@1"
+    account = world.hub.add_account("A", user=user, token=TOKEN_A)
+
+    def dropped(request):
+        raise httpx.ConnectError(f"connection to {request.url} was reset")
+
+    controller = Controller({"A": account}, base_url="https://hub.test", transport=httpx.MockTransport(dropped),
+                            sleep=world.clock.sleep, clock=world.clock.time)
+
+    answer = controller.status(["A"])
+
+    shown = json.dumps(answer) + ledger.ledger_path().read_text(encoding="utf-8")
+    assert "amd%20user%401" not in shown and user not in shown
+    assert "<account A>" in answer["accounts"]["A"]["error"]
+    assert "<account A>" in ledger.ledger_path().read_text(encoding="utf-8")
+
+
+def test_a_keep_alive_cycle_between_a_stops_delete_and_its_row_raises_no_stopped_alert(world):
+    # xcall-keepalive-lost-row-races-concurrent-stop: a server with pending == "stop" is an intended stop, not a
+    # lost pod; the keep-alive row must not be a "lost" row that alerts replays before the stop's own row.
+    world.hub.start_server("A")
+    world.hub.stop_s = 10_000.0
+    world.hub.schedule(300, lambda: world.controller._hub("A").delete(world.controller._hub("A").user_url("/server")))
+
+    answer = world.controller.keep_alive(["A"], minutes=30)
+    world.controller.stop("A", wait=False)          # the concurrent stop writes its row after the cycle saw it
+
+    assert world.hub.calls_matching("DELETE", "/server")
+    assert [row["outcome"] for row in world.rows("pod keep-alive")] == ["alive", "stopping"]
+    assert answer["accounts"]["A"]["state"] == "stopping"
+    assert answer["outcome"] == "completed"
+    assert [alert.rule for alert in alerts_for(world)] == []
