@@ -1093,3 +1093,47 @@ def test_a_first_pass_or_the_first_merge_never_starts_without_its_board_task(mak
     assert reasons["pass kernels"] == ("a track's first pass runs as its board task, and the snapshot has no open "
                                        "first-pass task for it")
     assert reasons["merge"] == "the first merge runs as its board task, and the snapshot has no open merge task"
+
+
+# --- the pass counter against the log -------------------------------------------------------------
+
+
+def _open_run(refine_root: Path, *, counter: int = 3) -> Path:
+    write_track(refine_root, "telemetry", counter=counter, ending="", closed=False)
+    write_merge_log(refine_root, {"telemetry": counter, "learning": 1, "plumbing": 1, "kernels": 1})
+    for track in ("learning", "plumbing", "kernels"):
+        write_track(refine_root, track)
+    return refine_root / "telemetry"
+
+
+def _pass_view(p: pool.Pool, lab) -> tuple[list[str], list[str]]:
+    save_board(lab, [])
+    p.begin()
+    p.fill(NOW)
+    return ([c.label for c in p.view.candidates],
+            [s.reason for s in p.view.skips if s.item == "pass telemetry"])
+
+
+def test_a_pass_the_log_already_records_as_finished_is_refused_with_the_reason(make_pool, lab, refine_root):
+    folder = _open_run(refine_root)
+    (folder / "refine_pass.txt").write_text("2\n", encoding="utf-8")  # the log holds passes 1 to 3
+    p, _ = make_pool()
+    offered_labels, reasons = _pass_view(p, lab)
+    assert "pass telemetry" not in offered_labels
+    assert len(reasons) == 1 and "pass 3" in reasons[0] and "already" in reasons[0]
+
+
+def test_a_pass_that_would_skip_a_number_is_refused_with_the_reason(make_pool, lab, refine_root):
+    folder = _open_run(refine_root)
+    (folder / "refine_pass.txt").write_text("4\n", encoding="utf-8")  # the next pass would be 5, the log ends at 3
+    p, _ = make_pool()
+    offered_labels, reasons = _pass_view(p, lab)
+    assert "pass telemetry" not in offered_labels
+    assert len(reasons) == 1 and "pass 5" in reasons[0] and "pass 4" in reasons[0] and "skip" in reasons[0]
+
+
+def test_the_next_pass_in_order_is_offered_when_counter_and_log_agree(make_pool, lab, refine_root):
+    _open_run(refine_root)
+    p, _ = make_pool()
+    offered_labels, reasons = _pass_view(p, lab)
+    assert "pass telemetry" in offered_labels and reasons == []
