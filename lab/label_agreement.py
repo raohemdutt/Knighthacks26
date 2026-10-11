@@ -58,6 +58,7 @@ from lab.machine.record import record
 __all__ = ["DEFAULT_THRESHOLD", "SAMPLE_SIZE", "REWORD_PREFIX", "AgreementRefused", "RewordedTeacher",
            "rubric_threshold", "compare_targets", "check_agreement", "write_report", "main"]
 
+CLI_VERB = "label-agreement"   # registers python -m lab label-agreement
 DEFAULT_THRESHOLD = 0.9
 SAMPLE_SIZE = 30
 FIRST_SEED = 0                       # lab/label.py's default seed: what the labels being checked were made with

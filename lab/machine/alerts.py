@@ -99,6 +99,7 @@ __all__ = [
 UTC = dt.timezone.utc
 
 VERB = "alerts"
+CLI_VERB = "alerts"   # registers python -m lab alerts
 ALERTS_DIR = "alerts"            # under the state dir
 ALERTS_LOCK = "alerts.lock"      # in the state dir, beside ledger.lock
 LOCK_TIMEOUT = ledger.LOCK_TIMEOUT

@@ -5,7 +5,9 @@ ask_url: http://127.0.0.1:8000
 
 # Where the speech tools live on the Jetson (see jetson/README.md, "Voice"). The four paths below default to files in here.
 home: ~/atlas/voice
-# whisper_bin / whisper_model / piper_bin / piper_model: override one path only if it is not under `home`
+# whisper_bin / whisper_model / wake_model / piper_bin / piper_model: override one path only if it is not under `home`.
+# Defaults: whisper base.en for the question (tiny.en misheard "what caused sure to my wife?"), tiny.en for the
+# wake listener (it runs every 1.5 s), and Piper en_US-ryan-medium (clearer than ryan-low).
 
 mic_device: "plughw:CARD=Webcam,DEV=0"   # the USB webcam's microphone (arecord -L lists the names)
 speaker_mac: "F9:04:7C:90:5C:CC"   # Xander's "onn Rugged Speaker S": reconnected before every answer and at start. Empty = PulseAudio's default output.
@@ -16,6 +18,11 @@ wait_for_speech_s: 5     # give up if nobody speaks within this long
 end_silence_s: 0.8       # this much quiet after speech ends the question
 speech_level: 0.03       # louder than this (0 to 1, RMS) counts as speech; the room's own noise raises it if needed
 whisper_threads: 4
+whisper_beam: 5          # beam search for the question: slower than greedy by a fraction of a second, fewer misheard words
+whisper_prompt: "Atlas, Canvas, UCF, the Knights."  # names whisper should expect; keep it short (a long prompt can leak into what it hears)
+min_confidence: 0.6      # whisper's own odds for the words (0 to 1): clear speech is 0.9+, a hiss 0.57; below this it asks again
+voice_pitch: 0.88        # 1 = Piper's own voice; lower is deeper (0.88 is about two semitones), the pace stays the same
+voice_speed: 0.95        # 1 = Piper's pace; a little slower is clearer through a small speaker
 chime: true             # a short blip once your question is heard, so you know it is working on it
 
 # Always listening for "Hey Atlas". The box answers "What's up?" and then listens for the question. The microphone stays
@@ -26,3 +33,4 @@ wake_reply: "What's up?"
 wake_span_s: 3           # how much of the latest sound is checked...
 wake_step_s: 1.5         # ...this often
 debug_wake: false        # true = log what the wake listener heard (it writes what the room said to the journal), to tune the match
+debug_speech: false      # true = log each question heard (with whisper's confidence) and each sentence spoken, to tune min_confidence

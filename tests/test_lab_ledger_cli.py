@@ -3,7 +3,6 @@ refusal, the way a later sub-verb is added, and one run through a real process. 
 temporary state dir; nothing here touches lab/state."""
 from __future__ import annotations
 
-import ast
 import datetime as dt
 import json
 import os
@@ -361,18 +360,13 @@ def test_a_sub_verb_that_cannot_be_loaded_answers_error_without_breaking_the_oth
 
 # --- the registry line ----------------------------------------------------------------------
 
-def registry_names():
-    tree = ast.parse((REPO_ROOT / "lab" / "__main__.py").read_text(encoding="utf-8"))
-    registry = next(node.value for node in ast.walk(tree)
-                    if isinstance(node, ast.AnnAssign) and getattr(node.target, "id", None) == "VERBS")
-    return [key.value for key in registry.keys]
-
-
 def test_the_verb_registry_names_ledger_once():
-    names = registry_names()
-    assert names.count("ledger") == 1, f"a verb name twice in VERBS lets the later line silently win: {names}"
-    assert sorted(set(names)) == sorted(lab_cli.VERBS)
+    """The registry is read from the modules' CLI_VERB declarations (lab/__main__.py, O70): ledger_cli
+    declares the verb, the scan finds it once, and a second module declaring it would raise."""
+    assert lab_cli.declared((REPO_ROOT / "lab" / "machine" / "ledger_cli.py").read_text(encoding="utf-8"),
+                            "lab.machine.ledger_cli") == {"ledger": "main"}
     assert lab_cli.VERBS["ledger"] == "lab.machine.ledger_cli:main"
+    assert list(lab_cli.VERBS) == sorted(lab_cli.VERBS)
 
 
 def test_the_dispatcher_help_lists_the_ledger_verb():

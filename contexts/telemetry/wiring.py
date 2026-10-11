@@ -14,8 +14,11 @@ and one joules-per-answer computation; "fake" runs alone):
   only on a Jetson. On the box it runs inside the gateway, so the atlas-gateway systemd unit starts
   it at boot and again after every restart; a tegrastats that dies is started again by the runner.
   Settings, all optional:
-    ATLAS_TELEMETRY_JETSON_INTERVAL_MS  sampling period in ms (default 100; never shorter than the
-                                        INA3221 update interval)
+    ATLAS_TELEMETRY_JETSON_INTERVAL_MS  sampling period in ms (default 350, for the 1 percent CPU
+                                        budget; never shorter than the INA3221 update interval)
+  jetson/atlas-gateway.service sets ATLAS_TELEMETRY_SOURCE=tegrastats and the 350 ms period, so the
+  box samples from boot (telemetry owner ruling 8). The unit's settings win over .env; change them on
+  a box with `systemctl edit atlas-gateway` (e.g. "tegrastats,pods", or an empty source to turn it off).
     ATLAS_TEGRASTATS                    the tegrastats command (default "tegrastats")
     ATLAS_NVPMODEL                      the nvpmodel command (default "/usr/sbin/nvpmodel")
 - "pods" reads the pod power samplers (lab/pod_power.py) through the hub proxy and publishes their

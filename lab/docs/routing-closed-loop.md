@@ -1,0 +1,21 @@
+# Routing hook closed loop: `python -m lab routing-closed-loop` (T11)
+
+The same labeling requests routed under T5's two policies, arms interleaved request by request (A, B, A, B): A is
+policy one, capability (the control), B is policy two, energy, which reads the telemetry snapshot. The requests are
+at least 100 examples of the L11 fixture (`fixtures/learning/tool-calling-fixture`) drawn with a fixed seed, never a
+golden question. The snapshot is T4's joules projection, fed the power samples and one window per answer of either
+arm, so policy two decides on what the run has just measured; one probe request per node fills it first. Per
+request: arm, target, joules per answer, latency (`label.seconds`) and label agreement (`learning.label_agreement`,
+the tool calls against `expected.jsonl`); per arm their mean and spread; `lab/machine/verdict.py` says whether B
+changed energy or quality beyond the spread.
+
+```
+python -m lab routing-closed-loop --fake                  # the teacher and student fakes, on a fake clock
+python -m lab routing-closed-loop --account C --power-log data/events/<UTC day>.jsonl --window-clock jetson
+```
+
+- Writes `<out>/<run id>/requests.jsonl`, `report.json` and `t0_result.txt` (the T0 experiment result text with its
+  citation, for the dispatcher to post), one ledger row per arm (verb `routing-closed-loop`, task T11) and two T0
+  experiments with their results. A `--fake` run keeps its ledger in `<out>/<run id>/state`.
+- Whether telemetry rubric test 6 is met is a finding in the report and the T0 text; nothing under `lab/refine/` is
+  written. The real run's commands and what stays deferred: `lab/T11_REAL_RUN.md`.

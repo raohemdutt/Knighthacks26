@@ -113,6 +113,7 @@ from lab.machine import metrics as metrics_file  # noqa: E402
 from lab.machine.record import record, recorded  # noqa: E402
 from lab.machine.verdict import MIN_RUNS_PER_ARM  # noqa: E402
 
+CLI_VERB = "bench"   # registers python -m lab bench
 HARNESS = "lab/bench.py 1"
 ROW_SCHEMA = "lab.bench.row/1"
 REPO = Path(__file__).resolve().parents[1]

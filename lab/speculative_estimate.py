@@ -41,6 +41,8 @@ from typing import Any
 from contexts.agent.application.qa import TOOLS
 from lab.format_traces import IM_END, IM_START, Call, Round, Trace, as_call, load_tokenizer, messages_of, render_with_spans
 
+CLI_VERB = "speculative-estimate"
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LABELS_DIR = REPO_ROOT / "fixtures" / "learning" / "tool-calling-labels"
 TEMPLATE_CASES = REPO_ROOT / "fixtures" / "lab" / "qwen35-template" / "rendered.jsonl"

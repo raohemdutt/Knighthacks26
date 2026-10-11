@@ -971,3 +971,5 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     p.add_argument("--out", help=f"where to write (default: <root>/{OUT_DIR})")
     args = p.parse_args(argv or [])
     return write(Path(args.root), Path(args.out) if args.out else None)
+
+CLI_VERB = "report"
