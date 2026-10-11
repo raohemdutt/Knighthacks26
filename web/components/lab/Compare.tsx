@@ -321,6 +321,7 @@ function Hero({ tiles, line }: { tiles: HeroTile[]; line: string | null }) {
         ))}
       </ul>
       {line ? <p className={c.heroLine}>{line}</p> : null}
+      {tiles.some((t) => t.key === "j_per_example" && t.good) ? <p className={c.whyLine}>Friends make learning cheaper per example.</p> : null}
     </section>
   );
 }
@@ -349,6 +350,7 @@ function PowerChart({ data, ra, rb, forceReduced }: { data: LabCompare; ra: Comp
         {together ? " Both acts ran in the same loop at the same time, so each meter reads both." : ""}
       </span>
       <TogetherTraces series={series!} actB={rb?.run_id ?? null} forceReduced={forceReduced} />
+      <p className={c.whyLine}>Three meters, one clock, gross joules.</p>
     </div>
   );
 }

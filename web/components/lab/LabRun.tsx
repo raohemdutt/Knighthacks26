@@ -83,13 +83,19 @@ function Missing({ nums = [], more = [], tail }: { nums?: (LabNum | null | undef
 }
 
 /** A card's one headline number, large, and at most one sentence under it. */
-function Headline({ big, line }: { big: React.ReactNode; line?: React.ReactNode }) {
+function Headline({ big, line, why }: { big: React.ReactNode; line?: React.ReactNode; why?: string | null }) {
   return (
     <div className={lab.headline}>
       <div className={lab.headBig}>{big}</div>
+      {why ? <Why text={why} /> : null}
       {line ? <p className={lab.headLine}>{line}</p> : null}
     </div>
   );
+}
+
+/** Why a card matters, in under ten words, under its headline number. */
+function Why({ text }: { text: string }) {
+  return <p className={lab.whyLine}>{text}</p>;
 }
 
 /** Every explanation sits in one of these, closed until asked for. */
@@ -202,6 +208,7 @@ function TaughtFrom({ story }: { story: LabStory }) {
             <small>No example count posted</small>
           )
         }
+        why={d.approval.approved ? "Real examples from this box, approved by you." : null}
         line={held !== null ? `${held.toLocaleString()} more held back for the test; the model never trains on them.` : null}
       />
       {train !== null && held !== null ? (
@@ -267,6 +274,7 @@ function Training({ story, frac, measured }: { story: LabStory; frac: number; me
             <small>No steps posted</small>
           )
         }
+        why="A small add-on learns; the base model stays."
         line={
           isNum(t.loss_first) && isNum(t.loss_last)
             ? `Loss went from ${loss(t.loss_first.value)} to ${loss(t.loss_last.value)}${isNum(t.wall_s) ? ` in ${duration(t.wall_s.value)}` : ""}.`
@@ -367,6 +375,7 @@ function BeforeAfter({ story, frac, realRun, onPickRun }: { story: LabStory; fra
             {beforeRight} → {shown === 0 ? "…" : afterRight} <small>of {n} right</small>
           </>
         }
+        why={beforeRight > 0 && (ev.counts.after_right.value ?? 0) >= 1.6 * beforeRight ? "Right answers almost doubled on unseen questions." : null}
         line="Before training and after, on held-back questions the model never trained on."
       />
       <div className={lab.tally}>
@@ -486,6 +495,7 @@ function Gate({ story, on, onBox, realRun, onPickRun }: { story: LabStory; on: b
             {pText ? <small> · p = {pText}</small> : null}
           </span>
         }
+        why={good && p !== null && p < alpha ? "Proven better than chance, so it may ship." : null}
         line={good ? null : "The model on the box did not change."}
       />
       <GateChart ev={ev} notes={false} />
@@ -527,13 +537,15 @@ function Gate({ story, on, onBox, realRun, onPickRun }: { story: LabStory; on: b
 
 /* ---------- 5. on the box ---------- */
 
+const SWAP_WHY = "One button swaps models; rollback is automatic.";
+
 function OnTheBox({ story, frac, gated, boxNow }: { story: LabStory; frac: number; gated: boolean; boxNow: string | null }) {
   const { deploy, box, package: pkg } = story;
   const onBox = !!boxNow && !!deploy.model_version && boxNow === deploy.model_version;
   const headline = onBox ? (
-    <Headline big="On the box now" line={`The box serves ${deploy.model_version} now.`} />
+    <Headline big="On the box now" why={SWAP_WHY} line={`The box serves ${deploy.model_version} now.`} />
   ) : deploy.deployed ? (
-    <Headline big={<small>Not on the box now</small>} line={boxNow ? `The box serves ${boxNow} now.` : null} />
+    <Headline big={<small>Not on the box now</small>} why={SWAP_WHY} line={boxNow ? `The box serves ${boxNow} now.` : null} />
   ) : null;
   if (!gated && story.eval.verdict) return <p className={lab.waiting}>The swap happens only after the gate clears the model.</p>;
   const sizeNote = (
@@ -572,6 +584,7 @@ function OnTheBox({ story, frac, gated, boxNow }: { story: LabStory; frac: numbe
           {story.status === "not deployed" ? "Nothing changed on the box." : "Not on the box yet."}
           {standIn ? null : <span className={lab.verdictSub}>{deploy.deployed_reason}</span>}
         </p>
+        <Why text={SWAP_WHY} />
         {packageLine}
         {missing}
       </>
