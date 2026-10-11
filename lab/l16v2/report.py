@@ -135,12 +135,7 @@ def downloads_table(colab: Path) -> str:
     return "\n".join(lines)
 
 
-if __name__ == "__main__":
-    code = main()
-    if "--edge" in sys.argv:
-        print()
-        print(edge_tables(Path(sys.argv[1])))
-    if "--downloads" in sys.argv:
-        print()
-        print(downloads_table(Path(sys.argv[sys.argv.index("--downloads") + 1])))
-    sys.exit(code)
+if __name__ == "__main__" and "--edge" in sys.argv:
+    print("\n" + edge_tables(Path(sys.argv[1])))
+if __name__ == "__main__" and "--downloads" in sys.argv:
+    print("\n" + downloads_table(Path(sys.argv[sys.argv.index("--downloads") + 1])))

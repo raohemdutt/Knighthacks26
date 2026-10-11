@@ -82,6 +82,7 @@ ROWS_TRAIN = "rows-train.jsonl"
 ROWS_VALIDATION = "rows-validation.jsonl"
 BUILD = "build.json"
 INSTRUCTION_NOW = "<the example's ts>"   # where spec.instruction leaves the time: system_for() writes each example's
+CLOCK_PER_EXAMPLE = (ACTION_ID, "fixture:tool-calling-v3")   # action ids whose examples each carry their own now
 OLD_FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "learning" / "tool-calling-fixture"
 
 # (name, plural). One group per object. Every other object (an even index) has a sighting in the night.
@@ -203,9 +204,9 @@ def clock_for(seed: str) -> datetime:
 
 
 def system_for(manifest: DatasetManifest, example: DatasetExample) -> str:
-    """The system prompt of one example: this dataset writes the example's own ts as the time now; any other
-    dataset has one instruction for all its examples."""
-    return instruction(example.ts) if manifest.action_id == ACTION_ID else manifest.spec.instruction
+    """The system prompt of one example: this dataset and its successors (CLOCK_PER_EXAMPLE) write the example's own
+    ts as the time now; any other dataset has one instruction for all its examples."""
+    return instruction(example.ts) if manifest.action_id in CLOCK_PER_EXAMPLE else manifest.spec.instruction
 
 
 # --- the questions ------------------------------------------------------------------------------------------------

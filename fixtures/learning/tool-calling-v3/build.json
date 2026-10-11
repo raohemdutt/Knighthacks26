@@ -1,0 +1,96 @@
+{
+  "dataset_id": "tool-calling-v3",
+  "examples": 1087,
+  "groups": 129,
+  "parts": {
+    "train": {
+      "examples": 721,
+      "groups": 94
+    },
+    "validation": {
+      "examples": 126,
+      "groups": 15
+    },
+    "held_out": {
+      "examples": 240,
+      "groups": 20
+    }
+  },
+  "group_kinds": {
+    "train": {
+      "last_seen": 130,
+      "scene": 536,
+      "teacher": 55
+    },
+    "validation": {
+      "last_seen": 30,
+      "scene": 96
+    },
+    "held_out": {
+      "last_seen": 48,
+      "scene": 192
+    }
+  },
+  "rows": {
+    "rows-train.jsonl": 721,
+    "rows-validation.jsonl": 126
+  },
+  "clocks": {
+    "fixture (-04:00, whole minute)": 558,
+    "box (UTC, microseconds)": 529
+  },
+  "distinct_clocks": 906,
+  "distinct_questions": 1012,
+  "tools": {
+    "last_seen": 253,
+    "episodes_between": 824,
+    "search_memory": 10
+  },
+  "no_evidence": {
+    "train": 28,
+    "validation": 0,
+    "held_out": 15
+  },
+  "rule_labeled": 1032,
+  "teacher_labeled": 55,
+  "teacher_outcomes": {
+    "kept": 55,
+    "tool_rounds": 1
+  },
+  "clipped": {
+    "rows": {
+      "held_out": 192,
+      "train": 535,
+      "validation": 96
+    },
+    "line_chars": 300,
+    "result_chars": 2400
+  },
+  "misfit_wordings": {
+    "train": 18
+  },
+  "dropped": {
+    "scene not yet in the box's memory at that clock": 1
+  },
+  "short_groups": {},
+  "max_row_chars": 7264,
+  "tokenizer": "checked",
+  "reference": "checked",
+  "tokens": {
+    "total": 1088461,
+    "max": 1899,
+    "min": 577
+  },
+  "template": "Qwen/Qwen3.5-4B@851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a",
+  "sha256": {
+    "manifest.json": "32ae780c9d3a89e5b5b86a0a4609d4e524da731ec731a99493304982328df06e",
+    "examples.jsonl": "4f66dcad4faea9020e7698efb0a6b645677212d6c0ae9f003b4dab97ef4b348f",
+    "expected.jsonl": "150cfba6e02b10ae93162e3317804a4639a4d9b355448695a9b501e5a98b5f39",
+    "split.json": "a054c84f4c204ad88be576ee80102f24f2c0a9d7f5ac980051fec3a6e3c87a56",
+    "validation.json": "c0f983afe3b2cb52855d584213f4db4ef3d6431d2d7b05a4f6b1a53b9ecc28f7",
+    "rows-train.jsonl": "3c7945251c218afcb36eba6d840f1994ff9a992e263ce4703c740a30ceada5b9",
+    "rows-validation.jsonl": "2561bba63b78ec48593c3a1cd27c8bbc04b07f5e138fad00dfa7ebf0c6d10fc8",
+    "source.json": "05011bc8085f11d7d6cd6d57c1bd18d95a57bc0d8e8feba9d4b4c262cd3b0a18",
+    "teacher.jsonl": "be6bcbb8e756b34152353d267615f2cb131957615f1edde1f7147064dd792243"
+  }
+}
