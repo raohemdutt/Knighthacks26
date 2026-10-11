@@ -10,12 +10,16 @@
 # the server. build, download and serve end with a line "### <step> wall_s=<seconds> rc=<code>" for the ledger.
 # Callers reach the server at https://<hub>/user/<account>/proxy/8000/v1/... with header
 # "Authorization: token <hub API token>" (jupyter-server-proxy must be installed once: step "proxy").
-set -u
+# A step that fails ends the script with a non-zero code, so run-script's ok and its ledger row tell the truth.
+set -u -o pipefail
 export PATH="$HOME/.local/bin:$PATH"
 STEP="${1:-all}"
 VLLM_DIR="$HOME/vllm"
 VLLM_COMMIT="b1388b1fb"                      # April 2026 main; builds against the pod's torch 2.9.1+rocm7.13
-PATCH="$(cd "$(dirname "$0")" && pwd)/vllm-gfx1201.diff"
+# The patch sits beside this script: in lab/ of the clone, or in the Jupyter root when run-script uploads it with
+# --with. PATCH overrides; the clone at ~/Knighthacks26/lab is tried last.
+PATCH="${PATCH:-$(cd "$(dirname "$0")" && pwd)/vllm-gfx1201.diff}"
+[ -f "$PATCH" ] || [ ! -f "$HOME/Knighthacks26/lab/vllm-gfx1201.diff" ] || PATCH="$HOME/Knighthacks26/lab/vllm-gfx1201.diff"
 MODELS="$HOME/models"
 # RedHatAI/Qwen3.8-27B-INT4 (compressed-tensors W4A16, 18 GB) is what serves on this vLLM commit.
 # amd/Qwen3.8-27B-Quark-AWQ-INT4-W4A16 (Aug 2026 Quark export) fails in this commit's Quark weight mapper; see lab/README.md.
@@ -113,14 +117,15 @@ build_jobs() {
 
 proxy() {
   python3 -c "import jupyter_server_proxy" 2>/dev/null && { echo "jupyter-server-proxy present"; return; }
-  pip install --user --quiet jupyter-server-proxy
+  pip install --user --quiet jupyter-server-proxy || { echo "could not install jupyter-server-proxy"; return 1; }
   echo "jupyter-server-proxy installed: relaunch the pod once so the extension loads"
 }
 
 deps() {
   # pkgconf provides the pkg-config binary torch's LoadHIP.cmake needs (the image has none and there is no root).
   # cmake stays below 4, as vLLM's own requirements/rocm-build.txt asks; an unpinned install gets 4.x.
-  pip install --user --quiet "cmake>=3.26.1,<4" ninja pkgconf packaging "setuptools>=77,<81" setuptools-scm wheel jinja2 regex huggingface_hub
+  pip install --user --quiet "cmake>=3.26.1,<4" ninja pkgconf packaging "setuptools>=77,<81" setuptools-scm wheel jinja2 regex huggingface_hub \
+    || { echo "pip could not install the build tools"; return 1; }
   command -v pkg-config >/dev/null || ln -sf "$HOME/.local/bin/pkgconf" "$HOME/.local/bin/pkg-config"
   # Neither image ships a libdrm pkg-config entry or headers (the Strix Halo image has the runtime libdrm.so.2 only),
   # but torch's LoadHIP.cmake -> rocm_smi-config.cmake requires one, and the torch target then carries its include
@@ -167,16 +172,17 @@ build() {
   if python3 -c "import vllm" 2>/dev/null; then echo "vllm already importable: $(python3 -c 'import vllm;print(vllm.__version__)')"; return; fi
   local gfx jobs constraints
   gfx="$(gpu_arch)"
-  [ -n "$gfx" ] || { echo "no gfx target from rocminfo; set GFX=<target>"; exit 1; }
+  [ -n "$gfx" ] || { echo "no gfx target from rocminfo; set GFX=<target>"; return 1; }
+  [ -f "$PATCH" ] || { echo "no patch at $PATCH: upload lab/vllm-gfx1201.diff beside the script (run-script --with) or set PATCH"; return 2; }
   jobs="$(build_jobs)"
-  deps
+  deps || return 1
   constraints="$HOME/.cache/vllm-torch-constraints.txt"
-  mkdir -p "$HOME/.cache" && torch_constraints > "$constraints"
-  [ -d "$VLLM_DIR/.git" ] || git clone https://github.com/vllm-project/vllm.git "$VLLM_DIR"
-  cd "$VLLM_DIR"
-  git checkout -q "$VLLM_COMMIT"
-  git checkout -- . && git apply --reject --whitespace=nowarn "$PATCH"
-  python3 use_existing_torch.py
+  mkdir -p "$HOME/.cache" && torch_constraints > "$constraints" || { echo "could not read the pod's torch versions"; return 1; }
+  [ -d "$VLLM_DIR/.git" ] || git clone https://github.com/vllm-project/vllm.git "$VLLM_DIR" || { echo "could not clone vLLM"; return 1; }
+  cd "$VLLM_DIR" || return 1
+  git checkout -q "$VLLM_COMMIT" || { echo "could not check out vLLM $VLLM_COMMIT"; return 1; }
+  git checkout -- . && git apply --reject --whitespace=nowarn "$PATCH" || { echo "the patch $PATCH did not apply"; return 1; }
+  python3 use_existing_torch.py || { echo "use_existing_torch.py failed"; return 1; }
   echo "building vLLM $VLLM_COMMIT for $gfx with $jobs jobs (log: ~/vllm_build.log)"
   # SETUPTOOLS_SCM_PRETEND_VERSION: `git describe` on the NFS home times out (40 s) and kills the build otherwise.
   SETUPTOOLS_SCM_PRETEND_VERSION="0.19.2+$gfx" VLLM_TARGET_DEVICE=rocm PYTORCH_ROCM_ARCH="$gfx" \
@@ -277,6 +283,6 @@ case "$STEP" in
   serve) timed serve ;;
   models) models ;;
   stop) stop ;;
-  all) proxy; timed build; timed download; timed serve ;;
+  all) proxy && timed build && timed download && timed serve ;;
   *) echo "unknown step $STEP"; exit 2 ;;
 esac
