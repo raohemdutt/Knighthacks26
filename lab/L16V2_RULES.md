@@ -163,6 +163,39 @@ points are not better than the random ones, the page says so.
 
 Everything else stands: the dataset and its split, the scoring rules, and what is never done.
 
+### Amendment 3: a held-out reading before the choice, and what it may not touch (Sun 2026-10-11, 4:40 AM ET)
+
+This page says the held-out side is not read until the choice is written. That was broken in the letter, and this
+records exactly how. On the order of Ilan's coordinator (not a decision of the seat that runs the search), the pod D
+seat packaged the fallback adapter, grid run 1 (learning rate 1e-4, rank 16, alpha 32, dropout 0.05, warmup 0.10,
+62 steps, validation loss 0.0081), and scored it on pod D between 4:19 and 4:32 AM ET, while the search was still
+running and before any choice existed: the held-out side of `tool-calling-v2` (228 examples in 18 groups) and the
+first fixture's 58. Its numbers and files are in `work/L16v2pod-out/` and are reported on the result page as what
+they are: a reading of one adapter taken before the choice.
+
+What follows from it, and is checked in the code:
+
+- The choice of the final configuration and adapter is made by the frozen validation rule alone, by
+  `lab/l16v2/bo_local.py`, with no held-out number as an input. The search, the pruning, the finalists, the scoring
+  of validation agreement and every tie-break read the validation rows and nothing else. Nothing in `lab/l16v2/`
+  reads `work/L16v2pod-out/` or any held-out output.
+- Nothing is tuned toward what that reading showed (its misses are time windows) before the choice is made: the
+  search space, the fidelity, the pruning rule and the finalist rule stay as amendment 2 fixed them. What it showed
+  goes on the result page as a finding for a next dataset revision.
+- Because grid run 1 is one of the full-length runs the choice rule ranks, the result page says, where the chosen
+  adapter is named, whether it is that adapter, whose held-out numbers were already known when the choice was made.
+
+Two changes of mechanics, neither of which changes a rule:
+
+- Pruning acts when it is decided. The first trials the median rule pruned (trials 3, 4 and 5) ran on to step 24,
+  because the stop signal sent to the trainer was one a detached background process ignores. From 4:38 AM a pruned
+  trial's trainer is stopped at once. Those three stay recorded as pruned, with their step-12 loss as their value,
+  exactly as the rule says; their step-24 losses are kept in the table but were never used.
+- Several trainers on one card. One session turned out to be an 80 GB A100. If the measurement on it (1, 2, 3 and
+  more trainers at once) shows that trainers on one card add throughput, a session runs more than one worker, each
+  still asking the one study only when it is free. A trial's validation loss does not depend on what shares its
+  card; each run records how many trainers shared it. The 40-minute budget and the fidelity do not change.
+
 ## The pod D retrain (second pass)
 
 The chosen recipe is repeated on pod D with the same flags and `--stop-step <the chosen run's best step>`, so the
