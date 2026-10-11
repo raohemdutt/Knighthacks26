@@ -6,6 +6,9 @@
 #   bash lab/l16v2/colab_driver.sh <session> <branch> [sweep budget s]        # upload, launch, poll, pull, stop
 #   bash lab/l16v2/colab_driver.sh <session> <branch> --attach                # a job is already running: poll and pull
 #
+# A launch on a VM that already holds the dataset keeps it: the job rebuilds it from the new commit, compares the
+# sha256 of every file, and reuses the frozen dataset and its tarball when they are the same bytes.
+#
 # Run it detached with its own log (nohup ... > driver.log 2>&1 &). The session must exist and be READY, with the base
 # model in /content/models (lab/l16v2/colab_setup.sh). It needs the workspace's Colab wrapper (L16V2_COLAB, default
 # tooling/dispatcher/colab.sh under L16V2_WORKSPACE) and writes under <workspace>/work/L16v2-out/:
@@ -105,7 +108,7 @@ if [ "$MODE" != "--attach" ]; then
   plog "bundle made commit=$COMMIT bytes=$(stat -c %s "$OUT/l16v2.bundle")"
   cat > "$OUT/launch/launch_job.py" <<PY
 import subprocess
-subprocess.run("pkill -f '[c]olab_job.sh'; pkill -f '[l]ab/train.py'; pkill -f '[l]16v2/sweep.py'; rm -rf /content/l16v2/markers /content/l16v2/products /content/l16v2/runs /content/l16v2/finished.txt /content/l16v2/status.txt", shell=True)
+subprocess.run("pkill -f '[c]olab_job.sh'; pkill -f '[l]ab/train.py'; pkill -f '[l]16v2/sweep.py'; rm -rf /content/l16v2/runs /content/l16v2/finished.txt /content/l16v2/status.txt; find /content/l16v2/markers -type f ! -name DATASET_DONE -delete 2>/dev/null; find /content/l16v2/products -type f ! -name 'dataset-*' -delete 2>/dev/null", shell=True)
 subprocess.Popen("setsid nohup bash /content/colab_job.sh $BRANCH $MODE > /content/colab_job.log 2>&1 &", shell=True)
 print("launched job")
 PY

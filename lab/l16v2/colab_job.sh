@@ -18,7 +18,7 @@ product() { # product <file in products/> <marker>: the .sha256 first, then the 
 stamp job_start; status clone
 # Colab ships torchao 0.10.0; PEFT 0.21.2 refuses any torchao below 0.16 the moment it puts LoRA on a model, and the
 # trainer uses none. Taken out here as well as in colab_setup.sh, so a session set up before this line still runs.
-pip uninstall -y -q torchao > /dev/null 2>&1; python3 -c "import importlib.util as u; print('torchao', 'present' if u.find_spec('torchao') else 'absent')" >> $OUT/versions.txt
+echo "torchao: $(pip uninstall -y torchao 2>&1 | tail -n 1)" >> $OUT/versions.txt; python3 -c "import importlib.util as u; print('torchao', 'present' if u.find_spec('torchao') else 'absent')" >> $OUT/versions.txt
 rm -rf $REPO
 git clone -q -b "$BRANCH" /content/l16v2.bundle $REPO || { echo clone > $OUT/markers/FAILED_clone; exit 1; }
 git -C $REPO log --format='repo %H %s' -1 >> $OUT/versions.txt
@@ -27,16 +27,31 @@ export LAB_STATE_DIR=$OUT/state LAB_TASK=L16 LAB_ACTOR="Ilan1 agent" LAB_TIER=op
 mkdir -p $LAB_STATE_DIR
 
 stamp dataset_start; status dataset
-rm -rf $OUT/data
-python3 lab/fixture_dataset_v2.py --out $OUT/data --tokenizer $MODEL > $OUT/dataset.json 2> $OUT/dataset.err
-if [ $? -ne 0 ] || [ ! -s $OUT/data/tool-calling-v2/rows-train.jsonl ]; then
-  tail -n 20 $OUT/dataset.err; echo dataset > $OUT/markers/FAILED_dataset; stamp dataset_failed; exit 1
+DS=$OUT/data/tool-calling-v2
+REUSED=no
+if [ -e $OUT/markers/DATASET_DONE ] && [ -s $DS/build.json ] && [ -s $OUT/products/dataset-tool-calling-v2.tar.gz ]; then
+  # A dataset an earlier launch built on this VM is reused, same frozen split and same tarball, but only when this
+  # commit builds the same seven files byte for byte (the build without the tokenizer check: the bytes do not depend on it).
+  rm -rf $OUT/data-check
+  python3 lab/fixture_dataset_v2.py --out $OUT/data-check > $OUT/dataset-check.json 2>> $OUT/dataset.err
+  python3 -c "import json,sys; a,b=(json.load(open(p))['sha256'] for p in sys.argv[1:3]); sys.exit(0 if a==b else 1)" \
+    $DS/build.json $OUT/data-check/tool-calling-v2/build.json && REUSED=yes
+  rm -rf $OUT/data-check
 fi
-python3 lab/dataset.py $OUT/data/tool-calling-v2 --text-only --split > $OUT/split_check.json 2>> $OUT/dataset.err
-cp $OUT/dataset.json $OUT/split_check.json $OUT/data/tool-calling-v2/ 2>/dev/null
-( cd $OUT/data && tar -czf $OUT/products/dataset-tool-calling-v2.tar.gz tool-calling-v2 )
-product dataset-tool-calling-v2.tar.gz DATASET_DONE
-stamp dataset_done
+if [ $REUSED = no ]; then
+  rm -rf $OUT/data $OUT/markers/DATASET_DONE
+  python3 lab/fixture_dataset_v2.py --out $OUT/data --tokenizer $MODEL > $OUT/dataset.json 2> $OUT/dataset.err
+  if [ $? -ne 0 ] || [ ! -s $DS/rows-train.jsonl ]; then
+    tail -n 20 $OUT/dataset.err; echo dataset > $OUT/markers/FAILED_dataset; stamp dataset_failed; exit 1
+  fi
+  python3 lab/dataset.py $DS --text-only --split > $OUT/split_check.json 2>> $OUT/dataset.err
+  cp $OUT/dataset.json $OUT/split_check.json $DS/ 2>/dev/null
+  ( cd $OUT/data && tar -czf $OUT/products/dataset-tool-calling-v2.tar.gz tool-calling-v2 )
+  product dataset-tool-calling-v2.tar.gz DATASET_DONE
+fi
+echo "dataset reused=$REUSED tarball $(cat $OUT/products/dataset-tool-calling-v2.tar.gz.sha256)" >> $OUT/versions.txt
+echo "dataset reused=$REUSED sha256_rows_train=$(sha256sum $DS/rows-train.jsonl | cut -d' ' -f1) sha256_split=$(sha256sum $DS/split.json | cut -d' ' -f1)" >> $OUT/finished.txt
+stamp "dataset_done_reused_$REUSED"
 
 stamp smoke_start; status smoke
 python3 lab/l16v2/sweep.py --dataset $OUT/data/tool-calling-v2 --model $MODEL --out $OUT --only smoke > $OUT/smoke.log 2>&1
