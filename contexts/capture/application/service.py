@@ -108,25 +108,29 @@ class CaptureService:
         return {cid: {**r.stats(), "detected": self.pipelines[cid].detected, "errors": self.pipelines[cid].errors}
                 for cid, r in self.readers.items()}
 
-    def snapshot(self, camera_id: str) -> bytes | None:
+    def snapshot(self, camera_id: str, clear: bool = False) -> bytes | None:
         """The newest frame as a JPEG for the phone's Live screen, faces blurred unless the policy says otherwise.
-        None when the camera is unknown, paused, or has not delivered a frame yet."""
+        None when the camera is unknown, paused, or has not delivered a frame yet. `clear` (the caller holds the
+        owner's view ticket) leaves the faces as they are, and only while the policy's `live_faces` is "clear";
+        this is the live picture only, a saved keyframe is blurred as before."""
         import cv2
 
         reader = self.readers.get(camera_id)
         if reader is None or (self.policy and self.policy.is_paused(camera_id)) or reader.latest() is None:
             return None
         seq, _, frame = reader.latest()
+        clear = clear and self._blur_on() and getattr(self.policy, "live_faces", None) == "clear"
+        key = f"{camera_id} clear" if clear else camera_id  # the two pictures of one frame are never mixed up
         with self._snapshot_lock:
-            cached = self._snapshot_cache.get(camera_id)
+            cached = self._snapshot_cache.get(key)
             if cached and cached[0] == seq:
                 return cached[1]
-            shown = self._snapshot_blur(frame) if self._blur_on() else frame
+            shown = self._snapshot_blur(frame) if self._blur_on() and not clear else frame
             ok, jpeg = cv2.imencode(".jpg", shown, [cv2.IMWRITE_JPEG_QUALITY, 70])
             if not ok:
                 return None
-            self._snapshot_cache[camera_id] = (seq, jpeg.tobytes())
-            return self._snapshot_cache[camera_id][1]
+            self._snapshot_cache[key] = (seq, jpeg.tobytes())
+            return self._snapshot_cache[key][1]
 
     def health(self, now: datetime, every: timedelta = timedelta(minutes=5)) -> list[CameraHealth]:
         """`capture.camera.health` for each camera whose status changed since the last call, and for every camera at
