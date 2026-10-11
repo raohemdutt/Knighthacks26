@@ -333,14 +333,16 @@ def main() -> None:
     (OUT / "rocprof" / "4243" / "run_memory_copy_trace.csv").write_text(csv_text(COPY_COLUMNS, copies),
                                                                         encoding="utf-8", newline="")
     (OUT / "raw.json").write_text(json.dumps(raw_record(), indent=1) + "\n", encoding="utf-8", newline="\n")
-    sheet = {"format": "chipsheet/1", "sample": False,
-             "about": "Synthetic, for the R47 self-check and its tests only: the chipsheet/1 fields lab/placement.py "
-                      "reads (see lab/refine/research/kernels/data/chipsheet-sample.json), with made-up numbers. Not a "
-                      "measurement, and not in the data folder, so no plan ever reads it.",
-             "chip": {"gfx": "gfx1151", "node": "pod-b"},
-             "bandwidth": {"copy_d2d_peak_gb_s": {"value": 212.5, "command": "synthetic"},
-                           "copy_d2d": [{"bytes": 2**20, "gb_s": 40.0}, {"bytes": 2**26, "gb_s": 180.0},
-                                        {"bytes": 2**32, "gb_s": 212.5}]}}
+    def copy(label: str, value: float | None, status: str = "ok") -> dict:
+        return {"id": f"copy.d2d.size_{label}", "section": "copy", "what": f"device-to-device copy of {label}",
+                "unit": "GB/s", "value": value, "status": status, "error": None if status == "ok" else "synthetic"}
+
+    # R33's sheet format (lab/kernels/chipsheet/chipsheet_format.py), the copy entries only, made-up numbers; not
+    # in the data folder, so no plan ever reads it
+    sheet = {"format": "atlas.chipsheet/1", "gfx": "gfx1151", "node": "pod-b", "mode": "full", "date": "2026-10-10",
+             "measurements": [copy("1mib", 40.0), copy("64mib", 180.0), copy("4gib", 212.5),
+                              copy("8gib", None, "failed")],
+             "notes": ["synthetic, for the R47 self-check and its tests only"]}
     (OUT / "chipsheet.json").write_text(json.dumps(sheet, indent=1) + "\n", encoding="utf-8", newline="\n")
 
 

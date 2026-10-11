@@ -490,6 +490,14 @@ def by_id(sheet: Mapping[str, Any]) -> dict[str, Mapping[str, Any]]:
     return {m["id"]: m for m in sheet.get("measurements", []) if isinstance(m, Mapping) and "id" in m}
 
 
+def copy_peak(sheet: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """The device-to-device copy entry with the highest measured bandwidth (status ok, GB/s, its value counting the
+    bytes read and written), or None when the sheet has none: the ceiling a decode's achieved bandwidth is held to."""
+    found = [m for m in by_id(sheet).values() if str(m.get("id", "")).startswith("copy.d2d")
+             and m.get("status") == "ok" and m.get("unit") == "GB/s" and _finite(m.get("value"))]
+    return max(found, key=lambda m: (m["value"], str(m["id"]))) if found else None
+
+
 def sections_of(items: Iterable[Mapping[str, Any]]) -> list[str]:
     """The sections that hold at least one entry, in SECTIONS order."""
     present = {m.get("section") for m in items}

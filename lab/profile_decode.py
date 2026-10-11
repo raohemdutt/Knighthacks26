@@ -35,9 +35,9 @@ What the result holds (lab/refine/research/kernels/data/decode-profile-gfx1151-<
   scheduling (the part of the step in which the GPU ran nothing), host-device copies, and other GPU work;
 - achieved memory bandwidth: the bytes a decode step reads (the checkpoint's safetensors headers: every weight but
   the vision tower, the MTP head and the gathered embedding rows; KV-cache reads are not counted) over the step
-  time, and over the W4A16 kernel's own time for the quantized weights, against the chip sheet's measured copy
-  bandwidth (bandwidth.copy_d2d_peak_gb_s of lab/refine/research/kernels/data/chipsheet-gfx1151-<date>.json, R33,
-  read with lab/placement.py's reader) when one is on main at collect time, never the sample sheet's numbers;
+  time, and over the W4A16 kernel's own time for the quantized weights, against the chip sheet's best measured
+  device-to-device copy (R33's lab/refine/research/kernels/data/chipsheet-gfx1151-<date>.json, its copy.d2d.*
+  entries) when one is on main at collect time, never a sample or self-check sheet's numbers;
 - peak and reserved memory (the torch profiler's allocator samples, the serve log's weights, KV-cache and graph pool
   lines, and amd-smi's memory use), watts during every run from amd-smi, and the exact kernel vLLM selected for the
   quantized matmul (the serve log's "Using <Kernel> for <Scheme>" line, the class's source file, and the Triton
@@ -620,12 +620,33 @@ def build_result(raw: Mapping[str, Any], base: str | Path) -> dict[str, Any]:
 # --- the chip sheet -------------------------------------------------------------------------------------------------
 
 def chip_reference(path: str | Path | None = None) -> dict[str, Any]:
-    """The copy bandwidth to compare against, read the way the placement plan reads chip sheets (lab/placement.py:
-    bandwidth.copy_d2d_peak_gb_s, else the best bandwidth.copy_d2d row). Without a path: the newest
-    chipsheet-gfx1151-*.json R33 commits, else the sample sheet, whose numbers are never taken as a measurement."""
+    """The copy bandwidth to compare against. Without a path: the newest chipsheet-gfx1151-<date>.json in the data
+    folder, else the sample sheet (lab/placement.py's default_chipsheet). R33's measured sheet (atlas.chipsheet/1)
+    gives its best device-to-device copy (chipsheet_format.copy_peak; a self-check sheet holds invented timings and
+    is never used); any other sheet is read the way the placement plan reads it (bandwidth.copy_d2d_peak_gb_s, else
+    the best bandwidth.copy_d2d row), and the sample sheet's numbers are never taken as a measurement."""
     from lab import placement   # the box only: collect and --quick run this, the pod never does
+    from lab.kernels.chipsheet import chipsheet_format as sheet_format
 
-    sheet = placement.read_chipsheet(Path(path) if path is not None else placement.default_chipsheet(CHIP))
+    target = Path(path) if path is not None else placement.default_chipsheet(CHIP)
+    try:
+        data = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = None
+    if isinstance(data, Mapping) and data.get("format") == sheet_format.FORMAT:
+        name = placement.relative(target)
+        out = {"chip_sheet": name, "sample": False, "source": None, "kind": "measured", "gb_s": None, "note": None,
+               "mode": data.get("mode")}
+        best = sheet_format.copy_peak(data)
+        if data.get("mode") == "self-check":
+            out.update({"kind": "self-check", "note": f"{name} is a self-check sheet: its timings are invented"})
+        elif best is None:
+            out["note"] = f"{name} carries no measured device-to-device copy"
+        else:
+            out.update({"gb_s": float(best["value"]), "source": f"{name}: {best['id']} ({best.get('what')}; "
+                                                                 "bytes read and written over the time)"})
+        return out
+    sheet = placement.read_chipsheet(target)
     found = sheet.get("bandwidth_gb_s")
     out = {"chip_sheet": sheet.path, "sample": sheet.sample, "source": found.source, "kind": found.kind,
            "gb_s": None, "note": None}
@@ -1066,7 +1087,9 @@ def _module_file(name: str, root: Path) -> Path | None:
     return None
 
 
-BOX_ONLY = frozenset({"lab.placement"})   # imported only by collect and --quick on the box, never on the pod
+# imported only by collect and --quick on the box (the chip sheet readers), never on the pod; a prefix covers the
+# package and everything under it
+BOX_ONLY = ("lab.placement", "lab.kernels")
 
 
 def module_closure(start: str = "lab.profile_decode", root: Path = REPO) -> list[Path]:
@@ -1077,7 +1100,8 @@ def module_closure(start: str = "lab.profile_decode", root: Path = REPO) -> list
     todo = [start, "lab.profile_decode_pod"]
     while todo:
         name = todo.pop()
-        if name in seen or name in BOX_ONLY or not (name == "lab" or name.startswith("lab.")):
+        if name in seen or not (name == "lab" or name.startswith("lab.")) or any(
+                name == box or name.startswith(box + ".") for box in BOX_ONLY):
             continue
         path = _module_file(name, root)
         if path is None:

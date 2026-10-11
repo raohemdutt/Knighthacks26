@@ -1438,12 +1438,12 @@ large can stall a terminal whose shell echoes faster than the terminal server dr
   sampling (in the torch trace: whatever is launched after the step's forward range, which is `sample_tokens`),
   host-side time (the GPU ran nothing), copies and other GPU work, achieved bandwidth (the safetensors bytes a step
   reads over the step time, and the quantized bytes over the W4A16 kernel's time) against the chip sheet's copy
-  bandwidth (`bandwidth.copy_d2d_peak_gb_s` of the newest `chipsheet-gfx1151-<date>.json` there, R33, read with
-  `lab/placement.py`'s reader; the sample sheet's numbers are never used), peak and reserved memory (the torch
-  profiler's allocator samples, the serve log, amd-smi), watts for every run from amd-smi, and the quantized-matmul
-  kernel vLLM chose (the serve log's `Using <Kernel> for <Scheme>`, the class's file and the Triton kernel it launches
-  with its file, read with the pod's own Python). `collect` also writes ledger rows on node pod-b (one per batch, one
-  per tool, one for the run), and `--save-fixtures` keeps a two-step excerpt of each trace under
+  bandwidth (the best measured `copy.d2d.*` entry of R33's newest `chipsheet-gfx1151-<date>.json` there, through
+  `chipsheet_format.copy_peak`; a sample or self-check sheet's numbers are never used), peak and reserved memory (the
+  torch profiler's allocator samples, the serve log, amd-smi), watts for every run from amd-smi, and the
+  quantized-matmul kernel vLLM chose (the serve log's `Using <Kernel> for <Scheme>`, the class's file and the Triton
+  kernel it launches with its file, read with the pod's own Python). `collect` also writes ledger rows on node pod-b
+  (one per batch, one per tool, one for the run), and `--save-fixtures` keeps a two-step excerpt of each trace under
   `fixtures/lab/profile_decode/recorded-<date>/`.
 - **Slot.** About 27 minutes with pod D's warm torch.compile cache (two server starts of about 5 minutes each, four
   runs per phase, a trace flush, the parse); ask for 30, with the one 15-minute extension in reserve if the rocprof

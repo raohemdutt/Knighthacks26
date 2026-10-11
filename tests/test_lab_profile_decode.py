@@ -25,6 +25,7 @@ from lab import bench, bench_fake, pod_power
 from lab import profile_decode as pd
 from lab import profile_decode_pod as pod
 from lab import trace_profile as tp
+from lab.kernels.chipsheet import chipsheet_format
 from lab.machine import ledger
 
 REPO = Path(__file__).resolve().parents[1]
@@ -239,10 +240,31 @@ def test_a_failed_tool_and_a_trace_that_misses_graph_kernels_are_open_items():
     assert pd._primary({"available": True, "kernel_coverage": 0.8}, {"available": True}) == "torch"
 
 
-def test_the_chip_sheet_is_read_the_way_the_placement_plan_reads_it(tmp_path):
+def test_r33s_sheet_gives_its_best_measured_device_to_device_copy(tmp_path):
     found = pd.chip_reference(FIX / "chipsheet.json")
-    assert (found["gb_s"], found["kind"], found["sample"], found["note"]) == (212.5, "measured", False, None)
-    assert found["source"].endswith("chipsheet.json: bandwidth.copy_d2d_peak_gb_s")
+    assert (found["gb_s"], found["kind"], found["sample"], found["note"], found["mode"]) == (
+        212.5, "measured", False, None, "full")
+    assert found["source"].endswith("chipsheet.json: copy.d2d.size_4gib (device-to-device copy of 4gib; bytes read "
+                                    "and written over the time)")
+    sheet = json.loads((FIX / "chipsheet.json").read_text(encoding="utf-8"))
+    assert chipsheet_format.copy_peak(sheet)["id"] == "copy.d2d.size_4gib"
+    assert chipsheet_format.copy_peak({"measurements": []}) is None
+    invented = tmp_path / "chipsheet-gfx1151-2026-10-11.json"
+    invented.write_text(json.dumps(dict(sheet, mode="self-check")), encoding="utf-8")
+    refused = pd.chip_reference(invented)
+    assert refused["gb_s"] is None and refused["note"].endswith("is a self-check sheet: its timings are invented")
+    no_copy = tmp_path / "chipsheet-gfx1151-2026-10-12.json"
+    no_copy.write_text(json.dumps(dict(sheet, measurements=[])), encoding="utf-8")
+    assert pd.chip_reference(no_copy)["note"].endswith("carries no measured device-to-device copy")
+
+
+def test_other_sheets_are_read_the_way_the_placement_plan_reads_them(tmp_path):
+    peak = tmp_path / "chipsheet-gfx1151-2026-10-10.json"
+    peak.write_text(json.dumps({"format": "chipsheet/1", "bandwidth": {"copy_d2d_peak_gb_s": {"value": 201.0}}}),
+                    encoding="utf-8")
+    found = pd.chip_reference(peak)
+    assert (found["gb_s"], found["kind"]) == (201.0, "measured")
+    assert found["source"].endswith(": bandwidth.copy_d2d_peak_gb_s")
     rows_only = tmp_path / "chipsheet-gfx1151-2026-10-11.json"
     rows_only.write_text(json.dumps({"format": "chipsheet/1", "bandwidth": {
         "copy_d2d": [{"bytes": 1, "gb_s": 50.0}, {"bytes": 2, "gb_s": 190.5}]}}), encoding="utf-8")
