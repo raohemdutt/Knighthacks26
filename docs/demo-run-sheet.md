@@ -740,14 +740,14 @@ signed-in screen shows you, the box proves what left it, and one screen deletes 
 **Setup:** the Jetson (the firewall only runs there).
 
 **Steps**
-1. **More → Privacy** (`/privacy/`). "Pictures" has three rows: **Your live view** (the switch "Show
+1. **More → Privacy** (`/privacy/`). "Faces" has three rows: **Your live view** (the switch "Show
    faces on my own signed-in screen"), **Saved pictures** ("Always") and **Anything that leaves this
    box** ("Always"). There is no switch for blurring saved pictures.
 2. **More → Timeline** → open a frame with a person in it. Then **Live** on the signed-in phone, and
    the same address in a private window that is not signed in.
-3. Privacy → "The internet": **Offline mode**. (Or `make offline` on the box.)
-4. "What left the box".
-5. "Delete": pick **Everything**, **Pictures only** or **Memory only** → **Delete…** → read the
+3. Privacy → "What has left this box": **Offline mode**. (Or `make offline` on the box.)
+4. The list under it: what each group sent and what was blocked.
+5. "Erase": pick **Everything**, **Pictures only** or **Memory only** → **Delete…** → read the
    warning → **Cancel** (or **Yes, delete for good** on a throwaway box).
 
 **Expected**

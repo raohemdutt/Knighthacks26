@@ -270,7 +270,7 @@ LOCAL_PLAN = ("You said yes to Friends' dinner at 5:15 PM. Replace today's plan 
               "No calendar connector on this box: approving keeps this as today's plan, nothing is written")
 
 
-# ---------- Privacy: the three "Pictures" rows ----------
+# ---------- Privacy: the three "Faces" rows ----------
 class PolicyBox:
     proxy = None
 

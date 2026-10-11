@@ -797,7 +797,7 @@ def uc_identity(run: Run) -> None:
 
 def uc_privacy(run: Run) -> None:
     run.screen("/privacy/")
-    # The three "Pictures" rows of the Privacy screen. Saved pictures are always blurred: a box with blur_faces off FAILS.
+    # The three "Faces" rows of the Privacy screen. Saved pictures are always blurred: a box with blur_faces off FAILS.
     run.fetch("saved pictures are always blurred", "/vault/policy", ("blur_faces", "offline"), missing="the vault is not on this box",
               check=lambda d: None if d["blur_faces"] is True else (
                   "blur_faces is OFF: this box is saving pictures with faces showing. Privacy -> \"Blur saved pictures from now on\", "
