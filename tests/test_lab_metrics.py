@@ -496,7 +496,7 @@ def test_every_low_confidence_seed_row_says_why():
         "label_pool." + name for name in ("wall_s", "energy_j", "joules_per_completion_token", "joules_per_example")} | {
         # R65: the two-pod runs, one run per setting, and the link probes, one run each
         "trainer.split.samples_per_s", "trainer.split.train_s", "trainer.split.loss_last", "trainer.split.train_loss",
-        "trainer.split.peak_mem_gb", "link.exchange_s", "link.exchange_bytes", "link.exchange_pack_s",
+        "trainer.split.peak_mem_gb", "trainer.split.heldout_passed", "link.exchange_s", "link.exchange_bytes", "link.exchange_pack_s",
         "link.exchange_reconstruction_rel_err", "pod.teacher_start_s", "link.mb_s", "link.rtt_ms"}
     for row in flagged:
         if row["conditions"].get("sampler") == SAMPLER:  # the sampler's rows: its error is "unknown" until a reference run

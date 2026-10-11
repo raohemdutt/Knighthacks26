@@ -30,7 +30,7 @@ RUNS = {
               "slots": "GPU Queue rows of R65 on GPU A and GPU B, 08:08 to 08:18 UTC"},
     "lsgd2": {"epochs": 6, "lr": 2e-4, "relay_in_train_s": False,
               "what": "matched steps: 18 steps a rank as L16, the pair sees twice L16's examples",
-              "slots": "GPU Queue rows of R65 on GPU A and GPU B (matched steps)"},
+              "slots": "GPU Queue rows of R65 on GPU A and GPU B, 08:33 to 08:50 UTC"},
     "lsgd3": {"epochs": 6, "lr": 2.83e-4, "relay_in_train_s": False,
               "what": "matched steps with the learning rate scaled by sqrt(2) for the doubled effective batch",
               "slots": "GPU Queue rows of R65 on GPU A and GPU B (sqrt-scaled lr)"},
@@ -96,6 +96,14 @@ def run_rows(run: str) -> list[dict[str, Any]]:
     rows.append(_row("link.exchange_pack_s", statistics.median(x["pack_s"] for x in rounds if "final" not in x["label"]),
                      "s", {**base, "what_s": "copy to the CPU, delta, int8 code and residual, before the barrier"},
                      source, ts))
+    heldout = folder / "candidate-heldout.json"
+    if heldout.exists():
+        h = json.loads(heldout.read_text(encoding="utf-8"))
+        rows.append(_row("trainer.split.heldout_passed", h["passed"], "items",
+                         {**base, "scored": h["scored"], "split_sha256": h["split_sha256"], "control_value": 24,
+                          "control": "L16's package, the gate's candidate arm: 24 of 24 (lab/L5_RESULT.md)",
+                          "how": h["note"], "decode": "greedy (top_k 1), thinking off"},
+                         f"R65 run {run}, {REL}/{run}/candidate-heldout.json and candidate-golden-eval.json", ts))
     rows.append(_row("link.exchange_reconstruction_rel_err", statistics.median(x["reconstruction_rel_err"] for x in rounds),
                      "ratio", {**base, "what_ratio": "norm of (delta - int8 code) / norm of delta, median over rounds"},
                      source, ts))
