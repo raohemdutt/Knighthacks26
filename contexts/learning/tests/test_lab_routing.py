@@ -1,4 +1,8 @@
-"""The routing what-if: it runs the real hook on recorded numbers, is repeatable, and never moves locked work."""
+"""The routing what-if: it runs the real hook on recorded numbers, is repeatable, and never moves locked work.
+
+The recorded numbers are the frozen rows of contexts/learning/tests/lab_rows.py, not the lab's committed file: the
+lab keeps appending to that and re-measuring, and what these tests check is the model, not this week's figures. The
+committed file is read by the one test named for it, which pins none of its values."""
 
 import json
 
@@ -10,11 +14,26 @@ import contexts.telemetry.application.routing as policies
 import runtime.routing as hook
 from contexts.learning.application import lab_routing
 from contexts.learning.application.lab_bench import METRICS_FILE, read_rows
-from contexts.learning.application.lab_routing import KINDS, MODEL_STATEMENT, NO_MEASUREMENT, SimError, interp, simulate
+from contexts.learning.application.lab_routing import KINDS, MODEL_STATEMENT, NO_MEASUREMENT, SimError, interp, recorded_inputs, simulate
 from contexts.learning.lab_bench_api import lab_bench_router
+from contexts.learning.tests.lab_rows import POD_A_CURVE, POD_A_SESSION, pod_a_sweep, recorded, write
 
-ROWS, _ = read_rows(METRICS_FILE)
+ROWS = [{**r, "_line": n} for n, r in enumerate(recorded(), 1)]
 NAMES = [k["kind"] for k in KINDS]
+
+
+def test_the_teachers_curve_is_the_teacher_pods_own_sweep_even_when_the_other_pod_ran_a_newer_one():
+    cheaper = {name: (unit, tuple(v / 2 for v in values)) for name, (unit, values) in POD_A_CURVE.items()}
+    later = pod_a_sweep(session="pod-b-night", node="pod-b", family="teacher", ts="2026-10-11T04:13:45Z")
+    for r in later:  # a different curve, so a mix-up would show in the values
+        r["value"] = cheaper[r["metric"].split(".", 1)[1]][1][[1, 4, 8, 16, 64].index(r["conditions"]["batch_size"])]
+    rows = ROWS + [{**r, "_line": len(ROWS) + n} for n, r in enumerate(later, 1)]
+    teacher = recorded_inputs(rows)["teacher"]
+    assert (teacher["node"], teacher["session"]) == (policies.TEACHER_NODE, POD_A_SESSION) == ("pod-a", POD_A_SESSION)
+    assert [p["value"] for p in teacher["j_per_token"]] == list(POD_A_CURVE["joules_per_token"][1])
+    assert all(p["node"] == "pod-a" and p["line"] <= len(ROWS) for name in ("j_per_token", "tok_s", "ttft_s") for p in teacher[name])
+    only_b = [r for r in rows if not r["metric"].startswith("teacher_batching.")]  # a sweep on the trainer's pod is not the teacher's
+    assert recorded_inputs(only_b)["teacher"] is None and "batching sweep on pod-a" in recorded_inputs(only_b)["missing"][0]
 
 
 def test_the_same_inputs_give_the_same_output_and_another_seed_gives_another_stream():
@@ -136,9 +155,25 @@ def test_without_the_recorded_rows_it_refuses_to_model_and_bad_inputs_are_named(
     assert edited["params"]["preset"] is None and edited["params"]["tokens"]["eval"] == 200 and edited["params"]["rpm"] == 30
 
 
-def test_the_endpoint_runs_the_simulation_and_answers_400_with_the_reason():
+def test_the_committed_file_gives_a_simulation_or_says_what_it_lacks_and_cites_only_rows_it_holds():
+    rows, _ = read_rows(METRICS_FILE)
+    by_line = {r["_line"]: r for r in rows}
+    out = simulate({"preset": "burst"}, rows)
+    if not out["available"]:
+        assert out["reason"] and "policies" not in out
+        return
+    teacher = out["inputs"]["teacher"]
+    assert teacher["node"] == policies.TEACHER_NODE and len(teacher["batches"]) >= 2
+    for name in ("j_per_token", "tok_s", "ttft_s"):
+        for p in teacher[name]:
+            row = by_line[p["line"]]
+            assert (row["node"], row["value"]) == (policies.TEACHER_NODE, p["value"]) and not p["other_chip"]  # never another chip's curve
+    assert out["compare"]["saved_j"] >= -0.01 and set(out["policies"]) == {"capability", "energy"}
+
+
+def test_the_endpoint_runs_the_simulation_and_answers_400_with_the_reason(tmp_path):
     app = FastAPI()
-    app.include_router(lab_bench_router())
+    app.include_router(lab_bench_router(metrics_file=write(tmp_path, recorded())))
     with TestClient(app) as client:
         ok = client.post("/api/learning/lab/routing/simulate", json={"preset": "quiet"})
         assert ok.status_code == 200 and ok.json()["params"]["preset"] == "quiet" and ok.json()["available"] is True

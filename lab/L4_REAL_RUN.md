@@ -31,6 +31,10 @@ what each should print. Nothing here has run yet.
    therefore comes from a server-side `top_k` of 1, which the request does not
    override. The flags below must be checked on the real servers (step 3), and the
    gate is then run with `--decode-attested`, which every ledger row records.
+   The SPOT set (`spot-qa`) is the exception: its client (`lab/spot_score.py`) sends
+   `max_tokens: 1280` (`SPOT_MAX_TOKENS`, L28), because its longest held-out answer is
+   977 tokens. A server's own output limit (llama-server `--n-predict`, vLLM
+   `--max-model-len` minus the prompt) must not be below 1280 for a SPOT run.
 
 ## Env var names
 
@@ -111,7 +115,8 @@ what each should print. Nothing here has run yet.
 
    Expect `eval-gate.score` rows (current twice, candidate, teacher, and preview if
    given) and one `eval-gate` row whose outcome is the decision, each with
-   `conditions.decode` = `{"thinking": "off", "sampling": "greedy", "max_tokens": 512}`,
+   `conditions.decode` = `{"thinking": "off", "sampling": "greedy", "max_tokens": 512}`
+   (1280 for a `spot-qa` run),
    `conditions.scorer_commit`, `conditions.split_sha256` and `decode_source` `attested`.
    The folder holds `scores.json`, `current-1.json`, `current-2.json`, `candidate.json`,
    `teacher.json` and `learning.run.evaluated.jsonl`; `data/events/<day>.jsonl` holds
