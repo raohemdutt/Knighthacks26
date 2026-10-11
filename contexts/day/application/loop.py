@@ -8,11 +8,13 @@
 from datetime import datetime
 from pathlib import Path
 
+from contexts.day.application.arbiter import Arbiter
 from contexts.day.application.checkin import CheckIn
 from contexts.day.application.coach import DayCoach
 from contexts.day.application.narrator import NarrationConfig, Narrator
 from contexts.day.application.planner import DayPlanner
 from contexts.day.application.tracker import DayTracker
+from contexts.day.domain.arbiter import Rules
 from contexts.day.domain.clock import DayClock
 from contexts.play.dayrun.service import DayRun
 from contexts.play.domain.places import PlaceSet
@@ -39,6 +41,10 @@ class DayLoop:
         self.checkin = CheckIn(self.planner, self.tracker, self.coach, self.clock, memory=memory,
                                enabled=bool((narration or {}).get("checkin", True)))
         self.checkin.narrator = self.narrator
+        # The arbiter: one gate for everything said unasked (order, a global gap, merging, suppression, one speaker).
+        # agent.yaml `day: {speak_gap_s: 90}`.
+        self.arbiter = Arbiter(self.narrator, self.planner, self.clock, rules=Rules.of(narration))
+        self.narrator.arbiter = self.arbiter
 
     def subscribe(self, bus) -> None:
         p, t, c = self.planner, self.tracker, self.coach
@@ -74,9 +80,11 @@ class DayLoop:
 
         # Last, so the planner, the tracker and the coach have already taken the event in: the day in words.
         self.narrator.subscribe(bus)
+        self.arbiter.subscribe(bus)  # what was said and what is open, from the log; the held lines are live only
 
     def tick(self, now: datetime) -> list[Event]:
-        return self.planner.tick(now) + self.tracker.tick(now) + self.coach.tick(now) + self.checkin.tick(now)
+        out = self.planner.tick(now) + self.tracker.tick(now) + self.coach.tick(now) + self.checkin.tick(now)
+        return out + self.arbiter.tick(now)  # last: the lines queued by this tick and the held ones
 
     def in_words(self, now: datetime) -> dict[str, str]:
         """Today in a few plain sentences, for whoever is talking with the person (the agent's conversation):

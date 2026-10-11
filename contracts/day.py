@@ -296,6 +296,11 @@ class DayNarrated(TypedEvent):
     engine: Literal["template", "model"] = "template"
     facts_hash: str
     urgent: bool = False  # a "now" worth saying aloud unasked: leave now, late, you will miss it
+    # One speaker (contexts/day/domain/arbiter.py): "box" when the box's own speaker says this line, so the phone's
+    # voice stays silent for it; None (the default, as before) when the phone or browser may say it.
+    spoken_by: Literal["box"] | None = None
+    # Said inside another narration (that one's event id): the screen may show it, nobody says or pushes it again.
+    merged_into: str | None = None
 
 
 # --- the coach's feedback loop (contexts/day/application/coach_feedback.py): additive ---

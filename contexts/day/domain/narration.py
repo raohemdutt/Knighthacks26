@@ -387,7 +387,10 @@ def _sequence(beats: list[dict], w: Words, exact: bool = False, anchored: bool =
 
 
 def render(facts: dict, words: Words = Words()) -> Narration:
-    """The template narration of `facts`: deterministic, always available, and the model's draft."""
+    """The template narration of `facts`: deterministic, always available, and the model's draft. Facts with an
+    `also` (a second moment due at the same time, see contexts/day/domain/arbiter.py) come out as one sentence."""
+    if facts.get("also"):
+        return merge({k: v for k, v in facts.items() if k != "also"}, facts["also"], words)
     return {"morning": _morning, "now": _now, "replan": _replan, "coach": _coach, "evening": _evening,
             "approval": _approval, "checkin": _checkin, "suggest": _suggest, "start": _start}[facts["moment"]](facts, words)
 
@@ -817,6 +820,33 @@ def _start(f: dict, w: Words) -> Narration:
         spoken = f"It's {say_time(at)}: time for {what}{' ' + span if span else length}{',' if length and where else ''}{where}."
         shown = f"{cap(what_x)}{where}."
     return Narration(_tidy(spoken), _tidy(shown))
+
+
+def tail(f: dict, w: Words = Words()) -> str | None:
+    """A second moment said as the end of another line's sentence ("and Riley's dinner is at quarter past five if
+    you want it"), or None when the moment has no short form."""
+    if f.get("moment") == "suggest":
+        people = ([f["host"]] if f.get("host") else []) + list(f.get("who") or [])
+        title = f["title"]
+        meal = next((m for m in MEALS if m in title.lower()), None)
+        subject = f"{people[0]}'s {meal}" if meal and len(people) == 1 else the(title) + (f" with {_people(people)}" if people else "")
+        where = f" {at_place(f['place'])}" if f.get("place") else ""
+        return f"and {subject} is{where} at {say_time(f['at'])} if you want it"
+    if f.get("moment") == "start":
+        on = f" on {f['deadline']}" if f.get("deadline") else ""
+        what = f"{say_number(f['count'])} short {w.activity} blocks{on}" if f.get("count", 1) > 1 else f"{f['block']}{on}"
+        return f"and {what} {'start' if f.get('count', 1) > 1 else 'starts'} at {say_time(f['at'])}"
+    return None
+
+
+def merge(first: dict, second: dict, w: Words = Words()) -> Narration:
+    """Two moments due together as one line: the first said whole, the second as its closing clause (spoken), and
+    both shown (display). Falls back to the first alone when the second has no short form or the first asks."""
+    a, b = render(first, w), render(second, w)
+    end = tail(second, w)
+    if end is None or not a.spoken.endswith("."):
+        return a
+    return Narration(_tidy(f"{a.spoken[:-1]}; {end}."), _tidy(f"{a.display} {b.display}"))
 
 
 def _tidy(text: str) -> str:

@@ -108,6 +108,9 @@ class Job:
     ref: str | None
     urgent: bool
     event_id: str
+    about: frozenset = frozenset()  # the plan blocks / events the line is about (the arbiter's suppression rules)
+    spoken_by: str | None = None  # set by the arbiter: who says it aloud
+    merged_into: str | None = None  # set by the arbiter: said inside that narration
 
 
 class Narrator:
@@ -131,6 +134,7 @@ class Narrator:
         self.failed: set[str] = set()  # facts the model was already asked about and did not improve
         self.jobs: dict[str, Job] = {}  # handed to the background task, by source event id
         self.background = None  # bus.in_background(self.rewrite): set when subscribed
+        self.arbiter = None  # DayLoop sets it: every unasked narration goes through it (contexts/day/application/arbiter.py)
         self.stats = {"calls": 0, "used": 0, "unchanged": 0, "rejected": 0, "timeouts": 0, "errors": 0, "last_problem": None}
 
     @property
@@ -202,7 +206,21 @@ class Narrator:
             return []
         if job is None or self.same_as_last(job):
             return []
-        return self.say(job)
+        return self.arbiter.offer(job) if self.arbiter is not None else self.say(job)
+
+    def tell(self, moment: str, facts: dict, ts: datetime, day: date, plan_id: str | None, ref: str, urgent: bool = False,
+             about=()) -> list[Event]:
+        """A moment no event narrates (a block start, an optional-event suggestion): the facts in words, through
+        the arbiter. Event id `day-narrated-<moment>-<ref>`. With the arbiter the line is queued and said by its
+        next tick (DayLoop.tick ends with it), so lines due together can be merged; without one it is said now.
+        Nothing with the narration off, or when these facts were the last said for the moment."""
+        if self.mode == "off":
+            return []
+        job = self.job(moment, facts, ts, day, plan_id, ref, urgent=urgent, event_id=f"day-narrated-{moment}-{ref}")
+        if job is None or self.same_as_last(job):
+            return []
+        job.about = frozenset(about)
+        return self.arbiter.queue(job) if self.arbiter is not None else self.say(job)
 
     def say(self, job: Job, fast: bool = False) -> list[Event]:
         """The narration now (the template's words, or the model's accepted rewrite of these facts), or nothing
@@ -306,7 +324,8 @@ class Narrator:
 
     def event(self, job: Job, spoken: str, engine: str) -> DayNarrated:
         return DayNarrated(event_id=job.event_id, ts=job.ts, day=job.day, moment=job.moment, plan_id=job.plan_id, ref=job.ref,
-                           spoken=spoken, display=job.draft.display, engine=engine, facts_hash=job.hash, urgent=job.urgent)
+                           spoken=spoken, display=job.draft.display, engine=engine, facts_hash=job.hash, urgent=job.urgent,
+                           spoken_by=job.spoken_by, merged_into=job.merged_into)
 
     # --- on demand (POST /api/day/brief) ---
 
