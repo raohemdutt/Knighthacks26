@@ -7,8 +7,9 @@
 
 What a value is. The answering node's power integrated over the request window (telemetry.request: node, started,
 ended, tokens_out), with nothing subtracted: gross, as Context: Telemetry defines it and telemetry ruling 1 keeps it.
-The node's latest idle reading and its time are stored beside it, so a marginal figure can be derived later without
-measuring again. The Jetson integrates VDD_IN (module input); the pods integrate socket_w, which on the Strix Halo is
+The node's idle watts are stored beside it, so a marginal figure can be derived later without measuring again: the
+node's calibrated idle (application/idle.py: a setting per node, naming the ledger row it was measured as) with
+idle_source "calibrated", and only where none exists the latest quiet reading before the window, "latest_quiet". The Jetson integrates VDD_IN (module input); the pods integrate socket_w, which on the Strix Halo is
 the whole APU socket (CPU cores and graphics together); every value names its reading, boundary and accelerator.
 The integral and the split between overlapping requests are domain/energy.py's: bracketing samples, linear
 interpolation at both edges, every repeated reading kept, and each stretch split by output tokens.
@@ -38,6 +39,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from bus import EventBus
+from contexts.telemetry.application.idle import IdleFigure
 from contexts.telemetry.domain.energy import Window, attribute, brackets, integrate
 from contexts.telemetry.domain.nodes import JETSON, canonical
 from contexts.telemetry.domain.power import ACCELERATOR, BOUNDARY_TEXT, POWER_FIELD, reading_of
@@ -59,6 +61,7 @@ class Calibration:
     min_samples: int = MIN_SAMPLES
     settle_s: float = SETTLE_S
     reference: str = JETSON  # the clock offsets are measured against
+    idle: dict[str, IdleFigure] = field(default_factory=dict)  # node -> its calibrated idle (application/idle.py)
 
 
 def _s(t: datetime) -> float:
@@ -228,16 +231,22 @@ class JoulesPerAnswerProjection:
             reasons.append("overlapped a training step")
         if late:
             reasons.append("overlaps an answer reported before this request was known")
-        idle = self._idle(node, start, placed)
         back = start - _s(w.started)  # window clock = node clock - back
+        figure = cal.idle.get(node)
+        idle = None if figure else self._idle(node, start, placed)  # the latest quiet reading only as the fallback
+        if figure:
+            idle_fields = dict(idle_w=figure.watts, idle_ts=None, idle_source="calibrated", idle_metric=figure.metric,
+                               idle_measured=figure.measured)
+        else:
+            idle_fields = dict(idle_w=idle.watts if idle else None, idle_ts=_dt(idle.t - back) if idle else None,
+                               idle_source="latest_quiet" if idle else None)
         sampler = first.sampler if isinstance(first, GpuPower) and first.sampler else first.source
         return JoulesPerAnswer(
             event_id=f"jpa:{node}:{w.request_id}:{w.started.isoformat()}", ts=w.ended, node=node,
             request_id=w.request_id, target=w.target, model=w.model, kind=w.kind, started=w.started, ended=w.ended,
             clock=canonical(w.clock or w.node), joules=joules, node_energy_j=integrate(trace, start, end),
             overlapping=overlapping, tokens_out=w.tokens_out,
-            idle_w=idle.watts if idle else None, idle_ts=_dt(idle.t - back) if idle else None,
-            power_field=POWER_FIELD[first.type], boundary=BOUNDARY_TEXT[first.type], accelerator=ACCELERATOR[first.type],
+            **idle_fields, power_field=POWER_FIELD[first.type], boundary=BOUNDARY_TEXT[first.type], accelerator=ACCELERATOR[first.type],
             sampler=sampler, period_ms=first.period_ms, samples=in_window, error=error,
             clock_offset_s=p[4], clock_error_s=p[5], low_confidence=bool(reasons), reasons=reasons,
             conditions=conditions)

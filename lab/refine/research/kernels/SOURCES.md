@@ -549,3 +549,24 @@ and L11 (`lab/public_prior.py`).
 | S178 | project doc | vLLM v0.31.0 release notes (released 2026-10-05 per the page; tag commit db9527a46 dated 2026-10-02): Quantization, AMD ROCm and Dependencies lines; first 100,000 characters read | https://github.com/vllm-project/vllm/releases/tag/v0.31.0 | 2026-10-11 | upgrade |
 | S179 | project doc | ROCm/vllm releases page (v0.7.2+rocm to v0.9.2; "Navi" lines only, no RDNA or gfx1151 line) | https://github.com/ROCm/vllm/releases | 2026-10-11 | upgrade |
 | S180 | project doc | triton-lang/triton releases page (3.4.0 to 3.8.0; AMD lines for gfx11, gfx12, RDNA 3, 3.5 and 4) | https://github.com/triton-lang/triton/releases | 2026-10-11 | upgrade |
+
+## Added by R37, thinking sitting 1 (2026-10-11): `predictions/w4a16_decode_gfx1151.md`
+
+Re-opened on 2026-10-11 and cited under their existing ids: S07 (vLLM `mixed_precision/conch.py` at b1388b1, `can_implement` and `apply_weights`) and S10 (Conch v1.2.1 `gemm.py`: `_get_tuning_parameters`, `_gemm_kernel`, `_dequantize`, `mixed_precision_gemm_launcher`, the grid `cdiv(m, 128) * cdiv(n, 64)` and `stride_mul = block_k / group_size`). Notes in `predictions/` are named by path in the "Cited in" column.
+
+| Id | Kind | Source | Link or location | Opened | Cited in |
+| --- | --- | --- | --- | --- | --- |
+| L14 | our measurement | `lab/refine/metrics.jsonl` lines 24 and 29 (R29 on pod C: 2.88 tok/s, 120.3 W) and lines 67 to 96 (R26 `teacher_batching.*` at 1, 4, 8, 16 and 64 streams: per-stream and total tok/s, TTFT, 96.0 W average, 36.66 to 1.94 J/token, median of 3 repeats) | this repo, `lab/refine/metrics.jsonl` (main at e81bccd) | 2026-10-11 | predictions/w4a16_decode_gfx1151.md |
+| L15 | our files | `lab/kernels/chipsheet/chipsheet.py`, `_w4a16_kernel`, `_dequant_body` and `DEQUANT_CONFIGS` (BLOCK_M 16 with BLOCK_N 64 and BLOCK_K 64, or BLOCK_N 32 and BLOCK_K 128; no `num_warps` or `num_stages` passed): the kernel behind the chip sheet's `dequant.w4a16.*` rows | this repo, `lab/kernels/chipsheet/chipsheet.py` (main at e81bccd) | 2026-10-11 | predictions/w4a16_decode_gfx1151.md |
+| L16 | our files | `gpu/R12_T0_PREREG.md` on branch `ctx/runtime/kernel-experiment-gfx1151` at 3ecd427 (R12, not yet on main): attention about 0.3 percent of a batch-1 decode step, both unified-attention levers predicted at 0.0 percent J/token | this repo, branch `ctx/runtime/kernel-experiment-gfx1151`, `gpu/R12_T0_PREREG.md` (3ecd427) | 2026-10-11 | predictions/w4a16_decode_gfx1151.md |
+| L17 | our files | `lab/README.md`, sections "Batching sweep on the pod C teacher (R26, Strix Halo, gfx1151)" (the 96 W flat package power, the 10.44 W loaded idle) and "Decode profile: `lab/profile_decode.py` (R47)" (the fields of the profile result; "Not yet run on a pod") | this repo, `lab/README.md` (main at e81bccd) | 2026-10-11 | predictions/w4a16_decode_gfx1151.md |
+
+## Added by R37, thinking sitting 1 (2026-10-11): `predictions/train_step_gfx1151.md`
+
+Re-opened on 2026-10-11 and cited under its existing id: S121 (transformers `modeling_qwen3_5.py` at 536ecc0: `torch_chunk_gated_delta_rule`, its float32 casts, 64-token chunks, `torch.linalg.solve_triangular` and the sequential chunk loop; `Qwen3_5GatedDeltaNet.__init__` and the attention projections).
+
+| Id | Kind | Source | Link or location | Opened | Cited in |
+| --- | --- | --- | --- | --- | --- |
+| S181 | model files | Qwen, `Qwen/Qwen3.5-4B` `config.json` (`text_config`: 32 layers, `full_attention_interval` 4, hidden 2560, `intermediate_size` 9216, 16 query and 4 KV heads of 256 with `attn_output_gate`, linear-attention key heads 16 x 128 and value heads 32 x 128, vocabulary 248,320, tied embeddings, `mamba_ssm_dtype` float32) | https://huggingface.co/Qwen/Qwen3.5-4B/raw/main/config.json | 2026-10-11 | predictions/train_step_gfx1151.md |
+| L18 | our files | `lab/train.py` (L3 trainer): module docstring ("Settings", "Per step"), `BASELINE`, `PINNED`, `VISION_MODULES` and the `SFTConfig` it builds (batch 4 x accumulation 4, checkpointing on, SDPA, fused AdamW, torch Gated DeltaNet, no torch.compile; `trainer.samples_per_s` and `trainer.energy_j`) | this repo, `lab/train.py` (main at e81bccd) | 2026-10-11 | predictions/train_step_gfx1151.md |
+| L19 | our measurement | `lab/refine/metrics.jsonl` lines 13 and 14: the R9700 smoke step of Qwen3.5-4B (`lab/smoke_lora.py`, batch 4, 256 tokens, 20 steps, 0.51 samples/s, 8.7 GiB peak), another chip, never a gfx1151 baseline | this repo, `lab/refine/metrics.jsonl` (main at e81bccd) | 2026-10-11 | predictions/train_step_gfx1151.md |

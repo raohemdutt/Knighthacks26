@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from contexts.demo import history as past_days
 from contexts.demo.nearby import nearby_events
 from contexts.demo.story import ROOT, load, story
 from contexts.gateway.bootstrap import Atlas, Settings, build
@@ -86,9 +87,11 @@ async def expire(app: Atlas, now: datetime) -> None:
 
 
 async def seed(data_dir: str | Path, now: datetime | None = None, force: bool = False, config_dir: Path | None = None,
-               extra: Callable[[datetime], list[Event]] | None = None) -> Seeded:
+               extra: Callable[[datetime], list[Event]] | None = None, history: bool = False) -> Seeded:
     """Publish the night into `data_dir`. `now` moves the story so it ends then (default: the script's own time).
     `config_dir` builds the app on another config directory; `extra(now)` adds more source events to the story.
+    `history` first lives the twelve days before the story through the Day loop (contexts/demo/history.py), so the
+    date strip on Today's Plan has earlier days to open.
 
     Refuses a directory that already has an event log or a memory file unless `force`; never deletes.
     With `force` the existing log is replayed first, so seeding the same story twice adds nothing."""
@@ -126,6 +129,8 @@ async def seed(data_dir: str | Path, now: datetime | None = None, force: bool = 
         events = sorted(events + extra(now), key=lambda e: e.ts)  # stable: the story keeps its own order
 
     app.bus.subscribe("", note)  # live only: sees exactly what is appended to the log
+    if history:
+        out.source_events += await past_days.publish(app, now, clock, expire, settle)
     for e in events:
         clock["now"] = e.ts
         await expire(app, e.ts)

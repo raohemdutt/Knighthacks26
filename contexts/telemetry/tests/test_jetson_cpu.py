@@ -6,6 +6,7 @@ import asyncio
 import json
 import shlex
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -62,17 +63,28 @@ def test_a_stretch_of_no_time_is_refused():
 def test_the_measurement_runs_off_then_on_and_publishes_every_sample_into_a_throwaway_log(tmp_path):
     readings = iter([snap(0, 100.0, 0.0), snap(1, 100.1, 0.0), snap(1, 100.1, 0.0), snap(2, 100.205, 0.004)])
     pids = []
+    samplers = []
 
     def snapshot(pid):
         pids.append(pid)
         return next(readings)
 
     def make_sampler():
-        return JetsonPowerSampler(TegrastatsProcess(fake("tegrastats")), JetsonSysfs(tmp_path / "sysfs"),
-                                  NvpmodelQuery(fake("nvpmodel")), interval_ms=20, nvpmodel_every_s=0)
+        sampler = JetsonPowerSampler(TegrastatsProcess(fake("tegrastats")), JetsonSysfs(tmp_path / "sysfs"),
+                                     NvpmodelQuery(fake("nvpmodel")), interval_ms=20, nvpmodel_every_s=0)
+        samplers.append(sampler)
+        return sampler
 
     async def wait(seconds):
-        await asyncio.sleep(0.5)  # long enough for the fake tegrastats to print a few lines
+        # The off stretch has no sampler: nothing to wait for. The on stretch lasts until the sampler has made three
+        # samples from the fake tegrastats (a child process, slow to start on a loaded box), not a fixed sleep; the
+        # deadline only turns a sampler that never produces into a failure instead of a hang.
+        if not samplers:
+            return
+        deadline = time.monotonic() + 30.0
+        while samplers[-1].samples_made < 3:
+            assert time.monotonic() < deadline, f"no three samples within 30 s: {samplers[-1].status()}"
+            await asyncio.sleep(0.01)
 
     report = asyncio.run(measure_sampler_cpu(make_sampler, snapshot, seconds=1, log_dir=tmp_path / "log", sleep=wait))
     logged = [json.loads(line) for path in (tmp_path / "log").glob("*.jsonl") for line in path.read_text().splitlines()]
