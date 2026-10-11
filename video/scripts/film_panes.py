@@ -279,15 +279,20 @@ def league(s: Scene):
                f'<div class="site-card mini" style="flex:1;padding:14px"><div class="pk">{n}</div><div class="row dash" style="padding:8px 10px"><div class="w" style="font-size:22px">{b}</div></div>'
                f'<div class="row" id="{s.id}-c{i}" style="padding:8px 10px;opacity:0"><div class="w" style="font-size:22px">8:30 Board games</div></div></div>'
                for i, (n, b) in enumerate([("Hemdutt", "busy"), ("Ilan", "busy at 8"), ("Dominick", "busy")])) + '</div>'
-           '<div class="bub" style="font-size:22px"><b>Hemdutt\'s box</b>Free.</div><div class="bub me" style="font-size:22px">Busy at 8. How about 8:30? <b>Ilan\'s box</b></div>'
-           '<div class="bub" style="font-size:22px"><b>Dominick\'s box</b>8:30 works.</div>')
+           + "".join(f'<div class="bub{me}" id="{s.id}-b{k}" style="font-size:22px;margin-top:10px;padding:10px 18px;opacity:0"><b>{who}</b>{said}</div>'
+                     for k, (who, said, me) in enumerate([("Hemdutt's box", "Free.", ""), ("Ilan's box", "Busy at 8. How about 8:30?", " me"), ("Dominick's box", "8:30 works.", "")])))
     dinner = ('<div class="ph">Ilan is at \'63 South</div><div class="pk">shared place · expires tonight</div>' + rows([("now", "Dinner with Ilan", "free till 8:30", True)]) +
               '<div class="chips"><span class="site-tag">Agreed, three of three · 8:30</span></div>')
     meals = ('<div class="ph">Meals today</div><div class="big">2 of 2</div><div class="pk">goal met · the one you set this morning</div>' +
              rows([("3rd", "Hemdutt", "league row updated", False)]))
-    s.window([("League", table, 0.4), ("Calendars", cal, "0:0"), ("Places", dinner, "1:0"), ("Meals", meals, "3:0")], at=0.3)
+    # Taller window so the three calendars and the three replies fit; the replies travel one by one after Dominick's
+    # line, the 8:30 block then lands on all three calendars, and the pane stays up into Atlas's next line.
+    s.window([("League", table, 0.4), ("Calendars", cal, "0:0"), ("Places", dinner, "1:0.35"), ("Meals", meals, "3:0")], at=0.3, top=50, height=790)
+    end0 = s.t("0:1")
+    for k, dt in enumerate((-0.5, 0.0, 0.5)):
+        s.tween(f'tl.fromTo("#{s.id}-b{k}", {{ opacity: 0, y: 10 }}, {{ opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }}, {end0 + dt:.3f});')
     for i in range(3):
-        s.tween(f'tl.to("#{s.id}-c{i}", {{ opacity: 1, duration: 0.3 }}, {s.t("0:1") + 0.6:.3f});')
+        s.tween(f'tl.fromTo("#{s.id}-c{i}", {{ opacity: 0, y: -14 }}, {{ opacity: 1, y: 0, duration: 0.35, ease: "power3.out" }}, {end0 + 1.0:.3f});')
 
 
 def friends(s: Scene):

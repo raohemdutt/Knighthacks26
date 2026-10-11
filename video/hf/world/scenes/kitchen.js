@@ -15,10 +15,11 @@ export default function choreograph(tl, world, scene) {
   tl.to(state, { kitchen: 1, duration: 1.0, ease: "power2.out" }, t0);
   world.leg(tl, t0, SHOTS.kitchenWide, 1.55, "power2.inOut");
   // "The bin camera sees": a planned hard cut to the wall camera's view (announced in WORLD.md's hand-over table).
-  const cut = at(0, 0.25);
+  const cut = at(0, 0.2);
   tl.set(cam, { ...SHOTS.binCam }, cut);
   // "a can go in the trash": the throw lands on "the trash".
-  tl.to(state, { canThrow: 1, duration: 1.15, ease: "none" }, at(0, 0.46) - 1.0);
+  // He drops it in the blue bin after Atlas says "The blue one" (in the hold before the count), seen from the wall camera.
+  tl.fromTo(state, { canThrow: 0 }, { canThrow: 1, duration: 1.15, ease: "none", immediateRender: false }, at(0, 1) + 0.05);
 
   // ---- Line 1: "It keeps the count": pan to the counter Atlas; it lights up as it counts. ----
   // A second planned hard cut, out of the wall camera's view onto the counter device (a pan from the wall camera

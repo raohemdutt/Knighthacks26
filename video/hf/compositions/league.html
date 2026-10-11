@@ -37,10 +37,10 @@
 </style>
       <div id="root" data-composition-id="league" data-width="1920" data-height="1080">
         <div id="league-chapter" class="chip-ch soft-raised soft-muted">Friends</div>
-        <div class="win soft-raised" id="league-win1" style="top:60px;height:640px">
+        <div class="win soft-raised" id="league-win1" style="top:50px;height:790px">
           <div class="win-bar"><div class="win-dot"></div><div class="win-app">Atlas</div><div class="win-tabs"><div class="win-tab" id="league-win1-tab0">League</div><div class="win-tab" id="league-win1-tab1">Calendars</div><div class="win-tab" id="league-win1-tab2">Places</div><div class="win-tab" id="league-win1-tab3">Meals</div></div></div>
           <div class="pane" id="league-win1-p0"><div class="ph">This week's league</div><div class="row"><div class="t">1st</div><div class="w">Dominick<small>most goals · picks tonight</small></div></div><div class="row"><div class="t">2nd</div><div class="w">Ilan</div></div><div class="row"><div class="t">3rd</div><div class="w">Hemdutt<small>roughest week · driving</small></div></div></div>
-          <div class="pane" id="league-win1-p1"><div class="ph">Three calendars</div><div class="pk">each box reads only its own</div><div style="display:flex;gap:14px;margin-top:14px"><div class="site-card mini" style="flex:1;padding:14px"><div class="pk">Hemdutt</div><div class="row dash" style="padding:8px 10px"><div class="w" style="font-size:22px">busy</div></div><div class="row" id="league-c0" style="padding:8px 10px;opacity:0"><div class="w" style="font-size:22px">8:30 Board games</div></div></div><div class="site-card mini" style="flex:1;padding:14px"><div class="pk">Ilan</div><div class="row dash" style="padding:8px 10px"><div class="w" style="font-size:22px">busy at 8</div></div><div class="row" id="league-c1" style="padding:8px 10px;opacity:0"><div class="w" style="font-size:22px">8:30 Board games</div></div></div><div class="site-card mini" style="flex:1;padding:14px"><div class="pk">Dominick</div><div class="row dash" style="padding:8px 10px"><div class="w" style="font-size:22px">busy</div></div><div class="row" id="league-c2" style="padding:8px 10px;opacity:0"><div class="w" style="font-size:22px">8:30 Board games</div></div></div></div><div class="bub" style="font-size:22px"><b>Hemdutt's box</b>Free.</div><div class="bub me" style="font-size:22px">Busy at 8. How about 8:30? <b>Ilan's box</b></div><div class="bub" style="font-size:22px"><b>Dominick's box</b>8:30 works.</div></div>
+          <div class="pane" id="league-win1-p1"><div class="ph">Three calendars</div><div class="pk">each box reads only its own</div><div style="display:flex;gap:14px;margin-top:14px"><div class="site-card mini" style="flex:1;padding:14px"><div class="pk">Hemdutt</div><div class="row dash" style="padding:8px 10px"><div class="w" style="font-size:22px">busy</div></div><div class="row" id="league-c0" style="padding:8px 10px;opacity:0"><div class="w" style="font-size:22px">8:30 Board games</div></div></div><div class="site-card mini" style="flex:1;padding:14px"><div class="pk">Ilan</div><div class="row dash" style="padding:8px 10px"><div class="w" style="font-size:22px">busy at 8</div></div><div class="row" id="league-c1" style="padding:8px 10px;opacity:0"><div class="w" style="font-size:22px">8:30 Board games</div></div></div><div class="site-card mini" style="flex:1;padding:14px"><div class="pk">Dominick</div><div class="row dash" style="padding:8px 10px"><div class="w" style="font-size:22px">busy</div></div><div class="row" id="league-c2" style="padding:8px 10px;opacity:0"><div class="w" style="font-size:22px">8:30 Board games</div></div></div></div><div class="bub" id="league-b0" style="font-size:22px;margin-top:10px;padding:10px 18px;opacity:0"><b>Hemdutt's box</b>Free.</div><div class="bub me" id="league-b1" style="font-size:22px;margin-top:10px;padding:10px 18px;opacity:0"><b>Ilan's box</b>Busy at 8. How about 8:30?</div><div class="bub" id="league-b2" style="font-size:22px;margin-top:10px;padding:10px 18px;opacity:0"><b>Dominick's box</b>8:30 works.</div></div>
           <div class="pane" id="league-win1-p2"><div class="ph">Ilan is at '63 South</div><div class="pk">shared place · expires tonight</div><div class="row dash"><div class="t">now</div><div class="w">Dinner with Ilan<small>free till 8:30</small></div></div><div class="chips"><span class="site-tag">Agreed, three of three · 8:30</span></div></div>
           <div class="pane" id="league-win1-p3"><div class="ph">Meals today</div><div class="big">2 of 2</div><div class="pk">goal met · the one you set this morning</div><div class="row"><div class="t">3rd</div><div class="w">Hemdutt<small>league row updated</small></div></div></div>
         </div>
@@ -57,18 +57,21 @@
           tl.fromTo("#league-win1-tab0", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 0.400);
           tl.to("#league-win1-tab0", { opacity: 0, duration: 0.25, ease: "power2.in" }, 0.750);
           tl.fromTo("#league-win1-p1", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 1.000);
-          tl.to("#league-win1-p1", { opacity: 0, duration: 0.25, ease: "power2.in" }, 6.150);
+          tl.to("#league-win1-p1", { opacity: 0, duration: 0.25, ease: "power2.in" }, 8.578);
           tl.fromTo("#league-win1-tab1", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 1.000);
-          tl.to("#league-win1-tab1", { opacity: 0, duration: 0.25, ease: "power2.in" }, 6.150);
-          tl.fromTo("#league-win1-p2", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 6.400);
+          tl.to("#league-win1-tab1", { opacity: 0, duration: 0.25, ease: "power2.in" }, 8.578);
+          tl.fromTo("#league-win1-p2", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 8.828);
           tl.to("#league-win1-p2", { opacity: 0, duration: 0.25, ease: "power2.in" }, 16.058);
-          tl.fromTo("#league-win1-tab2", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 6.400);
+          tl.fromTo("#league-win1-tab2", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 8.828);
           tl.to("#league-win1-tab2", { opacity: 0, duration: 0.25, ease: "power2.in" }, 16.058);
           tl.fromTo("#league-win1-p3", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 16.308);
           tl.fromTo("#league-win1-tab3", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, 16.308);
-          tl.to("#league-c0", { opacity: 1, duration: 0.3 }, 5.200);
-          tl.to("#league-c1", { opacity: 1, duration: 0.3 }, 5.200);
-          tl.to("#league-c2", { opacity: 1, duration: 0.3 }, 5.200);
+          tl.fromTo("#league-b0", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 4.100);
+          tl.fromTo("#league-b1", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 4.600);
+          tl.fromTo("#league-b2", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 5.100);
+          tl.fromTo("#league-c0", { opacity: 0, y: -14 }, { opacity: 1, y: 0, duration: 0.35, ease: "power3.out" }, 5.600);
+          tl.fromTo("#league-c1", { opacity: 0, y: -14 }, { opacity: 1, y: 0, duration: 0.35, ease: "power3.out" }, 5.600);
+          tl.fromTo("#league-c2", { opacity: 0, y: -14 }, { opacity: 1, y: 0, duration: 0.35, ease: "power3.out" }, 5.600);
           window.__timelines["league"] = tl;
         })();
       </script>

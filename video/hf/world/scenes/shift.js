@@ -21,8 +21,7 @@ export default function choreograph(tl, world, scene) {
   world.leg(tl, at(L, 2, 0), SHOTS.controlWide, 1.4, "power2.inOut");
   world.leg(tl, at(L, 4, 0), SHOTS.plantView, 1.4, "power2.inOut");
   tl.fromTo(state, { spotWalk: 0 }, { spotWalk: 0.42, duration: Math.max(1.5, tEnd - at(L, 4, 0) - 2.0), ease: "none", immediateRender: false }, at(L, 4, 0.3));
-  // Shift Run: the trainee steps in; back behind Xander for the handoff.
-  tl.to(state, { trainee: 1, duration: 0.6 }, at(L, 5, 0.5));
+  // Shift Run (on the screen) and the handoff, back behind Xander. No second person (Dom).
   world.leg(tl, at(L, 5, 0.6), { ...SHOTS.controlWide, x: SHOTS.controlWide.x + 2, z: SHOTS.controlWide.z - 2 }, Math.max(0.6, tEnd - at(L, 5, 0.6) - 0.1), "power2.inOut");
   cut(tl, world, tEnd - 0.02, HOME);
 }

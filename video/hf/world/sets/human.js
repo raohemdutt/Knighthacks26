@@ -8,6 +8,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
+import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 import { matte, clamp01, lerp } from "./common.js";
 
 let cached = null;
@@ -36,6 +37,47 @@ const REGION = (name) => /Head|neck/.test(name) ? "skin" : /hand|index|middle|pi
   : /foot|ball/.test(name) ? "shoes" : /thigh|calf|pelvis/.test(name) ? "pants" : "shirt";
 const smooth = (u) => { const x = clamp01(u); return x * x * (3 - 2 * x); };
 const angLerp = (a, b, u) => a + (((b - a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI) * u;
+
+/** Soften the sculpted muscles: a few Taubin passes (smooth, then un-shrink) over the torso, arms and legs, in bind
+ *  space. The head, hands and feet keep their shape; the skin weights are untouched. */
+function relax(g, boneNames, passes = 6) {
+  const pos = g.attributes.position, n = pos.count, si = g.attributes.skinIndex, sw = g.attributes.skinWeight;
+  const idx = g.index ? g.index.array : null; if (!idx) return;
+  // Seams: vertices at the same spot (split for UVs) form one group and always move together, so no crack opens.
+  const key = (v) => `${Math.round(pos.getX(v) * 1e4)},${Math.round(pos.getY(v) * 1e4)},${Math.round(pos.getZ(v) * 1e4)}`;
+  const gid = new Int32Array(n), groups = new Map(); let G = 0;
+  for (let v = 0; v < n; v++) { const k = key(v); if (!groups.has(k)) groups.set(k, G++); gid[v] = groups.get(k); }
+  const nb = Array.from({ length: G }, () => new Set()), keep = new Uint8Array(G);
+  for (let i = 0; i < idx.length; i += 3) {
+    const a = gid[idx[i]], b = gid[idx[i + 1]], c = gid[idx[i + 2]];
+    if (a !== b) { nb[a].add(b); nb[b].add(a); } if (a !== c) { nb[a].add(c); nb[c].add(a); } if (b !== c) { nb[b].add(c); nb[c].add(b); }
+  }
+  // The body is several meshes; an edge used by one triangle only is where this mesh meets the next, so its ends stay
+  // put (otherwise the smoothing pulls the pieces apart and the background shows through).
+  const edges = new Map(), ek = (a, b) => (a < b ? a * G + b : b * G + a);
+  for (let i = 0; i < idx.length; i += 3) for (const [a, b] of [[idx[i], idx[i + 1]], [idx[i + 1], idx[i + 2]], [idx[i + 2], idx[i]]]) {
+    const A = gid[a], B = gid[b]; if (A === B) continue; const k = ek(A, B); edges.set(k, (edges.get(k) || 0) + 1);
+  }
+  for (const [k, c] of edges) if (c === 1) { keep[Math.floor(k / G)] = 1; keep[k % G] = 1; }
+  const p = new Float32Array(G * 3);
+  for (let v = 0; v < n; v++) {
+    const o = gid[v] * 3; p[o] = pos.getX(v); p[o + 1] = pos.getY(v); p[o + 2] = pos.getZ(v);
+    let best = 0, bw = -1; for (let k = 0; k < 4; k++) { const w = sw.getComponent(v, k); if (w > bw) { bw = w; best = si.getComponent(v, k); } }
+    if (/Head|neck|hand|index|middle|pinky|ring|thumb|foot|ball/.test(boneNames[best] || "")) keep[gid[v]] = 1;
+  }
+  const q = new Float32Array(p.length);
+  const step = (lam) => {
+    for (let s = 0; s < G; s++) {
+      const o = s * 3; if (keep[s] || !nb[s].size) { q[o] = p[o]; q[o + 1] = p[o + 1]; q[o + 2] = p[o + 2]; continue; }
+      let x = 0, y = 0, z = 0; for (const u of nb[s]) { x += p[u * 3]; y += p[u * 3 + 1]; z += p[u * 3 + 2]; }
+      const m = nb[s].size; q[o] = p[o] + lam * (x / m - p[o]); q[o + 1] = p[o + 1] + lam * (y / m - p[o + 1]); q[o + 2] = p[o + 2] + lam * (z / m - p[o + 2]);
+    }
+    p.set(q);
+  };
+  for (let i = 0; i < passes; i++) { step(0.5); step(-0.53); }
+  for (let v = 0; v < n; v++) { const o = gid[v] * 3; pos.setXYZ(v, p[o], p[o + 1], p[o + 2]); }
+  pos.needsUpdate = true;
+}
 
 export function makeHuman(gltf, outfit = LOOKS.hemdutt) {
   const model = SkeletonUtils.clone(gltf.scene);
@@ -84,7 +126,11 @@ uniform vec3 uSkin; uniform vec3 uShirt; uniform vec3 uPants; uniform vec3 uShoe
     o.material = main; o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false;
     if (o.isSkinnedMesh) {
       skinned = o; skins.push(o);
-      const g = o.geometry = o.geometry.clone(), si = g.attributes.skinIndex, sw = g.attributes.skinWeight, n = si.count;
+      // Smooth shading (Dom: less defined muscles, a smoother person): weld the vertices the mesh duplicates for its
+      // faceted normals, then recompute soft normals across them.
+      let gg = o.geometry.clone(); gg.deleteAttribute("normal"); gg = mergeVertices(gg, 1e-4);
+      relax(gg, o.skeleton.bones.map((b) => b.name)); gg.computeVertexNormals();
+      const g = o.geometry = gg, si = g.attributes.skinIndex, sw = g.attributes.skinWeight, n = si.count;
       const reg = new Float32Array(n * 4), names = o.skeleton.bones.map((b) => b.name), SLOT = { skin: 0, shirt: 1, pants: 2, shoes: 3 };
       for (let v = 0; v < n; v++) {
         let best = 0, bw = -1; for (let k = 0; k < 4; k++) { const w = sw.getComponent(v, k); if (w > bw) { bw = w; best = si.getComponent(v, k); } }
