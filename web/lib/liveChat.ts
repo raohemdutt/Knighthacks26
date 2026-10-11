@@ -70,9 +70,21 @@ export function parseSse(buffer: string): { events: ChatEvent[]; rest: string } 
 const num = (x: number, digits: number) => (Number.isFinite(x) ? x.toFixed(digits) : "?");
 
 /** "N tokens in S s, X tok/s, about J joules", or "meters offline" in place of the joules when energy is null. */
+/**
+ * Tokens a second from the done event's own totals: tokens over the decode time, which is seconds minus ttft_s when
+ * ttft_s is there and smaller than seconds, else seconds. The event's tok_s is not used (a near-zero window made it
+ * read 28453 on the box). Null without tokens or time.
+ */
+export function rateOf(d: Pick<ChatDone, "tokens" | "seconds" | "ttft_s">): number | null {
+  if (!(d.tokens > 0) || !(d.seconds > 0)) return null;
+  const decode = typeof d.ttft_s === "number" && d.ttft_s >= 0 && d.ttft_s < d.seconds ? d.seconds - d.ttft_s : d.seconds;
+  return decode > 0 ? d.tokens / decode : null;
+}
+
 export function footerText(d: ChatDone): string {
   const parts = [`${d.tokens} token${d.tokens === 1 ? "" : "s"} in ${num(d.seconds, 1)} s`];
-  if (typeof d.tok_s === "number") parts.push(`${num(d.tok_s, 1)} tok/s`);
+  const rate = rateOf(d);
+  if (rate !== null) parts.push(`${num(rate, 1)} tok/s`);
   parts.push(d.energy && typeof d.energy.joules === "number" ? `about ${Math.round(d.energy.joules)} joules` : "meters offline");
   return parts.join(", ");
 }
