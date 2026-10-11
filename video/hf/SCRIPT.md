@@ -11,7 +11,8 @@ v4.6 folds in Hemdutt's notes from Notion (Sun 3:21 AM, agreed by him): 48 of 48
 beat 13's "recognise each other", a new beat 15, one clause per sponsor track, and a new last line. It also names the
 Encompass data-capture story in beat 3.
 
-v4.7 applies Hemdutt's cut rule (Q20, Sun 4:04 AM): cut from the demo action and the narrator's lines, never from a
+v4.7 (Dom, Sun 4:20 AM): all voices at 1.3x; the beat 12 bubbles and the beat 16 directions become text; "Yeah,
+okay" is a nod. v4.7 applies Hemdutt's cut rule (Q20, Sun 4:04 AM): cut from the demo action and the narrator's lines, never from a
 spec scene or a sponsor-track clause. Taken: a (action under speech), b (shorter dinner callback, the trainee in one
 shot, the problem's second sentence), e (no round 17 replay), g (no overlapping league lines), plus trims inside beats
 0, 2, 5 and 12. Timed with the real voices: see the timing note at the end.
@@ -77,8 +78,7 @@ That's the same look you had Tuesday afternoon, when you'd gone two hours withou
 [Window: Notes, an outline with source tags (the chat, r/ucf, two articles).]
 **A:** But first: that's your third energy drink, over your limit, and no water in ninety minutes. Go fill your
 bottle and take a walk.
-**H:** Yeah, okay.
-[He stands, stretches, and picks up his water bottle and the empty can.]
+[He nods, stands, stretches, and picks up his water bottle and the empty can.]
 
 ### 6 · Faces (spec)
 [His face, clear, on his own phone's live view, inside the privacy shell, with a small "looked tired · 30 s window" tag
@@ -131,8 +131,8 @@ computer. Each has an Atlas.]
 **D:** Board game night at the Union. Eight o'clock.
 [Window: three calendars side by side. Each box reads only its own; the others are grey "busy" blocks. The bubbles
 travel while the calendars fill:]
-**A (Hemdutt's):** Free. · **A (Ilan's):** Busy at 8. How about 8:30? · **A (Dominick's):** 8:30 works.
-[The same 8:30 block drops onto all three calendars at once. "Agreed, three of three."]
+[Text bubbles, no voice: Hemdutt's box "Free." · Ilan's box "Busy at 8. How about 8:30?" · Dominick's box "8:30
+works." The same 8:30 block drops onto all three calendars at once. "Agreed, three of three."]
 [Ilan's phone: "Ilan is at '63 South."]
 **A** (to Hemdutt): Ilan's at '63 South, and you're free till 8:30. Dinner? It'd be your second real meal.
 **H:** Yeah, tell him I'm coming.
@@ -173,8 +173,8 @@ plant's own data and tests it before it's allowed on the box.
 check in 88 hours. Send SPOT back before you send anyone.
 [Window: three cards, Do this first / Keep an eye / Looks fine. HX-202 at the top.]
 **X:** Where is it?
-[A red pointer drops onto HX-202 on the floor plan and walks there along the traced corridors while Atlas talks.]
-**A:** Turn left, take the entrance steps, and go along the west passage.
+[Silent: a red pointer drops onto HX-202 on the floor plan and walks there along the traced corridors, the turns
+captioned "left · entrance steps · west passage".]
 **A:** Heads up: missions show ninety-six percent complete, but most hide a failed check.
 [Window: the trust line, then the battery explainer animating.]
 **X:** Send SPOT back to it.
@@ -188,9 +188,8 @@ check in 88 hours. Send SPOT back before you send anyone.
 
 ---
 
-**Timing (v4.7, measured):** every line synthesised with its speaker's voice at 1.2x. Speech 4:26; the film 5:28
-with gaps 0.3 s, tail 0.7 s, pad 0.3 s and the action mostly under speech. **Still about 30 s over the 5:00 cap;**
-`FILM_PLAN.md` section 10a has the numbers per beat.
+**Timing (v4.7, measured):** every line synthesised with its speaker's voice at 1.3x (Dom). Speech 4:00; the film
+**4:54** with gaps 0.3 s, tail 0.7 s, pad 0.3 s and the action mostly under speech. `FILM_PLAN.md` section 10a.
 
 **Open:** the trainee's name; which lab numbers Ilan clears for beat 10 (Hemdutt's notes list candidates); Hemdutt's
 stage 1 (beat 5's Tuesday line) and stage 2 (beat 6's "train your own model"); #311 for beat 12's dinner.

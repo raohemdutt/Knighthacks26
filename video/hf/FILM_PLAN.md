@@ -18,7 +18,8 @@ v4.7: Hemdutt approved v4.6 in substance (Q20, Sun 4:04 AM) with a cut rule: cut
 narrator's wording, never a spec scene or a sponsor-track clause; beat 13 whole; the AMD numbers on screen. Cuts a, b,
 e, g taken, plus wording trims in beats 0 to 3, 5, 11, 12, 14 and 16 (`SCRIPT.md` is the wording). **Measured with
 the real voices** (edge-tts, every line synthesised, 1.2x; gaps 0.3 s, tail 0.7 s, pad 0.3 s; action mostly under
-speech): **5:28**. Speech alone is 4:26. The last ~35 s needs Dom: see section 10a.
+speech): 5:28 at 1.2x. **Dom (Sun 4:20 AM): all voices 1.3x, plus demo-only trims** (beat 12's bubbles and beat 16's
+directions become text, "Yeah, okay" a nod). **Measured: 4:54.** Section 10a.
 
 Every fact on screen or in a line comes from the repo, with the source next to it, or Dom has said so explicitly
 (section 6 lists those). Tick a box only when it has been built *and* checked in a frame.
@@ -594,15 +595,15 @@ All of a to h together save about 1:30, which brings 6:30 to about 5:00. That's 
 the cap means taking nearly all of them, or Dom raising the cap. The sponsor-track clauses (sections 3 and 14) are
 not on this list: Hemdutt asked that they not be lost.
 
-### 10a. Measured, v4.7 (seconds; speech is the synthesised lines, scene adds gaps, action and tail)
+### 10a. Measured, v4.7 (seconds; every line synthesised at 1.3x; scene adds gaps, action and tail)
 
 | # | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| speech | 9.2 | 6.7 | 40.6 | 13.9 | 7.2 | 19.6 | 10.0 | 10.7 | 3.9 | 17.8 | 18.5 | 12.9 | 21.6 | 15.3 | 6.6 | 18.1 | 28.8 | 4.2 |
-| scene | 11.2 | 9.4 | 48.0 | 15.9 | 8.9 | 23.2 | 11.7 | 14.7 | 9.6 | 19.8 | 20.5 | 14.9 | 27.1 | 17.3 | 8.3 | 20.1 | 35.3 | 6.9 |
+| speech | 8.4 | 6.4 | 36.4 | 12.7 | 6.6 | 16.4 | 9.1 | 9.9 | 3.6 | 16.6 | 17.3 | 12.2 | 13.5 | 14.2 | 5.7 | 16.8 | 23.5 | 4.0 |
+| scene | 10.4 | 9.1 | 43.8 | 14.7 | 8.3 | 19.7 | 10.8 | 13.9 | 9.3 | 18.6 | 19.3 | 14.2 | 18.1 | 16.2 | 7.4 | 18.8 | 29.7 | 6.7 |
 
-**Total 5:28.** Under Hemdutt's rule and Dom's 1.2x voice, about 35 s more has to go; the open choices are in the
-D12 Notion page. The new `film.yaml` must use gap 0.3, pad 0.3, tail 0.7 (the old film used 0.4, 0.5, 1.2).
+**Total 4:54** (5:28 at 1.2x before Dom's call). The new `film.yaml` uses rate +30% for every voice, gap 0.3 s, pad
+0.3 s, tail 0.7 s (the old film used +20%, 0.4, 0.5, 1.2); action runs under speech except the seconds above.
 
 ## 11. Build order and milestones (each milestone ends with stills and one-scene drafts for Dom)
 
