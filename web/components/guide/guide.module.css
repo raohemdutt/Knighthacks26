@@ -1,0 +1,225 @@
+/* The look guide's pointer. Everything is the app's own tokens; the pointer's red is the theme's danger colour. */
+
+.layer {
+  position: fixed;
+  inset: 0;
+  z-index: 70; /* above sheets (50): a target may be inside one */
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.trail {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.trail circle {
+  fill: var(--danger);
+}
+
+.dot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border-radius: var(--radius-pill);
+  background: var(--danger);
+  border: 2px solid var(--surface);
+  box-shadow:
+    0 0 0 7px var(--danger-soft),
+    0 0 22px 6px var(--danger-soft),
+    0 2px 6px rgba(27, 36, 51, 0.28);
+  will-change: transform;
+}
+
+.ring {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border: 3px solid var(--danger);
+  border-radius: var(--radius-sm);
+  box-shadow:
+    0 0 0 6px var(--danger-soft),
+    inset 0 0 0 1px var(--surface);
+  animation: pulse 1.5s cubic-bezier(0.5, 0, 0.2, 1) infinite;
+  transition: border-color 0.3s;
+}
+
+.ringRound {
+  border-radius: var(--radius-pill);
+}
+
+.ringOk {
+  border-color: var(--ok);
+  box-shadow:
+    0 0 0 6px var(--ok-soft, rgba(15, 123, 95, 0.12)),
+    inset 0 0 0 1px var(--surface);
+  animation: none;
+}
+
+.ringStill {
+  animation: none;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 4px var(--danger-soft),
+      inset 0 0 0 1px var(--surface);
+  }
+  50% {
+    box-shadow:
+      0 0 0 12px var(--danger-soft),
+      inset 0 0 0 1px var(--surface);
+  }
+}
+
+.caption {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: min(330px, calc(100vw - 24px));
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--sh-float);
+  border-left: 4px solid var(--danger);
+  font-size: 14.5px;
+  line-height: 1.4;
+  pointer-events: auto;
+}
+
+.captionOk {
+  border-left-color: var(--ok);
+}
+
+.label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 4px;
+  font-weight: 700;
+}
+
+.close {
+  flex: none;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.line {
+  margin: 0;
+}
+
+.lineOld {
+  color: var(--muted);
+}
+
+.note {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.act {
+  padding: 7px 12px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--accent-text);
+  font: inherit;
+  font-weight: 700;
+  font-size: 13.5px;
+  box-shadow: var(--sh-raised-sm);
+  cursor: pointer;
+}
+
+.gazeDot {
+  position: absolute;
+  border: 2px dashed var(--accent-text);
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+}
+
+/* ---- calibration: five dots, one at a time ---- */
+
+.veil {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: var(--bg, var(--surface));
+  color: var(--text);
+}
+
+.veilText {
+  position: absolute;
+  left: 50%;
+  top: 30%;
+  width: min(420px, calc(100vw - 48px));
+  transform: translateX(-50%);
+  text-align: center;
+}
+
+.veilText h2 {
+  margin: 0 0 8px;
+  font-family: var(--font-display, inherit);
+}
+
+.veilText p {
+  margin: 0 0 14px;
+  color: var(--muted);
+}
+
+.calDot {
+  position: absolute;
+  width: 56px;
+  height: 56px;
+  margin: -28px 0 0 -28px;
+}
+
+.calDot circle {
+  fill: none;
+  stroke-width: 4;
+}
+
+.calTrack {
+  stroke: var(--surface-2);
+}
+
+.calProgress {
+  stroke: var(--accent-text);
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 28px 28px;
+}
+
+.calDot .calCore {
+  fill: var(--danger);
+  stroke: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ring {
+    animation: none;
+  }
+}

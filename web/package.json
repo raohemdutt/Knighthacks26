@@ -6,13 +6,14 @@
   "scripts": {
     "dev": "next dev",
     "embed-zones": "node scripts/embed-zones.mjs",
-    "prebuild": "node scripts/embed-zones.mjs",
+    "prebuild": "node scripts/embed-zones.mjs && node scripts/fetch-gaze-model.mjs",
     "build": "next build",
     "typecheck": "tsc --noEmit",
     "check-api": "node scripts/check-api.mjs",
     "icons": "node scripts/make-icons.mjs"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "0.10.35",
     "next": "15.5.27",
     "react": "19.3.0",
     "react-dom": "19.3.0",

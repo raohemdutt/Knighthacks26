@@ -624,7 +624,9 @@ export function ExplainerGrid(props: Omit<Parameters<typeof Explainer>[0], "id">
   return (
     <div className={x.grid}>
       {EXPLAIN_ORDER.map((id) => (
-        <Explainer key={id} id={id} {...props} />
+        <div key={id} data-guide={`explainer:${id}`} style={{ display: "contents" }}>
+          <Explainer id={id} {...props} />
+        </div>
       ))}
     </div>
   );

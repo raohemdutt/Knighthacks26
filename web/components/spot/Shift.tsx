@@ -84,7 +84,7 @@ export function StatusLine({ shift }: { shift: Shift }) {
   if (!st) return null;
   const [lead, ...rest] = st.sentence.split(". ");
   return (
-    <header className={o.status}>
+    <header className={o.status} data-guide="status">
       <p className={o.eyebrow}>Your shift · Inspection</p>
       <h1 className={o.statusText}>
         {lead}.{" "}
@@ -107,7 +107,7 @@ export function TrustLine({ trust, onWhy }: { trust: NonNullable<Shift["trust"]>
   const k = trust.facts.k ?? 0;
   const n = trust.facts.n ?? 0;
   return (
-    <button type="button" className={o.trust} onClick={() => onWhy(trust.why_ref)}>
+    <button type="button" className={o.trust} data-guide="trust" onClick={() => onWhy(trust.why_ref)}>
       <span className={o.trustTiles} aria-hidden="true">
         {Array.from({ length: n }, (_, i) => (
           <i key={i} className={i < k ? o.tileBad : o.tileOk} />
@@ -135,12 +135,12 @@ export function DoFirst({ shift, orders, onAsset, onWhy, onAll }: { shift: Shift
   const items = shift.do_first;
   const more = (shift.do_first_total ?? items.length) - items.length;
   return (
-    <section className={`${o.card} ${o.cardAct}`} aria-label="Do this first">
+    <section className={`${o.card} ${o.cardAct}`} aria-label="Do this first" data-guide="card:do-first">
       <CardHead level="act" title="Do this first" hint={items.length ? "in this order" : undefined} />
       {items.length === 0 ? <p className={o.sentence}>Nothing needs you right now.</p> : null}
       <ol className={o.items}>
         {items.map((it, i) => (
-          <li key={it.id} className={o.item}>
+          <li key={it.id} className={o.item} data-guide={`do-first:${i + 1}`}>
             <span className={o.num} aria-hidden="true">
               {i + 1}
             </span>
@@ -195,7 +195,7 @@ export function MiniBars({ v }: { v: CompareVisual }) {
 
 export function WatchOut({ items, onWhy }: { items: PlainFinding[]; onWhy: (t: Target) => void }) {
   return (
-    <section className={o.card} aria-label="Watch out">
+    <section className={o.card} aria-label="Watch out" data-guide="card:watch">
       <CardHead level="watch" title="Watch out" hint="patterns that affect today" />
       {items.length === 0 ? <p className={o.sentence}>No pattern stands out in the rounds so far.</p> : null}
       <ul className={o.items}>
@@ -220,7 +220,7 @@ export function LooksFine({ shift, onAll }: { shift: Shift; onAll: () => void })
   const st = shift.status;
   if (!fine || !st) return null;
   return (
-    <section className={o.card} aria-label="Looks fine">
+    <section className={o.card} aria-label="Looks fine" data-guide="card:fine">
       <CardHead level="ok" title="Looks fine" />
       <div className={o.fineRow}>
         <p className={o.fineNum}>
@@ -234,7 +234,7 @@ export function LooksFine({ shift, onAll }: { shift: Shift; onAll: () => void })
         </div>
       </div>
       <p className={o.sentence}>{fine.sentence}</p>
-      <button type="button" className={`${ui.btn} ${o.act}`} onClick={onAll}>
+      <button type="button" className={`${ui.btn} ${o.act}`} data-guide="all-equipment" onClick={onAll}>
         See all {fine.total}
       </button>
     </section>

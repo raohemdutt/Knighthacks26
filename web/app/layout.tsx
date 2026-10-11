@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Quicksand } from "next/font/google";
 import type { ReactNode } from "react";
+import { GuideLayer } from "@/components/guide/GuideLayer";
 import { Shell } from "@/components/Shell";
 import { Splash } from "@/components/Splash";
 import { AtlasProvider } from "@/lib/atlas";
@@ -42,6 +43,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <AtlasProvider>
           <VoiceProvider>
             <Shell>{children}</Shell>
+            <GuideLayer />
           </VoiceProvider>
         </AtlasProvider>
       </body>

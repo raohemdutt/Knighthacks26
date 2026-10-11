@@ -3,6 +3,9 @@
 import { useState } from "react";
 import ui from "@/components/ui.module.css";
 import { ApiError, api } from "@/lib/api";
+import { resolveApp, spotTarget, whereIntent } from "@/lib/guide";
+import { pointAt } from "@/lib/guideBus";
+import { useVoice } from "@/lib/voice";
 import o from "./op.module.css";
 import { Why } from "./Shift";
 import type { Answer, Handoff, Target } from "./types";
@@ -11,8 +14,13 @@ import type { Answer, Handoff, Target } from "./types";
  * Ask and handoff, simplified: one input, four questions in operator language (from the API), and one button that writes
  * the shift handoff as a note to copy. Answers are built by code from the tables on this box; `plain` words them for an
  * operator and "exact wording" shows the same answer with its numbers and row ids.
+ *
+ * "Where do I look for X?", typed or spoken, is not answered in words: the look guide points at X on this screen and talks
+ * the person there (GET /api/spot/guide, no model call). When the box is not sure what X is, the question is answered as
+ * before and the closest places are offered under it.
  */
-export function OperatorAsk({ chips, onWhy }: { chips: string[]; onWhy: (t: Target) => void }) {
+export function OperatorAsk({ chips, onWhy, guideChips = [] }: { chips: string[]; onWhy: (t: Target) => void; guideChips?: string[] }) {
+  const voice = useVoice();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [answer, setAnswer] = useState<(Answer & { plain?: boolean }) | null>(null);
@@ -20,16 +28,35 @@ export function OperatorAsk({ chips, onWhy }: { chips: string[]; onWhy: (t: Targ
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<Handoff | null>(null);
   const [copied, setCopied] = useState(false);
+  const [meant, setMeant] = useState<{ target: string; label: string }[]>([]);
 
   const fail = (e: unknown) => setError(e instanceof ApiError ? (e.needsToken ? "This box asks for a token first (Settings)." : e.message) : String(e));
+  /** True when the pointer took the question. */
+  const guide = async (question: string): Promise<boolean> => {
+    try {
+      const found = await api.spotGuide(question);
+      const target = spotTarget(found);
+      if (target) return pointAt({ target }), true;
+      const app = resolveApp(question, "/spot/"); // "where is my League?": somewhere else in the app
+      if (app.target && app.confidence >= 0.8) return pointAt({ target: app.target }), true;
+      setMeant(found.alternatives);
+    } catch {
+      /* the guide is an extra: the question is still answered */
+    }
+    return false;
+  };
   const ask = (q: string) => {
     const question = q.trim();
     if (!question || busy) return;
     setBusy(true);
     setError(null);
     setExact(false);
+    setMeant([]);
     setText(question);
-    api.spotAskPlain(question).then(setAnswer).catch(fail).finally(() => setBusy(false));
+    void (async () => {
+      if (whereIntent(question) !== null && (await guide(question))) return setBusy(false);
+      api.spotAskPlain(question).then(setAnswer).catch(fail).finally(() => setBusy(false));
+    })();
   };
   const handoff = () => {
     setBusy(true);
@@ -40,9 +67,14 @@ export function OperatorAsk({ chips, onWhy }: { chips: string[]; onWhy: (t: Targ
     if (!note || !navigator.clipboard?.writeText) return;
     navigator.clipboard.writeText(note.text).then(() => (setCopied(true), window.setTimeout(() => setCopied(false), 1800)), () => undefined);
   };
+  const listening = voice.status === "listening";
+  const talk = () => {
+    if (listening) return voice.stopListening(true);
+    voice.listen({ onInterim: setText, onFinal: ask, onEnd: () => setText("") });
+  };
 
   return (
-    <section className={o.card} aria-label="Ask and handoff">
+    <section className={o.card} aria-label="Ask and handoff" data-guide="ask">
       <div className={o.cardHead}>
         <h2>Ask SPOT's data</h2>
         <span className={o.hint}>answers come from this box</span>
@@ -54,7 +86,12 @@ export function OperatorAsk({ chips, onWhy }: { chips: string[]; onWhy: (t: Targ
           ask(text);
         }}
       >
-        <input className={ui.input} value={text} onChange={(e) => setText(e.target.value)} placeholder="Ask in your own words" aria-label="Question about the inspections" maxLength={500} />
+        <input className={ui.input} value={text} onChange={(e) => setText(e.target.value)} placeholder={listening ? "Listening…" : "Ask in your own words"} aria-label="Question about the inspections" maxLength={500} />
+        {voice.listenSupport?.ok ? (
+          <button type="button" className={ui.btn} onClick={talk} disabled={busy} aria-pressed={listening} aria-label={listening ? "Done talking" : "Ask out loud"}>
+            {listening ? "Done" : "Speak"}
+          </button>
+        ) : null}
         <button type="submit" className={`${ui.btn} ${ui.btnPrimary}`} disabled={busy || !text.trim()}>
           Ask
         </button>
@@ -66,6 +103,16 @@ export function OperatorAsk({ chips, onWhy }: { chips: string[]; onWhy: (t: Targ
           </button>
         ))}
       </div>
+      {guideChips.length > 0 ? (
+        <div className={ui.chips} role="group" aria-label="Guide me" data-guide="guide-me">
+          <span className={o.hint}>Guide me:</span>
+          {guideChips.map((q) => (
+            <button type="button" key={q} className={ui.chip} onClick={() => ask(q)} disabled={busy}>
+              {q}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {error ? <p className={o.error}>{error}</p> : null}
       {answer ? (
         <div className={o.answer} aria-live="polite">
@@ -81,8 +128,18 @@ export function OperatorAsk({ chips, onWhy }: { chips: string[]; onWhy: (t: Targ
           </div>
         </div>
       ) : null}
+      {meant.length > 0 ? (
+        <div className={ui.chips} role="group" aria-label="Did you mean">
+          <span className={o.hint}>Point me to:</span>
+          {meant.map((m) => (
+            <button type="button" key={m.target} className={ui.chip} onClick={() => void guide(m.target)}>
+              {m.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
-      <button type="button" className={`${ui.btn} ${o.act}`} onClick={handoff} disabled={busy}>
+      <button type="button" className={`${ui.btn} ${o.act}`} data-guide="handoff" onClick={handoff} disabled={busy}>
         Write my shift handoff
       </button>
       {note ? (

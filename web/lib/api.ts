@@ -1947,6 +1947,8 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   spotReplaySpeed: (speed: number) => post<Spot.Replay>("/api/spot/replay/speed", { speed }),
   spotAsk: (text: string, rephrase = false) => post<Spot.Answer>("/api/spot/ask", { text, rephrase }),
   /** The operator's first screen in plain words (no statistics): status, do-this-first, watch-out, every asset, the rounds. */
+  // the look guide: "where do I look for X?" -> a place on the Inspection screen and the words to walk there (no model call)
+  spotGuide: (q: string, signal?: AbortSignal) => get<import("./guide").SpotGuide>("/api/spot/guide", { q }, signal),
   spotShift: (signal?: AbortSignal) => get<Spot.Shift>("/api/spot/shift", undefined, signal),
   spotRound: (id: string, signal?: AbortSignal) => get<Spot.RoundView>(`/api/spot/shift/rounds/${encodeURIComponent(id)}`, undefined, signal),
   /** The same cited answer, worded for an operator; `draft` keeps the exact wording. */

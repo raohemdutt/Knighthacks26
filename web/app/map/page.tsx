@@ -269,7 +269,7 @@ function Room2D({ pins, selected, route, onPick }: { pins: RoomPin[]; selected: 
   const height = CAMERAS.length * (HEAD + PANEL_H) + (CAMERAS.length - 1) * GAP;
   const selectedPin = pins.find((p) => p.label === selected);
   return (
-    <svg className={dr.room} viewBox={`0 0 ${PANEL_W} ${height}`} role="img" aria-label={`Camera zones: ${CAMERAS.map((c) => `${cameraName(c.id)}: ${c.zones.map((z) => z.id).join(", ")}`).join(". ")}.`}>
+    <svg className={dr.room} data-guide="map:room" viewBox={`0 0 ${PANEL_W} ${height}`} role="img" aria-label={`Camera zones: ${CAMERAS.map((c) => `${cameraName(c.id)}: ${c.zones.map((z) => z.id).join(", ")}`).join(". ")}.`}>
       {CAMERAS.map((cam, i) => {
         const top = i * (HEAD + PANEL_H + GAP);
         const px = (p: Point): Point => [p[0] * PANEL_W, top + HEAD + p[1] * PANEL_H];
@@ -313,7 +313,7 @@ function Room2D({ pins, selected, route, onPick }: { pins: RoomPin[]; selected: 
               // Every pin carries its number; its name is written here only where the zone has room for
               // every name in it. The list under the map names them all.
               return (
-                <g key={p.label} onClick={() => onPick(p.label)} style={{ cursor: "pointer" }}>
+                <g key={p.label} data-guide={`pin:${p.label}`} onClick={() => onPick(p.label)} style={{ cursor: "pointer" }}>
                   <title>{humanize(p.label)}</title>
                   <circle className={`${dr.pin} ${on ? dr.pinOn : ""}`} cx={x} cy={y} r={on ? 10.5 : 9.5} />
                   <text className={`${dr.pinNumber} ${on ? dr.pinNumberOn : ""}`} x={x} y={y + 4} textAnchor="middle">

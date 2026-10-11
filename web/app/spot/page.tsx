@@ -135,7 +135,7 @@ export default function SpotPage() {
     <div className={o.page}>
       <div className={o.top}>
         <StatusLine shift={d} />
-        <div className={`${ui.segmented} ${o.tabs}`} role="tablist" aria-label="View">
+        <div className={`${ui.segmented} ${o.tabs}`} role="tablist" aria-label="View" data-guide="tabs">
           {(
             [
               ["shift", "Your shift"],
@@ -143,7 +143,7 @@ export default function SpotPage() {
               ["analysis", "Analysis"],
             ] as [Tab, string][]
           ).map(([k, label]) => (
-            <button type="button" key={k} role="tab" aria-selected={tab === k} className={`${ui.seg} ${tab === k ? ui.segOn : ""}`} onClick={() => pick(k)}>
+            <button type="button" key={k} role="tab" data-guide={`tab:${k === "run" ? "shift-run" : k}`} aria-selected={tab === k} className={`${ui.seg} ${tab === k ? ui.segOn : ""}`} onClick={() => pick(k)}>
               {label}
             </button>
           ))}
@@ -161,6 +161,7 @@ export default function SpotPage() {
                 map={d.map}
                 assets={d.assets}
                 title="The plant floor"
+                guide="map"
                 route={d.map.route}
                 robotAt={robotAt}
                 selected={asset}
@@ -182,12 +183,12 @@ export default function SpotPage() {
               <WatchOut items={d.watch} onWhy={why} />
             </div>
             <LooksFine shift={d} onAll={() => setAll(true)} />
-            <OperatorAsk chips={d.ask ?? []} onWhy={why} />
+            <OperatorAsk chips={d.ask ?? []} onWhy={why} guideChips={[d.do_first[0] ? `Where is ${d.do_first[0].name}?` : "Where is the plan?", "Where do I look for the battery?", "Show me what to do first"]} />
           </div>
 
           </div>
 
-          <div id="round" className={link.round ? o.roundFirst : undefined}>
+          <div id="round" data-guide="round" className={link.round ? o.roundFirst : undefined}>
             <Round shift={d} live={live} onLive={setLive} onWhy={why} startRound={link.round} startStep={link.step} />
           </div>
 

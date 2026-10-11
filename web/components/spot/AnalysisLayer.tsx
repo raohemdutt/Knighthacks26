@@ -100,10 +100,10 @@ export function AnalysisLayer({
               </p>
             </div>
             <div className={s.headRight}>
-              <button type="button" className={s.linkBtn} onClick={() => setTarget({ kind: "assumptions", id: "assumptions" })}>
+              <button type="button" className={s.linkBtn} data-guide="analysis:assumptions" onClick={() => setTarget({ kind: "assumptions", id: "assumptions" })}>
                 Assumptions and method
               </button>
-              <button type="button" className={s.linkBtn} onClick={() => setTarget({ kind: "validation", id: "validation" })} title={o_?.validation?.summary}>
+              <button type="button" className={s.linkBtn} data-guide="analysis:data-check" onClick={() => setTarget({ kind: "validation", id: "validation" })} title={o_?.validation?.summary}>
                 Data check {o_?.validation ? `${o_.validation.agree}/${o_.validation.compared}` : ""}
               </button>
             </div>
@@ -115,11 +115,11 @@ export function AnalysisLayer({
             <Loading what="the analysis" />
           )}
 
-          <details className={o.fold}>
+          <details className={o.fold} data-guide="analysis:findings">
             <summary>Every finding in one sentence ({shift.findings.length})</summary>
             <ul className={o.claims}>
               {shift.findings.map((f) => (
-                <li key={f.id}>
+                <li key={f.id} data-guide={`finding:${f.id}`}>
                   <LevelIcon level={f.level} size={18} />
                   <span>
                     <b>{f.headline}.</b> {f.sentence} {f.note ? <i>{f.note}</i> : null}
@@ -132,7 +132,7 @@ export function AnalysisLayer({
             </ul>
           </details>
 
-          <details className={o.fold} open={tables} onToggle={(e) => setTables((e.target as HTMLDetailsElement).open)}>
+          <details className={o.fold} data-guide="analysis:tables" open={tables} onToggle={(e) => setTables((e.target as HTMLDetailsElement).open)}>
             <summary>The full tables: ranked queue, intervals, the trained scorer, replay of every round</summary>
             {tables ? (
               <div className={o.foldBody}>
