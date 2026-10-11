@@ -1,0 +1,18 @@
+{
+  "metrics": {
+    "trainer.batch": 4,
+    "trainer.grad_accum": 4,
+    "trainer.lora_rank": 16,
+    "trainer.samples_per_s": 1.6,
+    "trainer.steps": 3
+  },
+  "ok": true,
+  "outcome": "trained",
+  "refs": {
+    "deltanet_kernel": "torch fallback",
+    "device": "Radeon 8060S Graphics (gfx1151)",
+    "rocm": "7.13.0",
+    "run_id": "synthetic-rocm",
+    "torch": "2.9.1+rocm7.13.0"
+  }
+}
