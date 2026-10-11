@@ -336,7 +336,11 @@ def build(settings: Settings | None = None) -> Atlas:
     talk = Talk(runtime, qa.clock, memory=memory, config=TalkConfig.of(agent_cfg.get("talk")), tz=qa.sleep.tz, web=bool(web))
     talk.about = profile.description
     qa.names = dict(talk.config.names)  # how a course code is said aloud (agent.yaml `talk.names`)
-    qa.listings = talk.listings = Listings.of(agent_cfg.get("listings"))  # which items are campus listings, not the person's own
+    # Which stored items are campus listings, not the person's own commitments (agent.yaml `listings:`). One classifier,
+    # handed as a plain predicate to every place a calendar event becomes a commitment (the Day Run board, the Circle's
+    # free/busy answer, Habits' calendar), so none of them imports the agent.
+    listings = Listings.of(agent_cfg.get("listings"))
+    qa.listings = talk.listings = listings
     # "How's it going?" is answered with what Atlas did for the person today, counted from the log (a projection).
     done = DoneToday(qa.sleep.tz)
     for prefix in DoneToday.PREFIXES:
@@ -485,6 +489,7 @@ def build(settings: Settings | None = None) -> Atlas:
     habits_file = s.config_dir / "habits.yaml"
     if habits_file.exists():
         habits_cfg = load_habits(habits_file, s.config_dir / "agent.yaml", profile=profile)
+        habits_cfg.is_listing = listings.listed  # a campus listing is nothing to be ready for
         habits = MemberHabits(HabitTracker(habits_cfg), nudger_for=lambda t: Nudger(habits_cfg, t))  # P9: per enrolled person
         nudger = Nudger(habits_cfg, habits.base)
         bus.subscribe("perception.identity", habits.on_identity, replay=True)  # recognition on/off, who is enrolled
@@ -512,6 +517,7 @@ def build(settings: Settings | None = None) -> Atlas:
         store = NeonCircleStore(neon) if neon else InMemoryCircleStore()
         circle = CircleAgent(circle_cfg["member_id"], circle_cfg["circle_id"], store, memory,
                              clock=lambda: datetime.now(UTC), members=list(names))
+        circle.listed = listings.listed  # a campus listing never makes this box answer "busy"
         bus.subscribe("circle.message.received", circle.on_message, replay=True)  # state only: never answer twice
         bus.subscribe("circle.event.agreed", circle.on_agreed, replay=True)  # state only: never agree twice
         # the approved proposal is written to the store: in a thread, so a slow Neon never freezes the event loop
@@ -572,6 +578,8 @@ def build(settings: Settings | None = None) -> Atlas:
     # Day Run (S4, S6): play tomorrow on the place packs before living it. No model calls.
     dayrun = DayRun(places, memory=memory, habits=habits, presence=presence, hub=hub,
                     config_dir=s.config_dir, data_dir=s.data_dir, profile=profile) if places else None
+    if dayrun:
+        dayrun.listed = listings.listed  # a campus listing is offered as an optional event, never a fixed block of the day
     if dayrun and circle:  # a plan the Circle agreed is a fixed block of each attendee's day, from this box's own log
         dayrun.agreed = AgreedPlans(circle_cfg["member_id"])
         bus.subscribe("circle.event.agreed", dayrun.agreed.on_agreed, replay=True)  # state only
@@ -590,6 +598,14 @@ def build(settings: Settings | None = None) -> Atlas:
         # today's agreed plan from now (blocks and the leave-by time), for a day rundown and the model's FACTS: a port,
         # so the agent never reads the Day loop's state
         qa.day_plan = talk.day_plan = lambda: day.blocks(datetime.now(UTC))
+
+        async def plan_day() -> None:
+            # "yes" to "Want me to plan your day?": the same proposal POST /api/day/plan makes (the plan event and its
+            # approval card). Nothing is written to a calendar until the card is approved on the phone.
+            now = datetime.now(UTC)
+            await bus.publish_all(day.planner.plan(now, remake=day.clock.day_of(now) in day.planner.plans))
+
+        talk.plan_day = plan_day
         if ntfy:  # the plan, a re-plan and the review on the phone, in the narrator's words when it is on
             bus.subscribe("day.", day_phone(ntfy, s.ntfy_topic, narrated=day.narrator.mode != "off"))
         if (agent_cfg.get("day") or {}).get("speaker") == "box":  # one speaker: the box's own says the unasked lines

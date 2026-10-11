@@ -282,7 +282,9 @@ class Planner:
         ev = Evidence()
         lines = []
         upcoming = [i for i in self.qa.memory.items(now, now + timedelta(hours=8)) if i.kind in ("calendar_event", "assignment")
-                    and (not i.external_id.startswith("nearby:") or i.external_id in self.accepted_optional())]  # an optional "near you" event is not what you are leaving for, unless accepted
+                    and (i.external_id in self.accepted_optional()  # an optional event the person said yes to is theirs
+                         or (not i.external_id.startswith("nearby:")  # an optional "near you" event is not what you are leaving for
+                             and not self.qa.listings.listed(i)))]  # nor is a campus listing (agent.yaml `listings:`)
         if upcoming:
             nxt = upcoming[0]
             walk, dest = self._walk_minutes(nxt)
