@@ -21,4 +21,14 @@ shift:
   sleep_after_minutes: 90
   sleep_hours: 7
 
+# The Ask screen's suggested questions, in this person's words (the student's when a profile lists none).
+suggestions:
+  - "Where did I leave my keys?"
+  - "Which handover is due this week?"
+  - "What happened at my station while I was asleep?"
+  - "What should I eat?"
+  - "How's your day?"
+  - "Tell me a joke"
+  - "I'm tired after my shift"
+
 scenario: night-shift     # config/profiles/shift-worker/scenarios/night-shift.yaml

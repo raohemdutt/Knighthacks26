@@ -513,3 +513,39 @@ Performance in Thin and Light" (the fetch timed out), the Framework Community th
 LLM performance and toolboxes, the hogeheer499 Strix Halo guide, FleetSieve (arXiv 2608.19659),
 Optuna's journal-storage recipe, and the OpenReview page of the Ax paper (a browser check blocked
 it; the PMLR copy was read instead).
+
+## Added by kernels refinement pass 3 (2026-10-10)
+
+Re-opened by this pass and cited under their existing ids: S13 (vLLM PR #40977), S18 (vLLM PR
+#56301), S58 (vLLM `vllm/platforms/rocm.py` at b1388b1, `supports_fp8`), S65 (#6347, no comment
+after 2026-09-25), S138 (ggml-org/llama.cpp#27952 and huppiflupp's comments) and S140 (nabe2030
+`hip-vs-vulkan-evo-x2`).
+
+| Id | Kind | Source | Link or location | Opened | Cited in |
+| --- | --- | --- | --- | --- | --- |
+| S170 | code | vLLM at 382bbd5 (the merge commit of PR #40977): `vllm/model_executor/kernels/linear/__init__.py` (the ROCm W4A16 list: RDNA3W4A16, RDNAHybridW4A16, TritonW4A16, Conch, Exllama) and `mixed_precision/rdna3_w4a16.py` (`can_implement` requires gfx1100) | https://github.com/vllm-project/vllm/blob/382bbd51448b2f58c73b3e51d051bc352166ba91/vllm/model_executor/kernels/linear/__init__.py and https://github.com/vllm-project/vllm/blob/382bbd51448b2f58c73b3e51d051bc352166ba91/vllm/model_executor/kernels/linear/mixed_precision/rdna3_w4a16.py | 2026-10-10 | main |
+| S171 | issue | The same issue as S66 and S71, read through the GitHub API to its comment of 2026-10-10: the reproducer in the body ("Reproducer 1: plain HIP, no framework") and lobo235's fourth gfx1201 host (in-tree amdgpu, MES 0x89, HIP 7.15.26333: +6.7 us in graph mode at two waits, none at `GPU_MAX_HW_QUEUES` 1 or 2) | https://github.com/ROCm/legacy-rocm-build/issues/6685 | 2026-10-10 | ports |
+| L10 | our measurement | `lab/refine/research/kernels/data/chipsheet-gfx1151-2026-10-11.md` (R33 on pod D, merged in PR #250 as fa0359e): device-to-device copy 207.8 to 212.1 GB/s from 256 MiB to 4 GiB, LDS launch limit 65,536 bytes, HIP probes built with `/opt/rocm/bin/hipcc` | this repo, `lab/refine/research/kernels/data/chipsheet-gfx1151-2026-10-11.md` (main at 4e084dc) | 2026-10-10 | main, ports |
+| L11 | our files | `lab/public_prior.py` (R51, merged in PR #251 as fe7d0a6) run with `--gb 15.5 --backend vllm --batch 1, 4, 8, 16`: 7.49 tok/s single stream, aggregate 22.86, 34.73 and 46.91 tok/s, k 0.104 | this repo, `lab/public_prior.py` (main at 4e084dc) | 2026-10-10 | main |
+| L12 | our files | `lab/README.md`, section "Benchmark harness: `lab/bench.py` (R11)": conditions on every row (environment read back from `/proc/<pid>/environ`, `GPU_MAX_HW_QUEUES` always present) and bands (largest-gap split, 10% of the median, at least 4 spawns) | this repo, `lab/README.md` (main at 4e084dc) | 2026-10-10 | ports |
+| L13 | our page | R20 task page, line of Sat 8:27 PM ET (Ilan3's clock): R20 started on pod D with `python -m lab bench run`, 3 spawns per batch size at 1, 4, 8 and 16, reusing R30's build | https://app.notion.com/p/3f596ef5fec581a38be4e70c385da9dd | 2026-10-10 | ports |
+
+## Added by R59, the vLLM upgrade audit for gfx1151 (2026-10-11)
+
+Re-opened by R59 and cited under their existing ids: S13 (vLLM PR #40977, the gfx1151 benchmark table),
+S16 (vLLM PR #52619), S29 (vLLM issue #48723, read to its comment of 2026-07-30), S31 (vLLM PR #58225),
+S32 (vLLM PR #59132, the gfx1151 serving table), L3 (`lab/vllm-gfx1201.diff`), L10 (the gfx1151 chipsheet)
+and L11 (`lab/public_prior.py`).
+"upgrade" in the Cited in column means `vllm_upgrade_gfx1151.md`.
+
+| Id | Kind | Source | Link or location | Opened | Cited in |
+| --- | --- | --- | --- | --- | --- |
+| S172 | code | vllm-project/vllm, blobless clone of origin/main at 3c062d391e (2026-10-11 01:41 UTC): `git tag --contains`, `git merge-base`, `git log` over the audited paths from the merge base d816834c, `git apply --cached --reject` of `lab/vllm-gfx1201.diff` against each tag's tree, and `git show` of `CMakeLists.txt`, `pyproject.toml`, `requirements/build/rocm.txt`, `tools/use_existing_torch.py`, `vllm/platforms/__init__.py`, `vllm/platforms/rocm.py`, `vllm/v1/attention/ops/triton_unified_attention.py`, `vllm/v1/attention/backends/rocm_segmented_attn.py`, `vllm/model_executor/kernels/linear/__init__.py` and `mixed_precision/rdna_hybrid_w4a16.py` at v0.19.1, v0.21.0, v0.27.0, v0.29.0, v0.31.0 and main | https://github.com/vllm-project/vllm | 2026-10-11 | upgrade |
+| S173 | PR | mgehre-amd, "[ROCm][Perf] Tune wvSplitK on gfx1151", vLLM #40784, merged 2026-06-25 (page also shows the ROCm/vllm fork commit 7648cc8 reporting a gfx1151 decode regression) | https://github.com/vllm-project/vllm/pull/40784 | 2026-10-11 | upgrade |
+| S174 | PR | yiz-liu, "[Fix] Improve ROCm detection in WSL environments", vLLM #38434, merged 2026-08-30 | https://github.com/vllm-project/vllm/pull/38434 | 2026-10-11 | upgrade |
+| S175 | PR | pmaybank, "use HIP_VERSION variables to guard against duplicate atomicAdd definitions", vLLM #41802, merged 2026-05-08 (ROCm 7.13 build fix) | https://github.com/vllm-project/vllm/pull/41802 | 2026-10-11 | upgrade |
+| S176 | PR | AIwork4me, "[ROCm][RDNA3] Fix W4A16 split-K accuracy and determinism", vLLM #54706, merged 2026-10-03, gfx1100 only | https://github.com/vllm-project/vllm/pull/54706 | 2026-10-11 | upgrade |
+| S177 | PR | cofuente, "[Bugfix][Hardware][AMD] Handle AITER unified-attention LDS overflow with Triton fallback", vLLM #49264, opened 2026-07-21, open on 2026-10-11, verified on gfx1151 | https://github.com/vllm-project/vllm/pull/49264 | 2026-10-11 | upgrade |
+| S178 | project doc | vLLM v0.31.0 release notes (released 2026-10-05 per the page; tag commit db9527a46 dated 2026-10-02): Quantization, AMD ROCm and Dependencies lines; first 100,000 characters read | https://github.com/vllm-project/vllm/releases/tag/v0.31.0 | 2026-10-11 | upgrade |
+| S179 | project doc | ROCm/vllm releases page (v0.7.2+rocm to v0.9.2; "Navi" lines only, no RDNA or gfx1151 line) | https://github.com/ROCm/vllm/releases | 2026-10-11 | upgrade |
+| S180 | project doc | triton-lang/triton releases page (3.4.0 to 3.8.0; AMD lines for gfx11, gfx12, RDNA 3, 3.5 and 4) | https://github.com/triton-lang/triton/releases | 2026-10-11 | upgrade |

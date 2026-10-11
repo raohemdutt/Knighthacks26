@@ -202,6 +202,7 @@ def make_tree(root: Path, passes=None, rulings=None, merge: str = MERGE_EXAMPLE)
         (folder / "OWNER_RULINGS.md").write_text(
             RULINGS_HEADER.format(track=track) + "".join(rulings.get(track, [])), encoding="utf-8"
         )
+    (root / "PASS_RULES.md").write_text((REFINE / "PASS_RULES.md").read_text(encoding="utf-8"), encoding="utf-8")
     (root / "MERGE_LOG.md").write_text(MERGE_HEADER + merge, encoding="utf-8")
     return root
 
@@ -592,6 +593,21 @@ def track_files(tmp_path, entries: str, counter: str, reports: dict[int, str]) -
     for number, text in reports.items():
         (folder / "pass_reports" / f"pass_{number:02d}.md").write_text(text, encoding="utf-8")
     return root
+
+
+def test_the_merge_holds_a_track_pass_to_the_change_cap_of_pass_rules(tmp_path):
+    """The cap PASS_RULES.md states reaches a track's pass entries through check_track, so the merge pass and a
+    track pass reject the same entry: here one whose Changes line names a cap of 7."""
+    other_cap = edit(pass_entry(1), "of at most 5):", "of at most 7):")
+    root = track_files(tmp_path, other_cap, "1\n", {1: report("kernels", 1)})
+    problem = "pass 1: the Changes line names a cap of 7 but a pass makes at most 5"
+
+    assert rm.check_tree(root) == [f"kernels: REFINE_LOG.md: {problem}"]
+
+    (root / "PASS_RULES.md").write_text("# Refinement pass rules\n", encoding="utf-8")
+    assert rm.check_tree(root) == [
+        "PASS_RULES.md: no per-pass change cap found; 'What a pass does' must say 'at most <N> changes'"
+    ]
 
 
 def test_a_track_with_two_valid_passes_their_counter_and_reports_passes(tmp_path):

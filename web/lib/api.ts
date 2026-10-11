@@ -658,7 +658,8 @@ export interface RoomPlan {
   windows: RoomOpening[];
   posters: RoomOpening[];
   furniture: RoomFurniture[];
-  calibration: Record<string, { image: [number, number][]; floor: [number, number][]; homography: number[][] }>;
+  /** `source`: "default" = the placeholder points the room file shipped with (positions are approximate); "set" = given for the real camera. */
+  calibration: Record<string, { image: [number, number][]; floor: [number, number][]; homography: number[][]; source?: "default" | "set" }>;
   zones: Record<string, Record<string, [number, number][]>>; // camera -> zone -> floor polygon (m)
   play: { walk_speed: number; body_radius: number; start: [number, number] };
   rooms: string[];
@@ -809,6 +810,8 @@ export interface Profile {
   meters: { habits: string[]; dayrun: string[] };
   shift: { start: string; end: string; sleep_after_minutes: number; sleep_hours: number } | null;
   scenario: string | null;
+  /** The Ask screen's suggested questions, in this profile's words (profile.yaml `suggestions:`). */
+  suggestions: string[];
   overrides: Record<string, string>;
 }
 
@@ -1569,6 +1572,8 @@ export interface VoiceStatus {
   heard: string;
   answer: string;
   seconds_in_state: number;
+  /** True when the box is always listening for "Hey Atlas" (wake_word in config/voice.yaml). */
+  wake?: boolean;
   mic?: { ok: boolean; detail: string };
   speaker?: { ok: boolean; detail: string };
   speech_to_text?: { ok: boolean; detail: string };
@@ -1583,7 +1588,19 @@ export interface EgressGroup {
   name: string;
   hosts: string[];
   packets: number;
+  /** Every byte sent to the group (V7: counted ahead of the conntrack accept). */
   bytes: number;
+  /** Connections opened to it. Absent from older firewall snapshots. */
+  connections?: number;
+}
+
+/** V7: camera pictures cleared to leave the box, each batch by an approved training export. */
+export interface EgressPictures {
+  video_bytes: number;
+  pictures: number;
+  picture_bytes: number;
+  approved_exports: number;
+  batches: { dataset_id: string; task: string; pictures: number; bytes: number; approval: string; ts: string }[];
 }
 
 export interface EgressBlock {
@@ -1604,6 +1621,8 @@ export interface Egress {
   recent_blocks?: EgressBlock[];
   updated?: string;
   stale?: boolean;
+  /** Present on boxes with V7, firewall or not. */
+  pictures?: EgressPictures;
 }
 
 export type WipeScope = "all" | "keyframes" | "memory";
@@ -1781,6 +1800,8 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   voiceTalk: () => post<VoiceStatus>("/api/voice/talk", {}),
   voiceStop: () => post<VoiceStatus>("/api/voice/stop", {}),
   voiceEnabled: (enabled: boolean) => post<VoiceStatus>("/api/voice/enabled", { enabled }),
+  voiceListen: () => post<VoiceStatus>("/api/voice/listen", {}),
+  voiceSay: (text: string) => post<VoiceStatus>("/api/voice/say", { text }),
   setVaultPolicy: (body: Partial<VaultPolicy>) => put<VaultPolicy>("/vault/policy", body),
   egress: (signal?: AbortSignal) => get<Egress>("/vault/egress", undefined, signal),
   wipeRequest: (scope: WipeScope) => post<WipeToken>("/vault/wipe/request", { scope }),
@@ -1791,6 +1812,11 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   lab: (sample: boolean, signal?: AbortSignal) => get<import("./lab").LabList>("/api/learning/lab", sample ? { sample: 1 } : undefined, signal),
   labRun: (runId: string, sample: boolean, signal?: AbortSignal) =>
     get<import("./lab").LabStory>(`/api/learning/lab/${encodeURIComponent(runId)}`, sample ? { sample: 1 } : undefined, signal),
+  /** The lab's benchmark and energy rows, the routing what-if and the experiment timeline (types in lib/labBench.ts). */
+  labBench: (signal?: AbortSignal) => get<import("./labBench").LabBench>("/api/learning/lab/bench", undefined, signal),
+  labRoutingSim: (params: Partial<import("./labBench").SimParams>, signal?: AbortSignal) =>
+    post<import("./labBench").LabSim>("/api/learning/lab/routing/simulate", params, signal),
+  labExperiments: (signal?: AbortSignal) => get<import("./labBench").LabTimeline>("/api/learning/lab/experiments", undefined, signal),
   teach: (body: TeachBody) => post<{ task: string; action_id: string }>("/api/teach", body),
 
   episodes: (opts: { from?: string; to?: string; camera?: string; label?: string } = {}, signal?: AbortSignal) =>
@@ -1940,6 +1966,9 @@ export const api = {  health: (signal?: AbortSignal) => get<Health>("/health", u
   spotReplaySpeed: (speed: number) => post<Spot.Replay>("/api/spot/replay/speed", { speed }),
   spotAsk: (text: string, rephrase = false) => post<Spot.Answer>("/api/spot/ask", { text, rephrase }),
   /** The operator's first screen in plain words (no statistics): status, do-this-first, watch-out, every asset, the rounds. */
+  // the look guide: "where do I look for X?" -> a place on the Inspection screen and the words to walk there (no model call)
+  spotGuide: (q: string, signal?: AbortSignal) => get<import("./guide").SpotGuide>("/api/spot/guide", { q }, signal),
+  spotRoute: (to: string, from?: string | null, signal?: AbortSignal) => get<import("./guideSpot").SpotRoute>("/api/spot/route", from ? { to, from } : { to }, signal),
   spotShift: (signal?: AbortSignal) => get<Spot.Shift>("/api/spot/shift", undefined, signal),
   spotRound: (id: string, signal?: AbortSignal) => get<Spot.RoundView>(`/api/spot/shift/rounds/${encodeURIComponent(id)}`, undefined, signal),
   /** The same cited answer, worded for an operator; `draft` keeps the exact wording. */

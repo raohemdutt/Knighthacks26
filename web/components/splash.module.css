@@ -6,30 +6,70 @@
   display: grid;
   place-items: center;
   background: var(--bg);
-  animation: leave 420ms ease-in 1450ms forwards;
+  overflow: hidden;
+  animation: leave 480ms var(--ease-out) 1500ms forwards;
+}
+
+/* its own aurora, brighter than the app's, so the logo rises out of light */
+.splash::before {
+  content: "";
+  position: absolute;
+  inset: -30%;
+  background:
+    radial-gradient(closest-side at 38% 42%, var(--aurora-a), transparent 70%),
+    radial-gradient(closest-side at 65% 60%, var(--aurora-b), transparent 70%),
+    radial-gradient(closest-side at 50% 80%, var(--aurora-c), transparent 70%);
+  opacity: 0;
+  animation: glow-in 1200ms ease-out 100ms forwards;
 }
 
 .mark {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 18px;
-  animation: breathe 1800ms ease-out both;
+  animation: breathe 1800ms var(--ease-out) both;
+}
+
+/* the ring of light the logo stands in */
+.mark::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 240px;
+  height: 240px;
+  border-radius: 50%;
+  transform: translate(-50%, -62%) scale(0.6);
+  background: radial-gradient(circle, var(--accent-soft) 0%, transparent 65%);
+  opacity: 0;
+  animation: halo 900ms var(--ease-out) 700ms forwards;
 }
 
 .word {
   font-family: var(--font-display), system-ui, sans-serif;
   font-size: 30px;
-  font-weight: 750;
-  letter-spacing: 0.32em;
-  padding-left: 0.32em; /* balances the trailing letter space so the word looks centred */
+  font-weight: 700;
+  letter-spacing: 0.34em;
+  padding-left: 0.34em; /* balances the trailing letter space so the word looks centred */
   color: var(--accent-text);
   opacity: 0;
-  animation: rise 520ms ease-out 900ms forwards;
+  animation: rise 560ms var(--ease-out) 900ms forwards;
+}
+
+.tag {
+  font-size: 14px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: 0;
+  animation: rise 560ms var(--ease-out) 1050ms forwards;
 }
 
 .mark svg {
-  filter: drop-shadow(6px 6px 10px var(--sh-dark)) drop-shadow(-6px -6px 10px var(--sh-light));
+  position: relative;
+  filter: drop-shadow(0 0 18px var(--accent-soft));
 }
 
 .mark :global([data-logo]) {
@@ -74,7 +114,7 @@
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
@@ -84,16 +124,30 @@
 
 @keyframes breathe {
   from {
-    transform: scale(0.94);
+    transform: scale(0.92);
   }
   to {
     transform: scale(1);
   }
 }
 
+@keyframes glow-in {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes halo {
+  to {
+    opacity: 1;
+    transform: translate(-50%, -62%) scale(1);
+  }
+}
+
 @keyframes leave {
   to {
     opacity: 0;
+    transform: scale(1.04);
     visibility: hidden;
   }
 }
@@ -103,8 +157,15 @@
     animation: leave 200ms linear 1000ms forwards;
   }
 
+  .splash::before,
+  .mark::before {
+    animation: none;
+    opacity: 1;
+  }
+
   .mark,
   .word,
+  .tag,
   .mark :global([data-logo]) {
     animation: none;
     stroke-dashoffset: 0;

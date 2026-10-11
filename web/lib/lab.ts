@@ -39,6 +39,7 @@ export interface LabMeasured extends LabNum {
   metric: string;
   node: string | null;
   measured_at: string | null;
+  other_chip?: boolean; // measured on the R9700s, before the lab moved to the Strix Halo pods
 }
 
 export interface LabList {

@@ -33,12 +33,41 @@ without data; `opinion` = argument without evidence. Metrics (O3 rubric [R8]): C
   - Implication: section 1's arithmetic (a 32 GB card, the teacher's 0.90 share, the trainer's 8.7 GiB peak) belongs to the R9700 and predicts nothing for pod B now; how much of the 64 GB shared memory torch reports as the GPU's, and so what a vLLM share of it means, has not been read on these pods, so E1's coexist arms can only be sized after a measurement on pod B (FCR during the window; the trainer's and the teacher's throughput are read from the other tracks).
   - Candidate experiment: E21 on T0, which reads `torch.cuda.mem_get_info()` and the fine-tune's own peak on pod B before it sizes arm C. Expected movement: link.failed_call_rate 1.0 over the window in the preempt arm and near 0 in a coexist arm that starts; whether the unsized coexist arm starts is unknown. Minimum sample size: 3 runs per arm.
 
+## 4. The placement plan and the owner's rule settle E21's question (plumbing pass 3, 2026-10-10)
+
+### Takeaway
+Since E21 was queued, pod D's memory has been read, the teacher has been started there from scripts, the placement
+plan (R46) has been merged, and Ilan has ruled on R43 that nothing shares a chip with a measured job. On that plan
+the teacher serves on pod C and pod D is the exclusive card, so E21's coexist arms test a placement the plan
+refuses, and its preempt arm's cost is now a measured restart time.
+
+### Cited findings
+- **[measured]** Pod D reports 64.0 GiB visible to torch on a host with 62 GB of RAM and 58 GB available, the same as pod C; the R30 teacher (vLLM 0.19.2+gfx1151, RedHatAI/Qwen3.8-27B-INT4) was ready 523 s after a cold start on pod D and answered `GET /v1/models` through the proxy 294.1 s after a start with a warm compile cache. Source: R30 task page, lines of Sat 5:40 PM and 6:10 PM (Hemdutt's agent) [S61]; `lab/refine/metrics.jsonl:53` [S65]
+
+  Implies: section 3's open memory question has its first answer (torch sees the 64 GiB pool, of which about 58 GB is free to place), and E21's preempt arm leaves the replica down for the fine-tune plus about 294 s warm or 523 s cold, in which every call fails fast with 500 (`proxy-path.md` section 5), so its link.failed_call_rate of 1.0 over that window is known before it runs (FCR, TTS).
+
+  Experiment: none beyond HUB-22 in `hub-api-lifecycle.md` section 10, which times the start once more from a stopped account.
+
+- **[practitioner]** `lab/placement.py` (R46) counts the teacher's vLLM share of the memory torch reports as held from its start (57.6 GiB at the serve script's 0.90 of 64 GiB), budgets a LoRA job at 13.05 GiB, and so says no to the teacher and a LoRA job on one pod at 0.90 (74.65 GiB against 58 GiB) and yes on paper only at a share of 0.63 or less; it keeps benchmarks and other measured jobs on the exclusive card alone, one training job per chip, and the teacher on the pod that serves it. Source: `placement.md` sections "What the teacher's vLLM holds", "Memory margin", "Measurements get a chip to themselves" and "Two training jobs on one chip" [S60] [S61] [S62]; `lab/placement.py`, main at fba248a [S64]
+
+  Implies: E21's arm B (a replica at 0.90 beside a fine-tune on pod B) is predicted to fail at the trainer's start, and its arm C (a sized replica beside a fine-tune) is a placement the plan allows only on paper and the owner's rule below forbids for measured jobs (FCR).
+
+  Experiment: none; see the next finding.
+
+- **[practitioner]** On R43's page Ilan's rule for the placement plan and the GPU queue is recorded: requests are grouped by the card state they need (live teacher up; bare exclusive card; training stack loaded) and ordered so a card changes state as few times as possible, and the interference measurement is dropped from R43 because nothing shares a chip with a measured job. Source: R43 task page, line signed Sat 9:08 PM ET by the Ilan1 agent's clock [S67]
+
+  Implies: the question E1, E17 and E21 asked (preempt the replica on pod B during a fine-tune, or coexist) is decided by the owner's rule and the plan rather than by a run on the pods, since a fine-tune never runs beside a serving replica, the teacher stays on pod C, and the cost that remains is a card's change of state on pod D (a teacher start of about 294 s warm), which the queue's ordering minimizes and HUB-22 measures (FCR, TTS).
+
+  Experiment: none beyond HUB-22 in `hub-api-lifecycle.md` section 10; E21 has nothing left to decide.
+
 ## Open questions
 
 - How much of a Strix Halo pod's 64 GB shared memory does torch on ROCm 7.13 report as the GPU's (`torch.cuda.mem_get_info()`), and does vLLM size its share from that number? Nothing was read on the pods in this pass.
 - How much of the teacher's 84 percent is weights and how much is KV cache, and what is the smallest share at which the 27B INT4 teacher still starts at its 16,384-token context? Nothing in the metrics file or the R2 notes splits it.
 - How much does a fine-tune beside a serving replica slow each of them on gfx1201? No source within this step's bound gives a figure; E17 measures it.
+- Partly answered by section 4: torch reports 64.0 GiB on both pods with about 58 GB free to place (R30), and the owner's rule takes coexisting off the plan, so the slowdown questions above no longer decide a policy.
 
 ## Search log
 
 - 2026-10-10, plumbing pass 2: part of the pass's research step (about 15 minutes in all; the search log of `hub-api-lifecycle.md` has the whole step). Starting point: E1 on T0 and its seed in `lab/machine/experiments.py` (track plumbing, metric trainer.samples_per_s, no expected movement, confidence or minimum sample). Opened: vLLM `vllm/config/cache.py` at b1388b1 (S51); `lab/refine/metrics.jsonl` lines 9, 10, 13 and 14 (S53); `lab/README.md`, `lab/pod_a_teacher.sh` and `lab/controller.py` on main at 97428e4 (S55). Stopped at the budget this pass gave the topic, with the slowdown question left open for the experiment.
+- 2026-10-10, plumbing pass 3: part of the pass's research step (the whole step's search log is in `hub-api-lifecycle.md`). Starting point: E21 on T0 against what landed after it: the R30 and R43 task pages (S61, S67), `placement.md` and `lab/placement.py` (R46, S64), and `lab/refine/metrics.jsonl:53` (S65). Stopped when the owner's rule on R43 answered the policy question E21 was queued to decide.

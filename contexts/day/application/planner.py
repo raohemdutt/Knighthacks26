@@ -88,6 +88,7 @@ class DayPlanner:
         self.plans: dict[date, DayPlanProposed] = {}  # the morning plan of each day
         self.current: dict[date, DayPlanProposed | DayReplanProposed] = {}  # what the day is measured against
         self.pending: dict[date, DayReplanProposed] = {}  # a re-plan waiting for the phone
+        self.earlier: dict[date, list[DayPlanProposed | DayReplanProposed]] = {}  # the plans `current` replaced, oldest first
         self.cards: dict[str, tuple[date, str]] = {}  # action id -> (day, plan id)
         self.committed: set[str] = set()
         self.reviews: dict[date, DayReviewed] = {}
@@ -113,7 +114,7 @@ class DayPlanner:
     def on_plan_proposed(self, e: DayPlanProposed) -> None:
         self.ids.add(e.plan_id)
         self.plans[e.day] = e
-        self.current[e.day] = e
+        self._replace(e.day, e)
         self.pending.pop(e.day, None)  # a new plan supersedes a re-plan waiting on the old one
         if e.action_id:
             self.cards[e.action_id] = (e.day, e.plan_id)
@@ -131,7 +132,15 @@ class DayPlanner:
         self.committed.add(e.plan_id)
         replan = self.pending.get(e.day)
         if replan and replan.plan_id == e.plan_id:
-            self.current[e.day] = self.pending.pop(e.day)
+            self._replace(e.day, self.pending.pop(e.day))
+
+    def _replace(self, day: date, plan: DayPlanProposed | DayReplanProposed) -> None:
+        """`plan` is now what the day is measured against; the one before it is kept, because the hours it
+        covered were already lived (the coach still judges them: contexts/day/application/coach.py)."""
+        old = self.current.get(day)
+        if old is not None and old.plan_id != plan.plan_id:
+            self.earlier.setdefault(day, []).append(old)
+        self.current[day] = plan
 
     def on_reviewed(self, e: DayReviewed) -> None:
         self.reviews[e.day] = e

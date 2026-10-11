@@ -1,7 +1,9 @@
 """The room twin's endpoints.
 
     GET /api/room                         the floor plan (metres), each camera's calibration with its homography, and
-                                          the zones of config/zones.yaml laid on the floor
+                                          the zones of config/zones.yaml laid on the floor. A calibration's `source`
+                                          is "default" (the placeholder points the room file shipped with: positions
+                                          are approximate) or "set" (four points given for the real camera, below)
     PUT /api/room/calibration/{camera}    {image: four [x, y] of the picture (0..1), floor: the four floor points (m)}
                                           -> saved into config/rooms/<name>.yaml and used at once
     GET /api/room/live                    tracks on the floor right now, where things were last seen, the Sort It
@@ -64,7 +66,7 @@ def room_router(live: Callable[[], RoomLive | None], config_dir: Path, guard: Ca
         if any(not (-0.5 <= p[0] <= plan.width + 0.5 and -0.5 <= p[1] <= plan.depth + 0.5) for p in body.floor):
             raise HTTPException(422, f"floor points are metres inside the room ({plan.width:g} by {plan.depth:g})")
         try:
-            cal = Calibration.of([[round(v, 4) for v in p] for p in body.image], [[round(v, 3) for v in p] for p in body.floor])
+            cal = Calibration.of([[round(v, 4) for v in p] for p in body.image], [[round(v, 3) for v in p] for p in body.floor], source="set")
         except Degenerate as err:
             raise HTTPException(422, str(err)) from None
         with lock:

@@ -7,7 +7,8 @@
   margin: 4px auto 0;
   border-radius: var(--radius);
   overflow: hidden;
-  background: #000;
+  background: var(--media-bg);
+  box-shadow: var(--sh-inset);
 }
 
 .video {
@@ -25,15 +26,18 @@
   pointer-events: none;
 }
 
+/* everything over the camera is drawn with the on-media colours: the picture is dark in both themes */
 .outline ellipse {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.55);
+  stroke: var(--on-media);
+  stroke-opacity: 0.55;
   stroke-width: 1.2;
   stroke-dasharray: 3 3;
 }
 
 .outlineGood ellipse {
-  stroke: var(--accent);
+  stroke: var(--accent-bright);
+  stroke-opacity: 1;
   stroke-dasharray: none;
 }
 
@@ -46,20 +50,22 @@
 }
 
 .ring circle {
-  fill: rgba(0, 0, 0, 0.55);
-  stroke: rgba(255, 255, 255, 0.25);
+  fill: var(--on-media-scrim);
+  stroke: var(--on-media);
+  stroke-opacity: 0.25;
   stroke-width: 4;
 }
 
 .ring .ringDone {
   fill: none;
-  stroke: var(--accent);
+  stroke: var(--accent-bright);
+  stroke-opacity: 1;
   stroke-linecap: round;
-  transition: stroke-dashoffset 0.25s ease;
+  transition: stroke-dashoffset var(--t) var(--ease-out);
 }
 
 .ring text {
-  fill: #fff;
+  fill: var(--on-media);
   font-size: 15px;
   font-weight: 700;
   text-anchor: middle;
@@ -164,11 +170,11 @@
 }
 
 .neutral {
-  background: #6f7b88;
+  background: var(--unknown);
 }
 
 .tired {
-  background: #8fa8ff;
+  background: var(--accent-2);
 }
 
 .tense {

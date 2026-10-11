@@ -14,4 +14,14 @@ meters:
   habits: [sleep, meals, screen_time, focus, leave_ready, sort_right]
   dayrun: [energy, focus, hunger]
 
+# The Ask screen's suggested questions, in this family's words (the student's when a profile lists none).
+suggestions:
+  - "Where did I leave my keys?"
+  - "Which chores are due this week?"
+  - "What happened at our table overnight?"
+  - "What should I eat?"
+  - "How's your day?"
+  - "Tell me a joke"
+  - "I'm worried about the school project"
+
 scenario: school-night    # config/profiles/family-home/scenarios/school-night.yaml

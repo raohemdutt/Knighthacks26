@@ -299,6 +299,7 @@ class CorrectionBody(BaseModel):
     right: bool
     answer: CoachAnswer | None = None  # needed when `right` is false
     note: str | None = Field(default=None, max_length=280)
+    break_start: datetime | None = None  # which break, when two blocks of the day share an id (a re-plan numbers its blocks again)
 
 
 def coach_feedback_router(day, feedback: CoachFeedback, publish: Callable[[object], Awaitable] | None = None,
@@ -324,8 +325,11 @@ def coach_feedback_router(day, feedback: CoachFeedback, publish: Callable[[objec
     @router.post("/corrections", dependencies=writes)
     async def correct(body: CorrectionBody) -> dict:
         now = event_now()
-        session = next((s for s in day.coach.sessions(body.day, now) if s.block_id == body.block_id), None)
-        if session is None or body.break_index >= len(session.breaks):
+        mine = [s for s in day.coach.sessions(body.day, now) if s.block_id == body.block_id and body.break_index < len(s.breaks)]
+        if body.break_start is not None:
+            mine = [s for s in mine if s.breaks[body.break_index].start == body.break_start]
+        session = mine[0] if mine else None
+        if session is None:
             raise HTTPException(404, "no such break in that day's sessions")
         b = session.breaks[body.break_index]
         answer = b.trigger if body.right else body.answer

@@ -81,3 +81,11 @@ def test_piper_failure_is_an_engine_error(tmp_path):
 
     with pytest.raises(SpeechEngineError, match="no espeak data"):
         PiperTts(cfg(tmp_path), run=run).synthesize("Hi.")
+
+
+def test_whisper_encodes_only_as_much_audio_as_there_is(tmp_path):
+    from contexts.voice.engines import _audio_ctx
+    assert _audio_ctx(16000 * 2 * 4, 16000) == 300  # 4 s: 200 frames and two seconds to spare
+    assert _audio_ctx(16000 * 2 * 1, 16000) == 256  # never smaller than this
+    assert _audio_ctx(16000 * 2 * 40, 16000) == 1500  # never more than whisper's own 30 s window
+

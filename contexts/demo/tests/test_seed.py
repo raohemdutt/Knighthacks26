@@ -144,6 +144,36 @@ def test_the_handlers_raised_the_alert_the_nudges_the_checklist_and_a_game_round
     assert [r.correct for r in seeded.rounds] == [True]
 
 
+def test_a_fresh_seed_leaves_one_card_the_replan_for_the_mentor_check_in_fresh_at_now(seeded_dir, tmp_path):
+    """The story ends ten minutes into the mentor check-in with the person still at the desk, so the Day loop offers
+    a re-plan: that is the one card a fresh seed has waiting, raised at the story's `now` (five minutes to say yes).
+    Every earlier card nobody answered expired in the story's own time, as on a running box, and the box that then
+    starts on the directory raises no card of its own."""
+    data_dir, _ = seeded_dir
+    app = replayed(data_dir / "events", tmp_path)
+    (card,) = app.approvals.pending()
+    assert "mentor check-in started" in card.reason and "Replace today's Day Run blocks" in card.reason
+    assert card.expires_at == NOW + timedelta(minutes=5)
+    log = list(app.bus.read_log())
+    (asked,) = [e for e in log if e.type == "workspace.approval.requested" and e.action_id == card.id]
+    assert asked.ts == NOW and app.day.planner.pending[app.day.clock.day_of(NOW)].action_id == card.id
+    requested = {e.action_id for e in log if e.type == "workspace.approval.requested"}
+    finished = {e.action_id: e.status for e in log if e.type == "workspace.action.completed"}
+    assert requested - set(finished) == {card.id} and len(requested) > 1  # nothing else was left waiting
+    assert set(finished.values()) == {"expired"}  # this story has nobody at the phone
+
+    async def tick(now):  # the gateway's ticker: approvals, then the Day loop (contexts.gateway.bootstrap.Atlas._ticks)
+        out = []
+        app.bus.subscribe("workspace.approval.requested", out.append)
+        await app.bus.publish_all(app.approvals.expire(now))
+        await app.bus.publish_all(app.day.tick(now))
+        return out
+
+    assert asyncio.run(tick(NOW + timedelta(minutes=1))) == [] and len(app.approvals.pending()) == 1  # still the same card
+    assert asyncio.run(tick(NOW + timedelta(minutes=6))) == [] and app.approvals.pending() == []  # it expired, unanswered
+    assert asyncio.run(tick(NOW + timedelta(minutes=30))) == []  # and the check-in is not offered a third time
+
+
 def test_the_study_coach_reviews_saturday_nights_block_with_a_real_distraction(seeded_dir, tmp_path):
     data_dir, seeded = seeded_dir
     app = seeded.app

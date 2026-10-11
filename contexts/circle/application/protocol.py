@@ -76,7 +76,7 @@ def busy(memory: MemoryReader, start: datetime, end: datetime) -> bool:
     """My own calendar, checked on my own box. Events without an end count as one hour."""
     for item in memory.items(start - timedelta(hours=12), end, kind="calendar_event"):
         item_end = item.when + timedelta(hours=1)
-        if item.when < end and start < item_end:
+        if item.when < end and start < item_end and not item.external_id.startswith("nearby:"):  # optional, not a commitment
             return True
     return False
 
@@ -137,7 +137,18 @@ class CircleAgent:
         return Reply(answer="busy")
 
     def poll(self) -> list:
-        """Run on the app's timer: surface new messages, answer proposals, follow up counters, detect agreement."""
+        """Run on the app's timer: surface new messages, answer proposals, follow up counters, detect agreement.
+
+        If the store fails part-way (Neon dropped between two statements), nothing counts as done: the next poll
+        starts over. Without this a proposal read just before the drop was never answered until a restart."""
+        before = self._seen, set(self._handled), set(self._agreed)
+        try:
+            return self._poll()
+        except Exception:
+            self._seen, self._handled, self._agreed = before
+            raise
+
+    def _poll(self) -> list:
         now = self.clock()
         after = self._seen - CLOCK_SKEW if self._seen else None
         rows = sorted(self.store.since(self.circle_id, after), key=lambda m: m.created_at)

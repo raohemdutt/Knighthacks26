@@ -1,0 +1,48 @@
+# "Near you" (contexts/demo/nearby.py): optional events the person can say yes or no to on the Calendar
+# screen, seeded with the demo night by `python -m contexts.demo seed` and `python -m contexts.demo circle`.
+# Invented for the demo: the friends are the story's fictional ones and nothing here was read from GroupMe
+# or UCF Events.
+#
+# Each event becomes one `connector.item.synced` (contracts/connectors.py, unchanged):
+#   connector    calendar
+#   kind         calendar_event
+#   external_id  nearby:<slug>:<start, ISO 8601 with the America/New_York offset>
+#   when         the start
+#   summary      until <end> · <the place's name in config/places/<pack>.yaml> · <tag> · <tag>
+# The `nearby:` prefix is what marks an event as optional: the Day loop's board, the leaving checklist,
+# the Circle's free/busy answer and Habits' "leave ready" skip it, so none of these is ever a commitment.
+#
+# Times are not dates: `day` counts local days from the story's `now` (0 today, 1 tomorrow, 2 the day
+# after) and `at` is the local start, so `seed --now` and `--end` keep "tomorrow evening" in the evening
+# whatever time of day the story ends. An event of today that has already started by `now` is the same
+# event tomorrow, so every start is after `now` and less than three days away.
+# `place` is a place id of the pack; `tags` are written as they are (the screen understands
+# `hosted by <Name>`, `with <Name>, <Name>`, `free`, `optional`, `via GroupMe`, `via UCF Events`).
+#
+# messages: a group chat message about one of the events, in the GroupMe connector's own item format
+# (contexts/connectors/servers/groupme.py), posted `minutes_ago` before `now` and synced a minute later.
+# In `text`, {weekday} and {time} are the event's start as people type them ("monday", "6:30pm").
+pack: ucf
+synced_minutes_ago: 0   # at `now`, the story's last moment: nothing the night derived before it can change, and
+                        # the Day loop's status at the end of the story is the one it would have been
+
+events:
+  # The hero: a friend's review for Quiz 5 - Greedy Algorithms [COP4533], tomorrow evening.
+  - {slug: cop4533-review, title: "COP4533 review session (optional)", day: 1, at: "18:30", minutes: 90, place: library,
+     tags: ["hosted by Andria", "with Maya, Priya", optional, via GroupMe]}
+  - {slug: board-games, title: "Board game night", day: 0, at: "20:00", minutes: 120, place: union,
+     tags: ["with Riley, Sam", free, optional, via UCF Events]}
+  - {slug: hack-snack, title: "Late hack-snack", day: 0, at: "22:15", minutes: 45, place: eng2,
+     tags: ["hosted by Jordan", free, optional, via GroupMe]}
+  - {slug: resume-workshop, title: "Resume workshop", day: 1, at: "12:30", minutes: 60, place: cb1,
+     tags: [free, optional, via UCF Events]}
+  - {slug: friends-dinner, title: "Friends' dinner", day: 1, at: "17:15", minutes: 60, place: dining_63,
+     tags: ["with Riley, Sam, Alex", optional, via GroupMe]}
+  - {slug: pickup-soccer, title: "Pickup soccer", day: 2, at: "16:30", minutes: 90, place: rwc,
+     tags: ["with Sam, Jordan", free, optional, via GroupMe]}
+  - {slug: food-truck-night, title: "Food truck night", day: 2, at: "18:30", minutes: 150, place: memory_mall,
+     tags: ["with Riley", optional, via UCF Events]}
+
+messages:
+  - {about: cop4533-review, external_id: "class:1760100010", author: Andria, chat: "COP4533 class chat", minutes_ago: 1,
+     text: "running a review session for quiz 5 (greedy algorithms) {weekday} {time} at the library, about 90 min. totally optional. maya and priya are in"}

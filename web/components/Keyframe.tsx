@@ -16,7 +16,7 @@ export function Keyframe({ frameRef, caption, compact = false }: { frameRef: str
   const camera = cameraOfFrame(frameRef);
   const alt = camera ? `Frame from the ${cameraName(camera).toLowerCase()}` : "Camera frame";
   return (
-    <figure className={ui.frame}>
+    <figure className={ui.frame} data-guide="frame">
       <div className={ui.frameBox}>
         {missing ? (
           <div className={ui.framePlaceholder} role="img" aria-label={`${alt}: image not stored on this box`}>

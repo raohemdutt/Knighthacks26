@@ -19,3 +19,6 @@ lab/state/*
 # face models fetched by jetson/face-fetch.sh (YuNet is in the repo; these two are not)
 contexts/perception/models/face_recognition_sface_2021dec.onnx
 contexts/perception/models/facial_expression_recognition_mobilefacenet_2022july.onnx
+.neon
+node_modules/
+.env.local

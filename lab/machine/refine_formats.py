@@ -83,11 +83,16 @@ _SECTION_NAMES = {
     "Left for the next pass": "next",
     "Checks run": "checks",
 }
-# A section starts at the beginning of a line with its label, an optional free-text parenthetical,
-# and a colon. The parenthetical may itself contain colons.
+# A section starts at the beginning of a line with its label, an optional free-text parenthetical (its
+# note), and a colon. The parenthetical may itself contain colons.
 _SECTION_LINE = re.compile(
-    r"^(?P<label>" + "|".join(re.escape(label) for label in _SECTION_NAMES) + r")(?:\s*\([^)\n]*\))?:[ \t]*(?P<rest>.*)$"
+    r"^(?P<label>"
+    + "|".join(re.escape(label) for label in _SECTION_NAMES)
+    + r")(?:\s*\((?P<note>[^)\n]*)\))?:[ \t]*(?P<rest>.*)$"
 )
+_CHANGE_CAP = re.compile(r"\bat most (?P<cap>[0-9]+) changes\b")
+# The note on a pass entry's Changes line: how many changes it holds, and the cap it was written against.
+_CHANGES_NOTE = re.compile(r"^(?P<made>[0-9]+)\s+of\s+at\s+most\s+(?P<cap>[0-9]+)$")
 
 _COLUMNS = ("metric", "value", "unit", "node", "conditions", "source")
 _LINE_REF = re.compile(r"[\w./-]*(?:metrics\.jsonl|ledger(?:\.jsonl)?):[0-9]+")
@@ -280,6 +285,8 @@ class PassEntry:
 
     ending is converged or cap when the entry closes with 'CONVERGED at pass N' or
     'CAP REACHED at pass N, not converged' (ending_number is that N), and '' otherwise.
+    changes_note is the parenthetical of the 'Changes' line, such as '3 of at most 5', and '' when the
+    line has none.
     """
 
     kind: str
@@ -292,6 +299,7 @@ class PassEntry:
     walked: tuple[Walk, ...] = ()
     findings: tuple[Finding, ...] = ()
     changes: tuple[Change, ...] = ()
+    changes_note: str = ""
     rulings_raised: tuple[RaisedRuling, ...] = ()
     metrics_after: tuple[Reading, ...] = ()
     metrics_after_note: str = ""
@@ -451,7 +459,17 @@ def parse_rulings(text: str) -> tuple[Ruling, ...]:
     return tuple(rulings)
 
 
-def check_pass_entry(entry: PassEntry) -> list[str]:
+def change_cap_in(rules_text: str) -> int:
+    """The per-pass change cap PASS_RULES.md states, as 'at most <N> changes'; FormatError when it states none or two."""
+    caps = sorted({int(found["cap"]) for found in _CHANGE_CAP.finditer(" ".join(rules_text.split()))})
+    if not caps:
+        raise FormatError("no per-pass change cap found; 'What a pass does' must say 'at most <N> changes'")
+    if len(caps) > 1:
+        raise FormatError(f"more than one per-pass change cap found: {', '.join(str(cap) for cap in caps)}")
+    return caps[0]
+
+
+def check_pass_entry(entry: PassEntry, cap: int | None = None) -> list[str]:
     """List what a pass or merge entry is missing; an empty list means the entry is valid.
 
     A pass entry needs a research step with sources, a metrics-before table whose rows cite a
@@ -459,6 +477,10 @@ def check_pass_entry(entry: PassEntry) -> list[str]:
     to findings, rulings raised with a blank Answer line, and a Converged verdict that agrees with its
     closing CONVERGED or CAP REACHED line; a YES verdict comes with no change and no new ruling. A merge entry needs the same except the research step, the
     metrics-before table, the METRIC line and the finding for each change.
+
+    cap is the per-pass change cap that lab/refine/PASS_RULES.md sets (refine_track.change_cap reads
+    it). When it is given, a pass entry may hold no more changes than that, and its Changes line must
+    name it, 'Changes (<n> of at most <cap>):'. Merge entries are not held to it.
     """
     who = f"{entry.kind} {entry.number}"
     full = entry.kind == "pass"
@@ -498,6 +520,8 @@ def check_pass_entry(entry: PassEntry) -> list[str]:
     numbers = [change.number for change in entry.changes]
     if numbers != list(range(1, len(numbers) + 1)):
         add(f"changes must be numbered 1 to {len(numbers)} in order, found {numbers}")
+    if cap is not None and full and "changes" in entry.sections:
+        _check_change_cap(add, entry, cap)
     for change in entry.changes:
         _check_change(add, change, full)
     referenced = {n for finding in entry.findings for n in finding.fixed}
@@ -566,6 +590,17 @@ def _check_readings(add, name: str, readings: tuple[Reading, ...], allow_absent:
                 f"{name}: {reading.metric} needs a metrics-file or ledger line in the source column "
                 f"(metrics.jsonl:<line> or ledger:<seq>), found {reading.source!r}"
             )
+
+
+def _check_change_cap(add, entry: PassEntry, cap: int) -> None:
+    if len(entry.changes) > cap:
+        add(f"the entry makes {len(entry.changes)} changes but a pass makes at most {cap}")
+    named = _CHANGES_NOTE.match(entry.changes_note)
+    if not named:
+        found = f"Changes ({entry.changes_note})" if entry.changes_note else "Changes"
+        add(f"the Changes line must read 'Changes (<n> of at most {cap}):', found '{found}'")
+    elif int(named["cap"]) != cap:
+        add(f"the Changes line names a cap of {int(named['cap'])} but a pass makes at most {cap}")
 
 
 def _check_change(add, change: Change, full: bool) -> None:
@@ -638,6 +673,7 @@ def _parse_pass(match: re.Match[str], heading: str, body: list[str]) -> PassEntr
     sections: dict[str, list[str]] = {}
     current = summary_lines
     ending, ending_number = "", None
+    changes_note = ""
     for line in body:
         section = _SECTION_LINE.match(line)
         closing = _ENDING.match(line)
@@ -650,6 +686,8 @@ def _parse_pass(match: re.Match[str], heading: str, body: list[str]) -> PassEntr
             name = _SECTION_NAMES[section["label"]]
             if name in sections:
                 raise FormatError(f"{heading!r}: section '{section['label']}' appears twice")
+            if name == "changes":
+                changes_note = (section["note"] or "").strip()
             current = sections[name] = []
             if section["rest"].strip():
                 current.append(section["rest"])
@@ -705,6 +743,7 @@ def _parse_pass(match: re.Match[str], heading: str, body: list[str]) -> PassEntr
         walked=tuple(walked),
         findings=tuple(findings),
         changes=changes,
+        changes_note=changes_note,
         rulings_raised=raised,
         metrics_after=after,
         metrics_after_note=after_note,

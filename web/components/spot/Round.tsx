@@ -81,11 +81,11 @@ export function ManualNote({ m }: { m: Manual }) {
   );
 }
 
-export function Battery({ pct }: { pct: number | null }) {
+export function Battery({ pct, guide }: { pct: number | null; guide?: string }) {
   const v = pct === null ? 0 : Math.max(0, Math.min(100, pct));
   const tone = v < 20 ? o.battBad : v < 40 ? o.battWatch : o.battOk;
   return (
-    <div className={o.battery} role="img" aria-label={pct === null ? "Battery unknown" : `Battery ${Math.round(v)} percent`}>
+    <div className={o.battery} data-guide={guide} role="img" aria-label={pct === null ? "Battery unknown" : `Battery ${Math.round(v)} percent`}>
       <span className={o.battBody}>
         <i className={tone} style={{ width: `${v}%` }} />
         <em style={{ left: "40%" }} />
@@ -176,6 +176,7 @@ export function Round({
           assets={shift.assets}
           quiet
           title="Where SPOT went"
+          guide="round:map"
           route={route}
           done={shown}
           robotAt={current?.location_id ?? null}
@@ -185,7 +186,7 @@ export function Round({
         <div className={`${o.card} ${o.roundCard}`}>
           <label className={o.pickLabel}>
             <span>Round</span>
-            <select className={`${ui.input} ${o.pick}`} value={picked} onChange={(e) => choose(e.target.value)}>
+            <select className={`${ui.input} ${o.pick}`} data-guide="round:pick" value={picked} onChange={(e) => choose(e.target.value)}>
               {[...shift.rounds].reverse().map((r) => (
                 <option key={r.mission_id} value={r.mission_id}>
                   {r.label}
@@ -196,7 +197,7 @@ export function Round({
 
           {round.data ? <p className={o.sentence}>{round.data.summary}</p> : <p className={o.note}>{round.error ? "This round could not be loaded." : "Loading the round…"}</p>}
 
-          <ol className={o.steps} aria-label="Steps of the round">
+          <ol className={o.steps} aria-label="Steps of the round" data-guide="round:steps">
             {steps.map((st, i) => {
               const state = i < shown - 1 || (i === shown - 1 && !running) ? "done" : i === shown - 1 ? "now" : "later";
               return (
@@ -240,11 +241,11 @@ export function Round({
             ) : (
               <p className={o.nowLine}>{steps.length ? "SPOT is setting off. Press Play, or tap a step." : "…"}</p>
             )}
-            <Battery pct={battery} />
+            <Battery pct={battery} guide="round:battery" />
           </div>
 
           <div className={o.controls}>
-            <button type="button" className={`${ui.btn} ${ui.btnPrimary} ${o.play}`} onClick={play} disabled={!steps.length}>
+            <button type="button" className={`${ui.btn} ${ui.btnPrimary} ${o.play}`} data-guide="round:play" onClick={play} disabled={!steps.length}>
               {playing ? "Pause" : "Play"}
             </button>
             <button type="button" className={ui.btn} onClick={() => move(shown - 1)} disabled={shown <= 0} aria-label="Previous step">

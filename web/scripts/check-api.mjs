@@ -599,6 +599,12 @@ const spotShift = await check("GET /api/spot/shift", "GET", "/api/spot/shift", {
 if (spotShift?.configured) {
   console.log(`        ${spotShift.status.sentence}`);
   await check(`GET /api/spot/shift/rounds/${spotShift.latest_round}`, "GET", `/api/spot/shift/rounds/${spotShift.latest_round}`, { configured: "boolean", label: "string", summary: "string", steps: "array" }, { optional: NO_SPOT });
+  // the look guide (contexts/spot/application/guide.py): where on the screen a thing is, and the walk to it over legs SPOT has walked
+  const asset = spotShift.assets[0]?.asset_id;
+  const pointed = await check("GET /api/spot/guide", "GET", `/api/spot/guide?q=${encodeURIComponent(`where is ${asset}`)}`, { configured: "boolean", query: "string", target: "string?", label: "string?", steps: "array", confidence: "number", alternatives: "array" }, { optional: NO_SPOT });
+  if (pointed) console.log(`        "where is ${asset}" -> ${pointed.target}: ${pointed.steps.at(-1)?.say}`);
+  const walk = await check("GET /api/spot/route", "GET", `/api/spot/route?to=${encodeURIComponent(asset)}`, { configured: "boolean", found: "boolean", from: "string?", to: "string?", path: "array", legs: "array", length: "number", say: "array", summary: "string", note: "string", places: "array" }, { optional: NO_SPOT });
+  if (walk) console.log(`        ${walk.summary}`);
 }
 
 console.log("\nLearning lab");
@@ -634,6 +640,53 @@ if (lab) {
     }
   }
   await check("GET /api/learning/lab?sample=1", "GET", "/api/learning/lab?sample=1", { runs: "array", sample: "boolean", real_runs: "number" });
+}
+
+// The lab's other tabs (lib/labBench.ts): the benchmark rows, the routing what-if and the experiment timeline.
+const labBench = await check("GET /api/learning/lab/bench", "GET", "/api/learning/lab/bench",
+  { file: "string", rows: "number", skipped: "array", families: "array", sweeps: "array", student: "object?", power: "object", series: "array", charted_rows: "number", not_charted: "array" }, { optional: NO_LAB });
+if (labBench) {
+  const points = labBench.series.flatMap((s) => s.points);
+  console.log(`        ${labBench.rows} rows, ${labBench.sweeps.length} batching sweep${labBench.sweeps.length === 1 ? "" : "s"}, ${labBench.not_charted.length} metrics not charted`);
+  expect("  every row is served once, as a point", points.length === labBench.rows, `${points.length} points for ${labBench.rows} rows`);
+  const badPoint = points.map((p) => labNum(p) || (!/metrics\.jsonl:\d+$/.test(p.source.ref) && "no file line") || (p.low_confidence && !p.reason && "low confidence without a reason")).filter(Boolean);
+  expect("  every point names its line in the metrics file, and a low-confidence one says why", badPoint.length === 0, badPoint.slice(0, 3).join("; "));
+  const listed = labBench.not_charted.reduce((n, x) => n + x.lines.length, 0);
+  expect("  every row is charted or listed as not charted", labBench.charted_rows + listed === labBench.rows, `${labBench.charted_rows} + ${listed} of ${labBench.rows}`);
+  for (const s of labBench.sweeps) expect(`  sweep ${s.id} has a point per batch size`, Object.values(s.metrics).every((pts) => pts.length <= s.batches.length && pts.every((p) => s.batches.includes(p.x))), "a point off the batch list");
+  const st = labBench.student;
+  if (st?.j_per_token) expect("  the student's joules per token is marked derived, with its formula", st.j_per_token.kind === "derived" && !!st.j_per_token.formula, JSON.stringify(st.j_per_token.kind));
+}
+const LAB_SIM = { available: "boolean", label: oneOf("simulation", "what-if"), model_statement: "string", calls: "array", assumptions: "array", measured: "object?", measured_reason: "string?", presets: "array", params: "object", privacy: "object" };
+const labSim = await check("POST /api/learning/lab/routing/simulate", "POST", "/api/learning/lab/routing/simulate", LAB_SIM, { body: { preset: "burst" }, optional: NO_LAB });
+if (labSim) {
+  expect("  it is a what-if exactly when a closed-loop measurement exists", (labSim.label === "what-if") === (labSim.measured !== null) && (labSim.measured !== null || !!labSim.measured_reason), `${labSim.label}, measured ${labSim.measured !== null}`);
+  expect("  it names the real hook it calls", labSim.calls.includes("runtime.routing.route"), labSim.calls.join(", "));
+  if (labSim.available) {
+    const names = labSim.kinds.map((k) => k.kind);
+    const locked = new Set(labSim.kinds.filter((k) => k.locked).map((k) => k.kind));
+    console.log(`        ${labSim.compare.sentence}`);
+    for (const [name, run] of Object.entries(labSim.policies)) {
+      let energy = 0;
+      let leaked = 0;
+      [...run.targets].forEach((t, i) => {
+        const kind = names[labSim.requests.kind[i]];
+        energy += run.by_kind[kind].joules;
+        if (locked.has(kind) && t !== "p") leaked++;
+      });
+      expect(`  ${name}: the energy total is the sum of its requests`, Math.abs(energy - run.energy_j) < 0.05, `${energy} against ${run.energy_j}`);
+      expect(`  ${name}: no request behind the privacy line leaves the box`, leaked === 0, `${leaked} leaked`);
+    }
+    const again = await check("POST /api/learning/lab/routing/simulate (again)", "POST", "/api/learning/lab/routing/simulate", LAB_SIM, { body: { preset: "burst" } });
+    if (again) expect("  the same inputs give the same output", JSON.stringify(again) === JSON.stringify(labSim), "the two answers differ");
+  } else console.log(`        not available: ${labSim.reason}`);
+}
+const labTimeline = await check("GET /api/learning/lab/experiments", "GET", "/api/learning/lab/experiments", { cards: "array", counts: "object", experiments: "object", passes: "number", sessions: "number", summary: "string" }, { optional: NO_LAB });
+if (labTimeline) {
+  console.log(`        ${labTimeline.summary}`);
+  expect("  every card names the record it came from", labTimeline.cards.every((c) => c.source && c.source.ref && c.status && c.title), "a card without a source");
+  const bad = labTimeline.cards.flatMap((c) => c.numbers).map((n) => labNum(n)).filter(Boolean);
+  expect("  every card number has a source", bad.length === 0, bad.slice(0, 3).join("; "));
 }
 
 console.log("\nDay Run (scenario demo)");

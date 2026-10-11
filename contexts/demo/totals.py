@@ -193,7 +193,7 @@ def totals(events: Iterable[dict], since: datetime | None = None) -> list[Total]
                       jetson.n, jetson.first, jetson.last))
     gpu = t.get("telemetry.gpu.power") or _Tally()
     gpu_wh = sum(state.gpu_j.values()) / 3600
-    rows.append(Total("Energy used by the R9700s", f"{gpu_wh:,.1f} Wh" if gpu_wh else "none in the log",
+    rows.append(Total("Energy used by the lab GPUs", f"{gpu_wh:,.1f} Wh" if gpu_wh else "none in the log",
                       f"estimated: socket_w from `telemetry.gpu.power` x {gpu.n} integrated over time"
                       + (f" ({', '.join(sorted(state.gpu_j))})" if state.gpu_j else ""),
                       gpu.n, gpu.first, gpu.last))
