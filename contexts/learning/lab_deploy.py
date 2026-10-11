@@ -15,7 +15,11 @@ GET  /api/learning/lab/deploy
                                                               base. It may be current: the card then disables it
      "deploy": {state: idle|running|done|failed, action: deploy|rollback, version, from, started, ended, seconds,
                 stages: [{name, state, seconds}],             verify, switch, restart, check, publish
-                log_tail: [str], result: {ok, returncode, message, rolled_back_to} | null}}
+                log_tail: [str], result: {ok, returncode, message, rolled_back_to} | null,
+                interrupted: bool, message: str | null}}
+    `interrupted` is true for a failed swap a restart cut short after it had already switched: returncode -15 or
+    none, the check stage never done, and the current link is the swap's version. `state` stays failed (older cards
+    read it); `message` then says the box is serving that version. Both are false and null otherwise.
     `verified` is true when the version's manifest.json reads and either no .verified.json is there or the record
     still vouches for every file the manifest names (same sha256, size and mtime); `record` says which: "fresh",
     "stale" (the record no longer matches a file: the next swap hashes it) or "none". Nothing is hashed here.
@@ -305,7 +309,7 @@ class DeployRunner:
         if state == "idle":
             return {"state": "idle", "action": None, "version": None, "from": None, "started": None, "ended": None,
                     "seconds": None, "stages": [{"name": n, "state": "waiting", "seconds": None} for n in STAGES],
-                    "log_tail": [], "result": None}
+                    "log_tail": [], "result": None, "interrupted": False, "message": None}
         lines = self._log_lines()
         now = self.clock()
         stages, _ = parse_log(lines, now, finished=state != "running")
@@ -316,7 +320,18 @@ class DeployRunner:
                 "from": status.get("from"), "started": status.get("started"), "ended": status.get("ended"),
                 "seconds": seconds, "stages": stages,
                 "log_tail": [line for line in lines if not STAGE_RE.match(line.strip())][-TAIL_LINES:],
-                "result": status.get("result")}
+                "result": status.get("result"), **self._interrupted(status, stages)}
+
+    def _interrupted(self, status: dict[str, Any], stages: list[dict[str, Any]]) -> dict[str, Any]:
+        """A failed swap a restart cut short (SIGTERM, or lost with the gateway) after its switch: the box serves it."""
+        result = status.get("result") if isinstance(status.get("result"), dict) else {}
+        version = status.get("version")
+        check = next((s["state"] for s in stages if s["name"] == "check"), None)
+        if (status.get("state") == "failed" and result.get("returncode") in (-15, None) and check != "done"
+                and version and self.store.current() == version):
+            return {"interrupted": True,
+                    "message": f"the last swap was interrupted by a restart; the box is serving {version}"}
+        return {"interrupted": False, "message": None}
 
     def view(self) -> dict[str, Any]:
         versions = self.versions()

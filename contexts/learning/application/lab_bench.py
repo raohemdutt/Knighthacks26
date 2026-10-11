@@ -44,6 +44,7 @@ On a present value `reason` is why it is low confidence, in the row's own words.
 import json
 import re
 from pathlib import Path
+from urllib.parse import quote
 from typing import Any
 
 from contexts.learning.application.lab_view import by_file
@@ -531,3 +532,101 @@ def bench(rows: list[dict[str, Any]], skipped: list[dict[str, Any]] | None = Non
         "charted_rows": len(drawn), "not_charted": not_charted,
         "empty_reason": None if rows else "the lab's metrics file has no rows on this box",
     }
+
+
+# --- the summary: what GET /api/learning/lab/bench serves by default (the whole payload is at ?all=1) ---
+
+HEADLINE = (("decode_tok_s", "tok_s_stream"), ("decode_tok_s_total", "tok_s_total"), ("ttft_s", "ttft_s"),
+            ("watts_avg", "watts"), ("joules_per_token", "j_per_token"))
+HEAVY = ("sweeps", "series", "not_charted", "families")  # the parts of bench() the summary leaves out (2.6 MB of 2.7 MB on the box)
+
+
+def session_of(row: dict[str, Any]) -> str:
+    """The benchmark session a row belongs to: `conditions.session`, else the program that recorded it, else "unsessioned"."""
+    return _text(row["conditions"].get("session")) or _text(row.get("source")) or "unsessioned"
+
+
+def _brief(row: dict[str, Any]) -> dict[str, Any]:
+    c = row["conditions"]
+    stats = c.get("stats") if isinstance(c.get("stats"), dict) else {}
+    low = bool(row.get("low_confidence"))
+    return {"value": row["value"], "unit": row.get("unit"), "line": row["_line"], "low_confidence": low,
+            "reason": (_text(c.get("low_confidence_reason")) or NO_REASON) if low else None,
+            "runs": _number(stats.get("n")) if _number(stats.get("n")) is not None else _runs_listed(c),
+            "statistic": _text(c.get("statistic"))}
+
+
+def _confidence(cells: list[dict[str, Any]]) -> dict[str, Any]:
+    low = [x for x in cells if x["low_confidence"]]
+    runs = sorted({x["runs"] for x in cells if x["runs"]})
+    level = "low" if low else ("repeated" if runs and min(runs) > 1 else "single run")
+    return {"level": level, "low_confidence": len(low), "of": len(cells), "runs": runs,
+            "reasons": list(dict.fromkeys(x["reason"] for x in low if x["reason"]))[:3]}
+
+
+def sessions(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One entry per benchmark session, newest first: its chip, engine, date, lever and row count, and its headline
+    numbers per node and batch size (tok/s per stream, tok/s total, time to first token, watts, joules per token)."""
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for r in rows:
+        groups.setdefault(session_of(r), []).append(r)
+    out = []
+    for sid, every in groups.items():
+        members = [r for r in every if r.get("_repeat_of") is None] or every
+        newest = _newest(members)
+        c = newest["conditions"]
+        chip = chip_of(newest)
+        cells: dict[tuple, dict[str, list[dict[str, Any]]]] = {}
+        for r in members:
+            suffix = r["metric"].split(".", 1)[-1]
+            name = next((short for full, short in HEADLINE if suffix == full), None)
+            if name is None:
+                continue
+            cells.setdefault((str(r.get("node")), batch_of(r), chip_of(r)["key"]), {}).setdefault(name, []).append(r)
+        headline = []
+        for (node, batch, chip_key), found in sorted(cells.items(), key=lambda kv: (kv[0][0], kv[0][2], kv[0][1] is None, kv[0][1] or 0)):
+            picked = {name: _brief(_newest(rs)) for name, rs in found.items()}
+            headline.append({"node": node, "batch": batch, "chip": chip_key,
+                             **{short: picked.get(short) for _, short in HEADLINE},
+                             "confidence": _confidence(list(picked.values()))})
+        batches = sorted({b for b in map(batch_of, members) if b is not None})
+        lever = _text(c.get("lever")) or ("batch size " + ", ".join(f"{b:g}" for b in batches) if len(batches) > 1 else None)
+        stamps = [str(r["ts"]) for r in members if r.get("ts")]
+        out.append({
+            "id": sid, "chip": {k: chip[k] for k in ("key", "name", "current", "role", "where")},
+            "engine": build_of(c), "model": model_of(c), "date": max(stamps)[:10] if stamps else None,
+            "first_ts": min(stamps) if stamps else None, "ts": max(stamps) if stamps else None, "lever": lever,
+            "nodes": sorted({str(r.get("node")) for r in members}), "families": sorted({r["metric"].split(".")[0] for r in members}),
+            "rows": len(members), "repeated_rows": len(every) - len(members),
+            "low_confidence_rows": sum(bool(r.get("low_confidence")) for r in members),
+            "mode": _text(c.get("mode")), "batches": batches, "headline": headline,
+            "rows_url": "/api/learning/lab/bench/rows?session=" + quote(sid, safe=""),
+        })
+    out.sort(key=lambda s: s["ts"] or "", reverse=True)
+    out.sort(key=lambda s: not s["chip"]["current"])  # the current lab's sessions first
+    return out
+
+
+def summary(rows: list[dict[str, Any]], skipped: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """The tab's first answer: every small part of bench() as it is, the sessions with their headline numbers, and
+    the heavy parts (every point of every sweep, series and not_charted) left as empty lists, named in `omitted`
+    with the route that serves them."""
+    return {
+        "summary": True, "file": REL, "rows": len(rows), "skipped": skipped or [],
+        "low_confidence_rows": sum(bool(r.get("low_confidence")) for r in rows),
+        "repeated_rows": sum(r.get("_repeat_of") is not None for r in rows),
+        "repeats": [{"line": r["_line"], "of": r["_repeat_of"]} for r in rows if r.get("_repeat_of") is not None],
+        "other_chip_rows": sum(other_chip(r) for r in rows), "other_chip_label": OTHER_CHIP, "lab_moved_at": LAB_MOVED_AT,
+        "newest": max((str(r.get("ts")) for r in rows if r.get("ts")), default=None),
+        "sessions": sessions(rows), "student": student(rows), "power": power(rows),
+        **{k: [] for k in HEAVY},
+        "omitted": {"keys": list(HEAVY), "all": "/api/learning/lab/bench?all=1",
+                    "session": "/api/learning/lab/bench/rows?session=<id>",
+                    "why": "the whole payload is megabytes on the box; the summary carries each session's headline numbers"},
+        "empty_reason": None if rows else "the lab's metrics file has no rows on this box",
+    }
+
+
+def for_session(rows: list[dict[str, Any]], session: str) -> list[dict[str, Any]]:
+    """The rows of one session (the id `sessions` gives)."""
+    return [r for r in rows if session_of(r) == session]
