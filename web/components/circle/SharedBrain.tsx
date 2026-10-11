@@ -7,6 +7,7 @@ import { ApiError, api, type BrainLastAnswer, type BrainPower, type CircleMember
 import { useAtlasEvents } from "@/lib/atlas";
 import { time } from "@/lib/format";
 import { useFetch } from "@/lib/useFetch";
+import { LivePowerSelf } from "@/components/lab/LivePower";
 import { BrainPair } from "./BrainPair";
 import c from "./circle.module.css";
 
@@ -106,6 +107,7 @@ export function SharedBrain({ members }: { members: CircleMembers | undefined })
       </h2>
       <div className={`${ui.card} ${c.brain}`}>
         <BrainPair />
+        <LivePowerSelf compact />
         <div className={ui.stats}>
           <div className={ui.stat}>
             <div className={ui.statNum}>
