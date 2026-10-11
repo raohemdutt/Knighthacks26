@@ -62,6 +62,7 @@ runtime still refuses the launch.
 
 **Accounts and addresses.** An account is any single letter whose `AUP_HUB_USER_<letter>` and
 `AUP_HUB_TOKEN_<letter>` keys exist in the environment or the workspace `.env` (the same search as `python -m lab ready`).
+`python -m lab ready` probes the accounts `LAB_POD_ROLES` names (C and D on SJC; unset, A and B on DUB), each at its own `AUP_HUB_URL_<letter>`, and reports per account whether the hub answered (`reachable`), lists a server (`running`) and calls it `ready`, with its `role` and `hub`. An account with no keys, or with keys but no role, is reported as `skipped` and not probed. The `env` gate wants the keys of those accounts only; the hub being down is a warning, not a hand-off (exit 0).
 The hub it lives on is its `AUP_HUB_URL_<letter>` when that key is set, else `LAB_HUB_URL`, else DUB, so C and D
 (`AUP_HUB_URL_C`, `AUP_HUB_URL_D` = `https://sjc.aupcloud.io`) work without renaming a key. `--account both` still means
 A and B, which is also the default of `status`, `quota` and `keep-alive`: ask for the SJC pair by letter. The ledger
