@@ -196,7 +196,7 @@ def request_body(example: DeskExample, prompt: str) -> dict[str, Any]:
 
 
 class DeskClient:
-    """llama-server's OpenAI-compatible API, as much as the scorer uses. transport replaces the network in tests."""
+    """llama-server's chat API, as much as the scorer uses. transport replaces the network in tests."""
 
     def __init__(self, base_url: str, *, transport: httpx.BaseTransport | None = None,
                  timeout_s: float = TIMEOUT_S) -> None:
