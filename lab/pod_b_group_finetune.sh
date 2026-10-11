@@ -4,7 +4,8 @@
 # with the live teacher on pod C. lab/README.md "Group fine-tune (L10)" has the whole sequence, boxes included.
 #
 # On the workstation, from the repo root (Git Bash):
-#   bash lab/pod_b_group_finetune.sh bundle          lab/ contracts/ bus/ runtime/ contexts/ config/ at HEAD, one tar.gz
+#   bash lab/pod_b_group_finetune.sh bundle          lab/ contracts/ bus/ runtime/ contexts/ config/ and
+#                                                    jetson/make_manifest.py (lab/package.py) at HEAD, one tar.gz
 # On pod D (python -m lab.controller run-script --account D lab/pod_b_group_finetune.sh <step> [args]):
 #   prep                                             unpack the bundle into ~/l10/src; the verb's few packages into the
 #                                                    training venv L16 made (~/venvs/atlas-train); check llama.cpp
@@ -68,6 +69,7 @@ bundle() {
   local data="${L10_DATA:-../L10-data}"
   mkdir -p "$data"
   git archive --format=tar.gz -o "$data/l10-bundle.tar.gz" HEAD lab contracts bus runtime contexts config \
+    jetson/make_manifest.py \
     ':(exclude)lab/refine/research' || die "git archive failed"
   echo "bundle: $data/l10-bundle.tar.gz at $(git rev-parse HEAD)"
   echo "push it: python -m lab.transfer push-file --account D $data/l10-bundle.tar.gz l10/l10-bundle.tar.gz"
@@ -187,5 +189,5 @@ case "$STEP" in
   run) shift; run "$@" ;;
   serve) serve ;;
   cleanup) cleanup ;;
-  *) sed -n '2,26p' "$0" ;;
+  *) sed -n '2,27p' "$0" ;;
 esac
