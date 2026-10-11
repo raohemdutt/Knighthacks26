@@ -21,6 +21,7 @@ class WebTools(Protocol):
 
 
 TAVILY_URL = "https://api.tavily.com/search"
+SUMMARY_TITLE = "Search summary"  # the result that carries the search API's own summary
 # "the most recent game", "today's score": search the last week's news, where results are about the latest event
 RECENT = re.compile(r"\b(?:most recent|latest|last|today|tonight|yesterday|this (?:week|weekend)|right now|scores?|news)\b",
                     re.IGNORECASE)
@@ -64,7 +65,7 @@ class TavilyWebTools:
                     "summary": " ".join((r.get("content") or "").split())[:300]}
                    for r in data.get("results") or [] if r.get("url")]
         if data.get("answer") and results:  # Tavily's own summary of these results, cited to the top one
-            results.insert(0, {"title": "Search summary", "url": results[0]["url"], "summary": data["answer"][:400]})
+            results.insert(0, {"title": SUMMARY_TITLE, "url": results[0]["url"], "summary": data["answer"][:400]})
         return results
 
     async def reddit(self, subreddit: str, query: str) -> list[dict]:

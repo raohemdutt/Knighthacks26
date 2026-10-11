@@ -592,7 +592,7 @@ def test_a_score_question_searches_at_once_and_answers_in_one_model_call():
     q = QA(rt, MEMORY, clock=lambda: NOW, web=web)
     a = asyncio.run(q.ask("What was the score in the most recent game against UF?"))
     assert a.text == "South Carolina beat Florida 38-19."
-    assert sum(1 for name, _ in rt.calls if name == "chat") == 1  # no tool-choice round
+    assert sum(1 for name, _ in rt.calls if name == "chat") == 0  # the search's summary answered: no model call
     assert a.citations[0].url == "https://floridagators.test/final"
 
 
@@ -612,3 +612,28 @@ def test_tavily_falls_back_to_all_results_when_this_weeks_news_has_nothing():
     out = asyncio.run(TavilyWebTools("k", post=post).search("What was the score of the last UCF vs UF game?"))
     assert [b.get("topic") for b in sent] == ["news", None]
     assert out[0]["summary"] == "UF won 24-13 on October 5, 2024." and out[1]["url"] == "https://espn.test/401628380"
+
+
+def test_a_summary_with_a_number_no_page_has_goes_to_the_model_instead():
+    web, sent = tavily(answer="Florida won 52-28.")
+    rt = FakeRuntime(chat_replies=[ChatResult(content="South Carolina beat Florida 38-19.", model_version="v1")])
+    q = QA(rt, MEMORY, clock=lambda: NOW, web=web)
+    a = asyncio.run(q.ask("What was the score in the most recent game against UF?"))
+    assert a.text == "South Carolina beat Florida 38-19."
+    assert sum(1 for name, _ in rt.calls if name == "chat") == 1
+
+
+def test_a_summary_that_does_not_answer_goes_to_the_tools():
+    web, sent = tavily(answer="The sources don't provide the score.")
+    rt = FakeRuntime(chat_replies=[ChatResult(content="South Carolina beat Florida 38-19.", model_version="v1")])
+    q = QA(rt, MEMORY, clock=lambda: NOW, web=web)
+    assert asyncio.run(q.ask("What was the score in the most recent game against UF?")).text == "South Carolina beat Florida 38-19."
+
+
+def test_a_long_summary_is_cut_to_two_sentences_and_links_are_not_repeated():
+    web, sent = tavily(answer="South Carolina beat Florida 38-19. It rained. There was a delay. Fans left.")
+    rt = FakeRuntime(chat_replies=[])
+    q = QA(rt, MEMORY, clock=lambda: NOW, web=web)
+    a = asyncio.run(q.ask("What was the score in the most recent game against UF?"))
+    assert a.text == "South Carolina beat Florida 38-19. It rained."
+    assert [c.url for c in a.citations] == ["https://floridagators.test/final"]
