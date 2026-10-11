@@ -1,8 +1,17 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { BarChart, LineChart } from "echarts/charts";
+import { GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from "echarts/components";
+import * as echarts from "echarts/core";
+import { SVGRenderer } from "echarts/renderers";
+import type { EChartsOption } from "echarts";
+import EChartsCore from "echarts-for-react/lib/core";
 import { type LabStory, isNum, pct } from "@/lib/lab";
 import lab from "./lab.module.css";
+
+// only the pieces the lab draws, so the bundle carries line and bar charts and nothing else
+echarts.use([LineChart, BarChart, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent, SVGRenderer]);
 
 /** The rendered width of an element, so the SVGs draw at real pixels and their labels stay readable on a phone. */
 function useWidth(): [React.RefObject<HTMLDivElement | null>, number] {
@@ -263,4 +272,123 @@ function countStacks(keys: string[]): number[] {
   const m = new Map<string, number>();
   for (const k of keys) m.set(k, (m.get(k) ?? 0) + 1);
   return [...m.values()];
+}
+
+/* ---------- ECharts in the product's look ---------- */
+
+/** The product's colour tokens, read from the page so the charts follow the Night and Day themes. */
+export interface ChartTokens {
+  text: string;
+  muted: string;
+  line: string;
+  surface: string;
+  accent: string;
+  accent2: string;
+  accent3: string;
+  watch: string;
+  unknown: string;
+  font: string;
+}
+
+const NIGHT: ChartTokens = {
+  text: "#e9eefb",
+  muted: "#98a5c3",
+  line: "rgba(150, 178, 255, 0.14)",
+  surface: "#121a2c",
+  accent: "#5b8cff",
+  accent2: "#a46bff",
+  accent3: "#43e0c0",
+  watch: "#ffc062",
+  unknown: "#8a95ab",
+  font: "system-ui, sans-serif",
+};
+
+function readTokens(): ChartTokens {
+  if (typeof window === "undefined") return NIGHT;
+  const cs = getComputedStyle(document.documentElement);
+  const v = (name: string, fallback: string) => cs.getPropertyValue(name).trim() || fallback;
+  return {
+    text: v("--text", NIGHT.text),
+    muted: v("--muted", NIGHT.muted),
+    line: v("--line", NIGHT.line),
+    surface: v("--surface-solid", NIGHT.surface),
+    accent: v("--accent", NIGHT.accent),
+    accent2: v("--accent-2", NIGHT.accent2),
+    accent3: v("--accent-3", NIGHT.accent3),
+    watch: v("--watch", NIGHT.watch),
+    unknown: v("--unknown", NIGHT.unknown),
+    font: getComputedStyle(document.body).fontFamily || NIGHT.font,
+  };
+}
+
+/** The tokens now, and again whenever the theme on <html> flips. */
+export function useChartTokens(): ChartTokens {
+  const [tokens, setTokens] = useState<ChartTokens>(NIGHT);
+  useEffect(() => {
+    setTokens(readTokens());
+    const mo = new MutationObserver(() => setTokens(readTokens()));
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+    return () => mo.disconnect();
+  }, []);
+  return tokens;
+}
+
+/** The parts of an option every lab chart shares: text, tooltip and motion in the product's look. */
+export function chartBase(t: ChartTokens, reduced: boolean): EChartsOption {
+  return {
+    backgroundColor: "transparent",
+    textStyle: { color: t.text, fontFamily: t.font, fontSize: 13 },
+    animation: !reduced,
+    animationDuration: 900,
+    animationDurationUpdate: 600,
+    animationEasing: "cubicOut",
+    animationEasingUpdate: "cubicInOut",
+    tooltip: {
+      backgroundColor: t.surface,
+      borderColor: t.line,
+      borderWidth: 1,
+      padding: [8, 12],
+      textStyle: { color: t.text, fontFamily: t.font, fontSize: 13 },
+      extraCssText: "border-radius: 12px; box-shadow: 0 14px 34px -14px rgba(0,0,0,0.6); font-variant-numeric: tabular-nums;",
+      transitionDuration: reduced ? 0 : 0.2,
+    },
+  };
+}
+
+/** An axis in the product's look: muted labels, hairline grid, no heavy frame. */
+export function chartAxis(t: ChartTokens) {
+  return {
+    axisLine: { lineStyle: { color: t.line } },
+    axisTick: { show: false },
+    axisLabel: { color: t.muted, fontSize: 12 },
+    splitLine: { lineStyle: { color: t.line } },
+    nameTextStyle: { color: t.muted, fontSize: 12 },
+  };
+}
+
+/** One ECharts chart, SVG-rendered so its numbers take the page's tabular figures. */
+export function LabEChart({
+  option,
+  height,
+  label,
+  className,
+  onClick,
+}: {
+  option: EChartsOption;
+  height: number;
+  label: string;
+  className?: string;
+  onClick?: (params: { seriesId?: string; seriesName?: string; dataIndex: number; name?: string }) => void;
+}) {
+  return (
+    <div role="img" aria-label={label} className={className} style={{ fontVariantNumeric: "tabular-nums" }}>
+      <EChartsCore
+        echarts={echarts}
+        option={option}
+        style={{ height, width: "100%" }}
+        opts={{ renderer: "svg" }}
+        onEvents={onClick ? { click: onClick } : undefined}
+      />
+    </div>
+  );
 }
