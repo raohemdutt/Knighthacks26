@@ -102,6 +102,22 @@ try {
   yes("every row has a screen that exists", G.APP_TARGETS.every((t) => t.route === null || G.SCREENS[t.route]));
   yes("every row has two sentences that end in a full stop", G.APP_TARGETS.every((t) => t.steps.length === 2 && t.steps.every((s) => /[.?]$/.test(s.say) && s.say.length < 140)));
 
+  // ---- exact or about: the drawing and the words follow one flag, and exact is never claimed from about data
+  const TABLE = [
+    ["element", "exact", "Here it is"], ["box", "exact", "Here it is"], ["zone", "exact", "Here it is"], ["floor", "exact", "Here it is"], ["route-real", "exact", "Here it is"],
+    ["picture", "about", "About here"], ["words", "about", "About here"], ["zone-pin", "about", "About here"], ["route-traced", "about", "About here"], ["unscaled", "about", "About here"],
+  ];
+  for (const [source, want, label] of TABLE) {
+    const p = G.precisionOf(source);
+    eq(`precision: ${source}`, [p.precision, G.spotWords(p), p.reason.length > 10], [want, label, true]);
+    const said = G.hereSentence(p, "keys", true, "left of the laptop");
+    eq(`precision words: ${source}`, [/about/.test(said), said], want === "exact" ? [false, "Your keys are here."] : [true, "Your keys are about here: left of the laptop."]);
+  }
+  eq("precision: an unknown source is never exact", G.precisionOf("something-new").precision, "about");
+  eq("precision: singular", [G.spotWords(G.precisionOf("box")), G.spotWords(G.precisionOf("box"), true), G.hereSentence(G.precisionOf("words"), "wallet", false)], ["Here it is", "Here they are", "Your wallet is about here."]);
+
+  // ---- "where does this go?" (lib/guideBin.ts is not loaded here: it imports the api; its two pure helpers are small and repeated in the page test)
+
   // ---- the Inspection screen's answer, mapped onto the page
   const spot = G.spotTarget({ configured: true, query: "", target: "round:17", label: "Round 17", confidence: 1, alternatives: [], steps: [{ reveal: "tab:shift", say: "A." }, { reveal: "round:pick:M017", say: "B." }, { say: "C." }, { say: "D." }] });
   eq("spot: a round points at the picker", spot.at, [{ id: "round:pick" }]);
@@ -294,6 +310,37 @@ try {
   eq("dwell: away for 3 s repeats the direction once", [d2.update(false, 0), d2.update(false, 2900), d2.update(false, 3000), d2.update(false, 7000)], [null, null, "repeat", null]);
   const d3 = new Z.Dwell();
   eq("dwell: a lost face is neither", [d3.update(false, 0), d3.update(null, 2000), d3.update(false, 2100), d3.update(false, 4000)], [null, null, null, null]);
+
+  // ---- the attention check (lib/guideAttention.ts): what was looked at, what is missing before an action
+  const A = await load("guideAttention");
+  const jobs = [{ asset_id: "HX-202", name: "Heat exchanger 2" }, { asset_id: "HX-204", name: "Heat exchanger 4" }, { asset_id: "HX-213", name: "Heat exchanger 13" }];
+  const box = { left: 0, top: 0, right: 10, bottom: 10 };
+  eq("attention: starts off and empty", [A.attention.get().mode, Object.keys(A.attention.get().seen).length], ["off", 0]);
+  eq("attention: nothing looked at yet", A.summary({}, jobs).text, "You've looked at 0 of 3 things that need you.");
+  eq("attention: before acting on something not looked at", A.missingForAsset("HX-204", "Heat exchanger 4", {}, jobs), { target: "do-first:2", say: "You haven't looked at Heat exchanger 4's alarm yet." });
+  A.attention.note("do-first:2", 400, box);
+  A.attention.note("do-first:2", 100, box);
+  A.attention.note("asset:HX-202", 400, box);
+  A.attention.note("do-first:2", 400, box);
+  const seen = A.attention.get().seen;
+  eq("attention: dwell adds up and the first look keeps its place", [seen["do-first:2"].ms, seen["do-first:2"].order, seen["asset:HX-202"].order], [900, 1, 2]);
+  eq("attention: the scan path keeps returns as new entries", A.attention.get().scan, [{ id: "do-first:2", ms: 500 }, { id: "asset:HX-202", ms: 400 }, { id: "do-first:2", ms: 400 }]);
+  eq("attention: a job counts by its card or its mark", A.summary(seen, jobs).text, "You've looked at 2 of 3 things that need you.");
+  eq("attention: nothing missing once it was looked at", A.missingForAsset("HX-204", "Heat exchanger 4", seen, jobs), null);
+  eq("attention: equipment that is not a job points at its mark", A.missingForAsset("PUMP-205", "Pump 5", seen, jobs).target, "asset:PUMP-205");
+  eq("attention: a plan needs the battery turn-back looked at first", A.missingForPlan(jobs, jobs, seen).target, "shiftrun:turn-back");
+  A.attention.note("shiftrun:turn-back", 400, box);
+  eq("attention: then any stop that needs you and was never looked at", A.missingForPlan(jobs, jobs, A.attention.get().seen), { target: "run-asset:HX-213", say: "You haven't looked at Heat exchanger 13 on the plan yet, and it needs you." });
+  const reasons = A.runReasons(A.attention.get(), [jobs[0], jobs[2]], jobs);
+  eq("attention: Shift Run reasons", reasons.map((x) => `${x.tone}: ${x.text}`), [
+    "good: You looked at the battery turn-back while planning: good.",
+    "good: You looked at Heat exchanger 2 before planning it.",
+    "bad: You put Heat exchanger 13 in your round without looking at it, and left it for last.",
+  ]);
+  eq("attention: the handoff sentence", A.handoffLine(A.attention.get().seen, jobs), "Reviewed on screen this shift: 2 of 3 items needing attention (by gaze).");
+  eq("attention: the sim script", A.simScript(" do-first:1, trust ,,asset:HX-202"), ["do-first:1", "trust", "asset:HX-202"]);
+  A.attention.reset();
+  eq("attention: reset forgets everything", [Object.keys(A.attention.get().seen).length, A.attention.get().scan.length], [0, 0]);
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

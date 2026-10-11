@@ -1,12 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { TwinStage } from "@/components/map/TwinStage";
 import { Empty, ErrorBox, Loading } from "@/components/States";
 import ui from "@/components/ui.module.css";
 import { api, type Cell, type PlayRoute } from "@/lib/api";
 import { useAtlasEvents } from "@/lib/atlas";
 import { humanize, percent } from "@/lib/format";
+import { binPick } from "@/lib/guideBin";
 import { SORT_ITEMS } from "@/lib/room";
 import { type TwinPin, useRoomTwin } from "@/lib/roomTwin";
 import { useFetch } from "@/lib/useFetch";
@@ -35,6 +36,8 @@ interface BinMark {
 export default function PlayPage() {
   const [item, setItem] = useState<string>(ITEMS[0] ?? "can");
   const route = useFetch((s) => api.playRoute(item, s), item);
+  // "which bin for the cup?" asked anywhere: the look guide picks the item here, and the room lights up its bin
+  useEffect(() => (binPick.get() ? setItem(binPick.get()!) : undefined, binPick.subscribe(setItem)), []);
   const probes = useFetch((s) => Promise.all(BIN_PROBES.map((p) => api.playRoute(p, s))));
   const accuracy = useFetch((s) => api.playAccuracy(s));
   // The room twin is the main picture when the box has a floor plan: the live round, or the way for the picked item.
@@ -87,7 +90,7 @@ export default function PlayPage() {
       </div>
 
       {twin.plan ? (
-        <div className={ui.card}>
+        <div className={ui.card} data-guide="play:twin">
           <TwinStage twin={twin} pins={NO_PINS} previewItem={item} speak start="top" shape="tall" />
         </div>
       ) : null}

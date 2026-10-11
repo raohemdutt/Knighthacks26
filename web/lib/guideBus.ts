@@ -8,6 +8,7 @@
  */
 
 import { classify, type GuideTarget, type Locator } from "./guide";
+import { binIntent, binRun } from "./guideBin";
 
 export interface GuideRun {
   target: GuideTarget;
@@ -21,6 +22,14 @@ export interface GuideRun {
   arrive?: string;
   /** A line under the caption that is shown but not said. May depend on what was found on the page. */
   note?: (el: Element) => string | null;
+  /**
+   * The spotlight at the end of the way: once the dot arrives it fades and the thing itself is marked. `label` is the
+   * two or three words on it ("Here they are", "Throw it here"). `ring: false` when the thing lights up by itself
+   * (a bin in the room twin) and a ring on top would only hide it.
+   */
+  spot?: { label?: string; ring?: boolean };
+  /** Exact or about, and why (lib/guide.ts `precisionOf`). "About" draws a dashed, soft outline and is said as "about". */
+  precision?: import("./guide").Precision;
   /** One button in the caption ("Show me in the room"). */
   action?: { label: string; run: GuideRun };
 }
@@ -51,6 +60,11 @@ export const calibrateGaze = (): void => send({ kind: "calibrate" });
 
 /** A where-question about the app itself: point there and say true. Anything else: false, and the caller carries on as before. */
 export function askGuide(question: string, route: string | null): boolean {
+  if (binIntent(question) !== null) {
+    // "which bin for the cup?": the room lights the bin up; the rule sentence comes from the box's rules file
+    void binRun(question).then((run) => run && pointAt(run), () => undefined);
+    return true;
+  }
   const asked = classify(question, route);
   if (asked?.kind !== "app") return false;
   pointAt({ target: asked.target });

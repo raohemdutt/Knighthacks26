@@ -49,6 +49,31 @@
   transition: border-color 0.3s;
 }
 
+/* "about": a soft dashed outline, never a tight solid one */
+.ringAbout {
+  border-style: dashed;
+  border-width: 3px;
+  box-shadow: 0 0 0 10px var(--danger-soft);
+  animation: none;
+}
+
+.spotLabel {
+  position: absolute;
+  left: 8px;
+  top: -13px;
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--danger);
+  color: var(--on-media);
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ringOk .spotLabel {
+  background: var(--ok);
+}
+
 .ringRound {
   border-radius: var(--radius-pill);
 }
@@ -208,6 +233,103 @@
   color: var(--text);
   box-shadow: var(--sh-raised-sm);
   font-size: 12.5px;
+}
+
+/* ---- the attention check ---- */
+
+.seen {
+  display: inline-block;
+  width: fit-content;
+  align-self: flex-start;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--ok);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.attention {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.attention b {
+  color: var(--text);
+}
+
+.lookFirst {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-left: 4px solid var(--watch);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 14px;
+}
+
+.lookFirst p {
+  margin: 0 0 8px;
+}
+
+.scan {
+  margin: 12px 0 0;
+}
+
+.scan svg {
+  display: block;
+  width: 100%;
+  max-height: 340px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.scan figcaption {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.scanBox {
+  fill: var(--surface);
+  stroke: var(--line);
+  stroke-width: 1.5;
+}
+
+.scanLine {
+  fill: none;
+  stroke: var(--accent-text);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+}
+
+.scanDot {
+  fill: var(--accent-text);
+  opacity: 0.9;
+}
+
+.scanNum {
+  fill: var(--on-media);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.simBanner {
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  transform: translateX(-50%);
+  max-width: calc(100vw - 24px);
+  padding: 5px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--watch);
+  color: var(--on-media);
+  font-size: 12.5px;
+  font-weight: 700;
+  text-align: center;
 }
 
 /* ---- calibration: five dots, one at a time ---- */

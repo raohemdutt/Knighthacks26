@@ -6,9 +6,11 @@ import { api } from "@/lib/api";
 import { useAtlas } from "@/lib/atlas";
 import { Dwell, landed as eyesLanded, snap, type Thing } from "@/lib/gaze";
 import { gaze, type GazeEstimate } from "@/lib/gazeTracker";
-import { SCREENS, classify, ease, fromGaze, narration, pathPoint, pinTarget, pinnedThing, resolveApp, thingName, trail, travelMs, type GuideTarget, type Locator, type Pt, type Reveal } from "@/lib/guide";
+import { FIXATION_MS, attention, simScript } from "@/lib/guideAttention";
+import { SCREENS, classify, ease, fromGaze, narration, pathPoint, pinTarget, pinnedThing, precisionOf, resolveApp, spotWords, thingName, trail, travelMs, type GuideTarget, type Locator, type Pt, type Reveal } from "@/lib/guide";
 import { offer, onGuide, pointAt, type GuideMessage, type GuideRun } from "@/lib/guideBus";
 import { along, length as routeLength, pointerRoute, type Box } from "@/lib/guidePath";
+import { binRun } from "@/lib/guideBin";
 import { spotRun } from "@/lib/guideSpot";
 import { oneSentence } from "@/lib/speechText";
 import { useVoice } from "@/lib/voice";
@@ -105,6 +107,7 @@ export function GuideLayer() {
   const [offered, setOffered] = useState<Offer | null>(null);
   const [ok, setOk] = useState(false); // the eyes arrived
   const [calibrating, setCalibrating] = useState(false);
+  const [sim, setSim] = useState(false); // ?gazeSim: the camera is replaced by a script, and the screen says so
   const [debug, setDebug] = useState<{ on: boolean; e: GazeEstimate | null; snapped: Thing[]; several: boolean; why: string }>({ on: false, e: null, snapped: [], several: false, why: "" });
   const turn = useRef(0); // bumped by every new run and every cancel
   const el = useRef<Element | null>(null);
@@ -306,6 +309,8 @@ export function GuideLayer() {
   const ask = useCallback(
     async (query: string, t: number | null = null) => {
       const here = pathRef.current;
+      const bin = await binRun(query, t).catch(() => null);
+      if (bin) return void start(bin);
       if (samePath(here, "/spot/")) {
         try {
           const { run, found } = await spotRun(query, t);
@@ -370,7 +375,50 @@ export function GuideLayer() {
         setDebug({ on: true, e, snapped: all.filter((t) => ids.includes(t.id)), several: s.kind === "several", why });
       }, 100);
     }
-    return () => (window.clearTimeout(timer), window.clearInterval(tick));
+    // the attention check: what the eyes rest on (a fixation that snaps to exactly one marked thing) is noted, in memory only
+    const watch = window.setInterval(() => {
+      attention.setMode(gaze.simulated() ? "sim" : gaze.usable() ? "gaze" : "off");
+      const e = gaze.estimate();
+      if (!e || e.rest.ms < FIXATION_MS || !samePath(window.location.pathname, "/spot/")) return;
+      const all = things(null);
+      const s = snap(restPoint(e), e.radius, all);
+      const hit = s.kind === "one" ? all.find((t) => t.id === s.id) : undefined;
+      if (hit) attention.note(hit.id, 100, { left: hit.left + window.scrollX, top: hit.top + window.scrollY, right: hit.right + window.scrollX, bottom: hit.bottom + window.scrollY });
+    }, 100);
+    // ?gazeSim=id,id,...: a scripted stand-in for the camera. Each id is "looked at" for 0.9 s, in order, through the same rules.
+    const script = simScript(q.get("gazeSim"));
+    let simAlive = script.length > 0;
+    if (simAlive) {
+      setSim(true);
+      gaze.simulate(null);
+      void (async () => {
+        await sleep(1800);
+        for (const id of script) {
+          let found: Element | null = null;
+          for (let i = 0; i < 40 && simAlive && !(found = locate({ id })); i++) await sleep(100);
+          if (!found || !simAlive) continue;
+          (found.getBoundingClientRect().width > 0 ? found : found.firstElementChild ?? found).scrollIntoView({ block: "center" });
+          await sleep(250);
+          for (let k = 0; k <= 18 && simAlive; k++) {
+            const r = visible(found);
+            if (r) {
+              const p = { x: (r.left + r.width / 2) / window.innerWidth, y: (r.top + r.height / 2) / window.innerHeight };
+              gaze.simulate({ ...p, raw: p, col: Math.floor(p.x * 6), row: Math.floor(p.y * 4), cols: 6, rows: 4, radius: 12, rest: { ms: k * 50, ...p }, at: performance.now() });
+            }
+            await sleep(50);
+          }
+          gaze.simulate(null);
+          await sleep(150);
+        }
+        document.documentElement.setAttribute("data-gaze-sim", "done");
+      })();
+    }
+    return () => {
+      window.clearTimeout(timer);
+      window.clearInterval(tick);
+      window.clearInterval(watch);
+      simAlive = false;
+    };
     // once per page load
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -459,7 +507,12 @@ export function GuideLayer() {
     </>
   ) : null;
   if (calibrating) return <Calibrate onDone={() => setCalibrating(false)} />;
-  if (!view && !offered) return debugBox ? <div className={g.layer}>{debugBox}</div> : null;
+  const simBanner = sim ? (
+    <div className={g.simBanner} data-gaze-sim-banner>
+      SIMULATED GAZE (?gazeSim): a script stands in for the camera. No camera is in use.
+    </div>
+  ) : null;
+  if (!view && !offered) return debugBox || simBanner ? <div className={g.layer}>{debugBox}{simBanner}</div> : null;
 
   const vw = typeof window === "undefined" ? 1024 : window.innerWidth;
   const vh = typeof window === "undefined" ? 768 : window.innerHeight;
@@ -493,12 +546,18 @@ export function GuideLayer() {
     const below = rect.bottom + pad + 14;
     capY = below + 150 < vh ? below : Math.max(12, rect.top - pad - 14 - 150);
     if (rect.height > vh * 0.6) capY = Math.max(12, Math.min(vh - 170, rect.top + 24)); // a tall target: inside its top
+    // the thing lights up by itself (a bin in the room): keep the caption off it, at the foot of the screen
+    if (view?.run.spot?.ring === false) {
+      capX = Math.max(12, Math.min(vw - capW - 12, rect.right - capW - 16));
+      capY = Math.max(12, Math.min(vh - 210, rect.bottom - 200));
+    }
   }
   const lines = view?.lines ?? [];
 
   return (
     <div className={g.layer} aria-live="polite" data-guide-layer={view?.phase ?? "offer"} data-guide-target={view?.run.target.id}>
       {debugBox}
+      {simBanner}
       {tail.length > 1 ? (
         <svg className={g.trail} aria-hidden="true">
           {tail.map((p, i) => (
@@ -506,16 +565,19 @@ export function GuideLayer() {
           ))}
         </svg>
       ) : null}
-      {rect && landed ? (
+      {rect && landed && view?.run.spot?.ring !== false ? (
         <div
-          className={`${g.ring} ${small ? g.ringRound : ""} ${ok ? g.ringOk : ""} ${view?.run.t != null ? g.ringStill : ""}`}
+          data-precision={view?.run.precision?.precision ?? "exact"}
+          className={`${g.ring} ${view?.run.precision?.precision === "about" ? g.ringAbout : ""} ${small ? g.ringRound : ""} ${ok ? g.ringOk : ""} ${view?.run.t != null ? g.ringStill : ""}`}
           style={{ transform: `translate(${rect.left - pad}px, ${rect.top - pad}px)`, width: rect.width + 2 * pad, height: rect.height + 2 * pad }}
-        />
+        >
+          {view?.run.spot?.label ? <span className={g.spotLabel}>{view.run.spot.label}</span> : null}
+        </div>
       ) : null}
       {at && !landed ? <div className={g.dot} style={{ transform: `translate(${at.x}px, ${at.y}px)` }} /> : null}
       <div className={`${g.caption} ${ok ? g.captionOk : ""}`} style={{ transform: `translate(${capX}px, ${capY}px)` }} data-guide-caption role="status">
         <p className={g.label}>
-          <span>{view ? view.run.target.label : "Where is it?"}</span>
+          <span>{view ? (landed && view.run.spot?.ring === false && view.run.spot.label ? `${view.run.spot.label}: ${view.run.target.label}` : view.run.target.label) : "Where is it?"}</span>
           <button type="button" className={g.close} onClick={cancel} aria-label="Stop pointing">
             Close
           </button>
@@ -598,7 +660,7 @@ function obstacles(target: Element): Box[] {
 /** The pointer's run for an answer about a thing in the room: to the picture under the answer, or to the answer when it has none. */
 function evidenceRun(thing: string, answer: string, framed: boolean, t: number | null): GuideRun {
   const name = thingName(thing);
-  const pinned = pinnedThing(thing);
+  const pinned = pinnedThing(thing) ?? name; // any thing: the room map shows its pin if it has one, else what it knows
   const newest = "main article[data-guide='answer']:last-of-type";
   const target: GuideTarget = {
     id: "evidence",
@@ -617,6 +679,8 @@ function evidenceRun(thing: string, answer: string, framed: boolean, t: number |
         : found.querySelector("[role=img]")
           ? "The picture for that moment is not stored on this box, so this is where it would be."
           : "The box keeps the zone and a description, not the spot inside the picture, so the whole picture is ringed.",
-    action: pinned ? { label: "Show me in the room", run: { target: pinTarget(pinned) } } : undefined,
+    action: pinned ? { label: "Show me in the room", run: { target: pinTarget(pinned), precision: precisionOf("zone-pin"), spot: { label: spotWords(precisionOf("zone-pin")) } } } : undefined,
+    precision: precisionOf(framed ? "picture" : "words"),
+    spot: { label: framed ? spotWords(precisionOf("picture")) : undefined },
   };
 }

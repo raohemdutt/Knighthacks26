@@ -215,7 +215,7 @@ export default function SpotPage() {
               <WatchOut items={d.watch} onWhy={why} />
             </div>
             <LooksFine shift={d} onAll={() => setAll(true)} />
-            <OperatorAsk chips={d.ask ?? []} onWhy={why} guideChips={[d.do_first[0] ? `Where is ${d.do_first[0].name}?` : "Where is the plan?", "Where do I look for the battery?", "Show me what to do first"]} />
+            <OperatorAsk chips={d.ask ?? []} onWhy={why} jobs={d.do_first} guideChips={[d.do_first[0] ? `Where is ${d.do_first[0].name}?` : "Where is the plan?", "Where do I look for the battery?", "Show me what to do first"]} />
           </div>
 
           </div>

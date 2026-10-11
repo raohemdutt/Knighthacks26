@@ -7,7 +7,7 @@
  */
 
 import { api } from "./api";
-import { resolveApp, spotTarget, type SpotGuide } from "./guide";
+import { precisionOf, resolveApp, spotTarget, spotWords, type SpotGuide } from "./guide";
 import type { GuideRun } from "./guideBus";
 
 export interface SpotRoute {
@@ -72,6 +72,8 @@ export async function spotRun(query: string, t: number | null = null): Promise<{
     run: {
       target,
       t,
+      precision: precisionOf("element"), // the mark is the app's own; the walk to it is "about" and says so in its note
+      spot: { label: spotWords(precisionOf("element")) },
       via: shown ? shown.path.map((id) => ({ id: `at:${id}` })) : undefined,
       extra: shown ? [...shown.say, shown.floor_changes > 0 ? "It changes floor: choose Both on the plan to see the whole route." : "The green dashes on the plan are that route."] : walk && !walk.found && walk.say[0] ? [walk.say[0]] : undefined,
       note: () => (shown ? `${shown.summary} ${shown.note}` : null),

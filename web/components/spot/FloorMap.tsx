@@ -286,7 +286,7 @@ export function FloorMap({
               return (
                 <g
                   key={a.asset_id}
-                  data-guide={guide === "map" ? `asset:${a.asset_id}` : undefined}
+                  data-guide={guide === "map" ? `asset:${a.asset_id}` : guide === "shiftrun:map" ? `run-asset:${a.asset_id}` : undefined}
                   className={`${o.dot} ${quiet ? o.dotQuiet : ""}`}
                   transform={`translate(${x} ${y})`}
                   tabIndex={onPick ? 0 : undefined}

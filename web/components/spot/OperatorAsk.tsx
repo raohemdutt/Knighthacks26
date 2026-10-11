@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { useAttention } from "@/components/guide/Attention";
 import ui from "@/components/ui.module.css";
 import { ApiError, api } from "@/lib/api";
 import { plainText, whereIntent } from "@/lib/guide";
+import { handoffLine, type Job } from "@/lib/guideAttention";
 import { pointAt } from "@/lib/guideBus";
 import { NEXT, nextDoFirst, spotRun } from "@/lib/guideSpot";
 import { useVoice } from "@/lib/voice";
@@ -20,8 +22,11 @@ import type { Answer, Handoff, Target } from "./types";
  * the person there (GET /api/spot/guide, no model call). When the box is not sure what X is, the question is answered as
  * before and the closest places are offered under it.
  */
-export function OperatorAsk({ chips, onWhy, guideChips = [] }: { chips: string[]; onWhy: (t: Target) => void; guideChips?: string[] }) {
+export function OperatorAsk({ chips, onWhy, guideChips = [], jobs = [] }: { chips: string[]; onWhy: (t: Target) => void; guideChips?: string[]; jobs?: Job[] }) {
   const voice = useVoice();
+  const looks = useAttention();
+  const [reviewed, setReviewed] = useState(false); // "include what I reviewed": one sentence, only when ticked
+  const extra = reviewed && looks.mode !== "off" ? handoffLine(looks.seen, jobs) : null;
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [answer, setAnswer] = useState<(Answer & { plain?: boolean }) | null>(null);
@@ -65,7 +70,7 @@ export function OperatorAsk({ chips, onWhy, guideChips = [] }: { chips: string[]
   };
   const copy = () => {
     if (!note || !navigator.clipboard?.writeText) return;
-    navigator.clipboard.writeText(note.text).then(() => (setCopied(true), window.setTimeout(() => setCopied(false), 1800)), () => undefined);
+    navigator.clipboard.writeText(extra ? `${note.text}\n${extra}` : note.text).then(() => (setCopied(true), window.setTimeout(() => setCopied(false), 1800)), () => undefined);
   };
   const listening = voice.status === "listening";
   const talk = () => {
@@ -157,7 +162,14 @@ export function OperatorAsk({ chips, onWhy, guideChips = [] }: { chips: string[]
                 {ln.target ? <Why to={ln.target} onWhy={onWhy} /> : null}
               </li>
             ))}
+            {extra ? <li data-handoff-reviewed>{extra}</li> : null}
           </ol>
+          {looks.mode !== "off" ? (
+            <label className={o.note}>
+              <input type="checkbox" checked={reviewed} onChange={(e) => setReviewed(e.target.checked)} /> Include what I reviewed (one line, by gaze{looks.mode === "sim" ? ", simulated" : ""}). Never added
+              unless you tick this.
+            </label>
+          ) : null}
         </div>
       ) : null}
     </section>
