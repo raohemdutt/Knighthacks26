@@ -142,3 +142,13 @@ def test_lut_packing_matches_the_symmetric_dequant():
     a = torch.randn(2, k)
     ref = a @ w.t()
     assert torch.allclose(L.reference(a, p, 0), ref, rtol=1e-3, atol=1e-3)
+
+
+def test_decide_keeps_the_channel_mode_out_of_the_verdict():
+    res = _result(1.5)
+    for shape, *_ in D.SHAPES:
+        res["measurements"].append(_entry(shape, 1, "cold", "lut.channel_lut.b3.v_bn32_bk128_s1_w4", 10.0))
+    out = D.decide(res)
+    assert out["verdict"]["lookup_wins"] is False
+    assert all(r["lut_kernel"] is None or "channel" not in r["lut_kernel"] for r in out["table"])
+    assert len(out["channel"]) == 4 and out["channel"][0]["us"] == 10.0

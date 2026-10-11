@@ -198,7 +198,8 @@ def decide(result: Mapping[str, Any]) -> dict[str, Any]:
             for shape in shapes:
                 hyb = pts.get((shape, m, temp, "hybrid"))
                 luts = {kern: d for (s, mm, t, kern), d in pts.items()
-                        if s == shape and mm == m and t == temp and kern.startswith("lut.")}
+                        if s == shape and mm == m and t == temp and kern.startswith("lut.")
+                        and not kern.startswith("lut.channel_lut")}
                 best = min(luts.items(), key=lambda kv: kv[1]["seconds_median"]) if luts else None
                 row = {"shape": shape, "m": m, "temp": temp,
                        "hybrid_us": round(hyb["seconds_median"] * 1e6, 2) if hyb else None,
@@ -247,7 +248,11 @@ def decide(result: Mapping[str, Any]) -> dict[str, Any]:
                         "lut_sum_us": round(lut_sum * 1e6, 1) if math.isfinite(lut_sum) else None,
                         "ratio": round(hyb_sum / lut_sum, 3) if lut_sum and math.isfinite(lut_sum) else None,
                         "lut_fp16_ok": fp16_ok, "lookup_wins": wins, "threshold_m": threshold if wins else None})
-    return {"verdict": verdict, "table": table}
+    channel = [{"shape": s, "temp": t, "kernel": kern, "us": round(d["seconds_median"] * 1e6, 2),
+                "common_gbs": round(d["common_gbs"], 1), "bits_per_weight": d.get("bits_per_weight"),
+                "rel_l2_vs_int4": d.get("rel_l2_vs_int4")}
+               for (s, mm, t, kern), d in sorted(pts.items()) if kern.startswith("lut.channel_lut")]
+    return {"verdict": verdict, "table": table, "channel": channel}
 
 
 # --- the pod benchmark ---------------------------------------------------------------------------------------------
@@ -475,6 +480,67 @@ def bench_main(args: argparse.Namespace, command: str) -> int:
                     need_s=(1.0 if quick else run.min_load_s) + 4)
         return mid
 
+    def channel_point(shape: tuple[str, int, int, str], bits: int, temp: str, cfg: Mapping[str, Any]) -> str:
+        """Mode 4 at M = 1: its own quantization of the layer (not the same codes), timed like the rest; the error
+        is against its own dequantized weights, and its distance from the int4 weights is kept beside it."""
+        name, k, n, _ = shape
+        copies = cold_copies(k, n) if temp == "cold" else 1
+        kernel = f"lut.channel_lut.b{bits}.{cfg['tag']}"
+        mid = f"lut_gemv.mode4.b{bits}.{name}.m1.{temp}"
+
+        def body() -> tuple[list[float], dict[str, Any]]:
+            calls: list[Callable[[], Any]] = []
+            keep: list[Any] = []
+            err: dict[str, Any] = {}
+            try:
+                codes, scale, _src = layers[name]
+                w4 = dequant(codes.cuda(), scale.cuda().half())
+                p = lut.quantize_channel_lut(w4.half(), bits)
+                gen = torch.Generator(device="cuda").manual_seed(7 + k)
+                a = torch.randn(1, k, device="cuda", generator=gen).half()
+                for i in range(copies):
+                    q = p if i == 0 else lut.Packed(p.bits, p.n, p.k, p.codes, p.main.clone(),
+                                                     None if p.hi is None else p.hi.clone(), p.table, p.scale.clone(),
+                                                     p.zero, p.shared, p.ctable.clone())
+                    call, _ = lut.launcher(a, q, 4, cfg)
+                    keep.append(q)
+                    calls.append(call)
+                out = calls[0]().float()
+                ref = lut.reference(a, p, 4)
+                max_abs = float((out - ref).abs().max())
+                rel = float((out - ref).norm() / ref.norm().clamp_min(1e-12))
+                ref_max = float(ref.abs().max())
+                ref4 = a.float() @ w4.t()
+                err = {"max_abs_error": max_abs, "rel_l2_error": rel, "ref_max": ref_max,
+                       "fp16_ok": at_fp16_rounding(max_abs, rel, ref_max),
+                       "rel_l2_vs_int4": float((ref - ref4).norm() / ref4.norm().clamp_min(1e-12))}
+                del out, ref, ref4, w4
+                state = {"i": 0}
+
+                def fn() -> Any:
+                    c = calls[state["i"] % len(calls)]
+                    state["i"] += 1
+                    return c()
+                secs, how = time_graph(cs, fn, copies=copies, repeats=run.repeats, warmup=run.warmup,
+                                       min_load_s=run.min_load_s)
+            finally:
+                del calls, keep
+                cs._free_gpu()
+            med = fmt.stats(secs)["median"]
+            nb = common_bytes(k, n)
+            own = p.nbytes(4)
+            return [nb / s / 1e9 for s in secs], {
+                "seconds_median": med, "common_bytes": nb, "common_gbs": nb / med / 1e9, "own_bytes": own,
+                "own_gbs": own / med / 1e9, "bits_per_weight": 8 * own / (n * k), "tflops": 2 * n * k / med / 1e12,
+                "copies": copies, "timing": how, "route": None, **err}
+
+        run.measure(mid, f"{kernel}, batch 1, K {k} to N {n}, {temp}, float16", "GB/s",
+                    f"triton lut_gemv BITS {bits} MODE 4 (channel_lut) {dict(cfg)}, value = common weight bytes / "
+                    "time per call (the int4 layer's bytes, so the time compares with the hybrid kernel's)",
+                    {"shape": name, "k": k, "n": n, "m": 1, "temp": temp, "kernel": kernel, "dtype": "float16",
+                     "bits": bits, "copies": copies, **dict(cfg)}, body, need_s=run.min_load_s + 4)
+        return mid
+
     def lut_kernel(mode: str, cfg: Mapping[str, Any]) -> str:
         return f"lut.{mode}.{cfg['tag']}"
 
@@ -486,26 +552,46 @@ def bench_main(args: argparse.Namespace, command: str) -> int:
         return list(lut.DOT_CONFIGS[:2])
 
     try:
-        # 1. The lookup tile per mode and M, hot at the first shape (short timings, kept in the file only).
-        run.begin("sweep")
-        first = SHAPES[0]
-        for m in BATCHES:
+        # The order is the priority, so the budget cuts the tail: the M = 1 head-to-head on two shapes, mode 4 at
+        # M = 1 on all four, the other two M = 1 shapes (the rule needs all four), then M = 4 and 16, then bf16.
+        def sweep(m: int) -> None:
             for mode in LUT_MODES:
-                ids = [(point("sweep", first, m, "hot", lut_kernel(mode, cfg), cfg=cfg, quick=True), cfg)
+                ids = [(point("sweep", SHAPES[0], m, "hot", lut_kernel(mode, cfg), cfg=cfg, quick=True), cfg)
                        for cfg in candidates(m)]
                 timed = [(seconds[i], j, cfg) for j, (i, cfg) in enumerate(ids) if i in seconds]
                 tiles[(mode, m)] = min(timed, key=lambda t: (t[0], t[1]))[2] if timed else candidates(m)[0]
-        run.notes.append("tiles: " + json.dumps({f"{mode}.m{m}": cfg["tag"] for (mode, m), cfg in tiles.items()}))
-        # 2. The table, M = 1 first (the decision), cold before hot.
-        for m in BATCHES:
-            run.begin(f"m{m}")
+
+        def table(m: int, shapes: Sequence[tuple[str, int, int, str]]) -> None:
             for temp in ("cold", "hot"):
-                for shape in SHAPES:
+                for shape in shapes:
                     point(f"m{m}", shape, m, temp, "hybrid")
                     for mode in LUT_MODES:
                         cfg = tiles[(mode, m)]
                         point(f"m{m}", shape, m, temp, lut_kernel(mode, cfg), cfg=cfg)
-        # 3. The teacher's own activation dtype on the hybrid kernel (bf16), cold, for reference.
+
+        # 1. The lookup tile per mode at M = 1, hot at the first shape (short timings, kept in the file only).
+        run.begin("sweep")
+        sweep(1)
+        run.notes.append("tiles m1: " + json.dumps({f"{mode}.m1": tiles[(mode, 1)]["tag"] for mode in LUT_MODES}))
+        # 2. M = 1 head-to-head on the first and the last shape (K 5120 to N 6144, K 17408 to N 5120).
+        run.begin("m1")
+        table(1, (SHAPES[0], SHAPES[3]))
+        # 3. KL1 of R62's note: mode 4 (channel_lut, one fp16 table per output channel and one scale per group) at
+        #    M = 1, fitted to the same layer's dequantized weights: 3 bits cold, 4 bits cold, then 3 bits hot.
+        run.begin("channel")
+        cfg = tiles.get(("group_lut", 1), lut.M1_CONFIGS[0])
+        for bits, temp in ((3, "cold"), (4, "cold"), (3, "hot")):
+            for shape in SHAPES:
+                channel_point(shape, bits, temp, cfg)
+        # 4. The other two M = 1 shapes, so the rule sees all four.
+        run.begin("m1b")
+        table(1, (SHAPES[1], SHAPES[2]))
+        # 5. M = 4 and 16 with their own tile sweep, as the budget allows.
+        for m in BATCHES[1:]:
+            run.begin(f"m{m}")
+            sweep(m)
+            table(m, SHAPES)
+        # 6. The teacher's own activation dtype on the hybrid kernel (bf16), cold, for reference.
         run.begin("bf16")
         for m in BATCHES:
             for shape in SHAPES:

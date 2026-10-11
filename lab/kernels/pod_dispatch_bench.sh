@@ -18,7 +18,9 @@ echo "host $(hostname) $(uname -m) $(date -u +%FT%TZ)"
 # and no LD_LIBRARY_PATH (with it the process maps two HIP runtimes).
 ROCM="$("$VENV/bin/rocm-sdk" path --root 2>/dev/null)"
 if [ -n "$ROCM" ]; then export ROCM_PATH="$ROCM" ROCM_HOME="$ROCM" HIP_PATH="$ROCM"; fi
-export PATH="$VENV/bin:${ROCM:+$ROCM/bin:}$HOME/.local/bin:/opt/rocm/bin:$PATH"
+# The venv is not put on PATH: amd-smi and rocm-smi are python3 scripts that need the image's python3 with its
+# amdsmi module (the venv leaves amdsmi out), and the power reader runs them.
+export PATH="$HOME/.local/bin:/opt/rocm/bin:$PATH"
 unset LD_LIBRARY_PATH
 rocminfo 2>/dev/null | grep -m1 -o 'gfx[0-9a-f]*' || echo "rocminfo names no gfx"
 echo "other GPU users:"; pgrep -af "vllm|lab bench|llama|lut_gemv|chipsheet" | grep -v pod_dispatch | cut -c1-160
