@@ -85,3 +85,15 @@ def test_the_relays_marker_is_carried_and_a_real_gate_has_none(tmp_path):
     client.post(f"/api/learning/lab/import?kind=eval&run_id={SOLO}", content=json.dumps(real))
     story = client.get(f"/api/learning/lab/{SOLO}").json()
     assert story["gate"] is None and story["eval"]["n_items"]["value"] == real["n_items"]
+
+
+def test_the_package_size_the_relay_adds_beside_the_manifest_reaches_the_package_event(tmp_path):
+    client = box(tmp_path)
+    post_stage(client, solo_lines()["start"])
+    manifest = {"version": "atlas-v9-desk", "base": "Qwen/Qwen3.5-4B", "task": TASK, "gguf": "model.gguf",
+                "sha256": {"model.gguf": "ab" * 32}, "created": "2026-10-11T08:06:00Z", "bytes": 2_640_000_000}
+    r = client.post(f"/api/learning/lab/import?kind=manifest&run_id={SOLO}", content=json.dumps(manifest))
+    assert r.status_code == 200, r.text
+    package = client.get(f"/api/learning/lab/{SOLO}").json()["package"]
+    assert 2_640_000_000 in [n.get("value") for n in package.values() if isinstance(n, dict)] or \
+        package.get("bytes", {}).get("value") == 2_640_000_000, package

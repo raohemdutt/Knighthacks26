@@ -198,7 +198,16 @@ def manifest_events(text: str, run_id: str | None) -> list[Event]:
         raise ImportRefused([f"not a package manifest: {err.errors()[0]['msg']}"]) from None
     return [parse_event({"type": "learning.package.built", "event_id": f"import:{run_id}:package.built", "ts": manifest.created,
                          "run_id": run_id, "task": manifest.task, "model_version": manifest.version, "base": manifest.base,
-                         "gguf": manifest.gguf, "sha256": manifest.sha256.get(manifest.gguf)})]
+                         "gguf": manifest.gguf, "sha256": manifest.sha256.get(manifest.gguf), "bytes": _bytes_of(text)})]
+
+
+def _bytes_of(text: str) -> int | None:
+    """The model file's size when the relay added it beside the manifest (a top-level `bytes`, live_loop.py)."""
+    try:
+        size = json.loads(text).get("bytes")
+    except (ValueError, AttributeError):
+        return None
+    return size if isinstance(size, int) and not isinstance(size, bool) and size >= 0 else None
 
 
 @dataclass(frozen=True)
