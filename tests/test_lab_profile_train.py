@@ -352,3 +352,87 @@ def test_train_main_hands_its_callbacks_to_the_trainer(monkeypatch, tmp_path):
     answer = train.main(["--cpu", "--dataset", str(tmp_path), "--rows", str(tmp_path / "rows.jsonl"),
                          "--model", str(tmp_path)], callbacks=[marker])
     assert answer["outcome"] == "trained" and seen["callbacks"] == [marker]
+
+
+# --- the recorded CPU trace (two steps of the tiny Qwen3.5 under lab/train.py --cpu) ---------------------------------
+
+CPU = REPO / "fixtures" / "lab" / "train_profile" / "cpu"
+
+
+@pytest.fixture(scope="module")
+def cpu_analysis() -> dict:
+    return pt.analyze_trace(pt.TrainTrace.load(CPU / "trace.json.gz"))
+
+
+def test_the_recorded_cpu_trace_has_two_steps_and_its_layers(cpu_analysis):
+    assert cpu_analysis["kind"] == "cpu" and cpu_analysis["steps_measured"] == 2
+    for bucket in ("gdn", "attention", "lora", "mlp", "optimizer"):
+        assert cpu_analysis["shares"][bucket] > 0, bucket
+    assert cpu_analysis["shares"]["other"] < 0.05          # almost every op lands in a named bucket
+
+
+def test_the_recorded_cpu_trace_links_backward_ops_to_their_layers(cpu_analysis):
+    assert cpu_analysis["attribution"]["backward_links"] > 1000
+    top = {row["name"]: row["bucket"] for row in cpu_analysis["top"]}
+    assert top["aten::_scaled_dot_product_flash_attention_for_cpu_backward"] == "attention"
+    assert cpu_analysis["fast_linear_attention"]["present"] is False
+
+
+def test_the_gdn_layer_is_the_biggest_share_on_the_torch_fallback(cpu_analysis):
+    named = {k: v for k, v in cpu_analysis["shares"].items() if v is not None and k not in ("other",)}
+    assert max(named, key=named.get) == "gdn"
+
+
+def test_the_quick_self_check_passes_on_both_fixtures(tmp_path):
+    answer = pt.main(["self-check", "--quick", "--out", str(tmp_path)])
+    assert answer["ok"] is True, answer
+    assert answer["checks"] == {"rocm_ingested": True, "rocm_markdown_sections": True, "cpu_ingested": True,
+                                "cpu_markdown_sections": True, "rocm_ms_per_step_match": True}
+    assert (tmp_path / "rocm" / "train-profile-gfx1151-2026-10-11.json").is_file()
+    assert (tmp_path / "cpu" / "train-profile-cpu-2026-10-11.json").is_file()
+
+
+def test_record_files_a_pod_result_and_writes_its_ledger_row(tmp_path, rocm_analysis):
+    source = tmp_path / "from-pod.json"
+    source.write_text(json.dumps(rocm_result(rocm_analysis)), encoding="utf-8")
+    answer = pt.main(["record", str(source), "--out", str(tmp_path / "data")])
+    assert answer["ok"] is True, answer
+    assert Path(answer["json"]).name == "train-profile-gfx1151-2026-10-11.json"
+    rows = ledger.read(state_dir=tmp_path / "state")
+    assert [(r["verb"], r["node"]) for r in rows] == [("profile_train", "pod-b")]
+
+
+def test_a_pod_run_trains_each_pass_on_its_own_copy_and_deletes_the_originals(tmp_path, monkeypatch):
+    """The run's plumbing with the trainer replaced: each pass gets a copy of the data (lab/train.py deletes its own
+    data on the pod), the originals go once the passes are done, and the torch pass's trace is ingested."""
+    dataset = tmp_path / "datasets" / "tool-calling-fixture"
+    dataset.mkdir(parents=True)
+    (dataset / "manifest.json").write_text("{}", encoding="utf-8")
+    (dataset / "examples.jsonl").write_text("", encoding="utf-8")
+    rows = tmp_path / "datasets" / "rows.jsonl"
+    rows.write_text("", encoding="utf-8")
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        argv = cmd[cmd.index("--", cmd.index("_child") + 1) + 1:]
+        data = Path(argv[argv.index("--dataset") + 1])
+        assert data.is_dir() and data != dataset and data.parent.name.startswith("data-")
+        trace_dir = Path(cmd[cmd.index("--trace-dir") + 1])
+        trace_dir.mkdir(parents=True)
+        (trace_dir / "trace.json").write_bytes((ROCM / "trace.json").read_bytes())
+        out = Path(argv[argv.index("--out") + 1])
+        out.mkdir(parents=True)
+        (out / "run.json").write_bytes((ROCM / "run.json").read_bytes())
+        return type("Done", (), {"returncode": 0, "stdout": "{}", "stderr": ""})()
+
+    monkeypatch.setattr(pt.subprocess, "run", fake_run)
+    monkeypatch.setattr(pt.shutil, "which", lambda name: None)
+    answer = pt.main(["run", "--dataset", str(dataset), "--rows", str(rows), "--model", "m", "--steps", "3",
+                      "--out", str(tmp_path / "run"), "--results", str(tmp_path / "data"), "--no-ledger"])
+    assert answer["ok"] is True, answer
+    assert answer["tools"]["rocprofv3"] == {"ok": False, "skipped": "not on PATH"}
+    assert answer["data_deleted"] == "yes" and not dataset.exists() and not rows.exists()
+    assert len(calls) == 1 and "--max-steps" in calls[0] and "3" in calls[0]
+    result = json.loads(Path(answer["json"]).read_text(encoding="utf-8"))
+    assert result["node"] == "pod-b" and result["shares"]["gdn"] == pytest.approx(0.26)

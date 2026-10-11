@@ -884,27 +884,38 @@ class LayerRanges:
         self.handles.clear()
 
 
-def profiler_callback(profiler: Any, ranges: LayerRanges) -> Any:
-    """A TrainerCallback that puts the layer ranges on the model when training begins and steps the profiler at
-    the end of every optimizer step."""
+def profiler_callback(make_profiler: Any, ranges: LayerRanges) -> Any:
+    """A TrainerCallback that, when training begins, puts the layer ranges on the model and starts the profiler
+    (so model loading and data preparation stay out of the first step), steps it at the end of every optimizer step
+    and stops it when training ends."""
     from transformers import TrainerCallback
 
     class StepProfiler(TrainerCallback):
+        profiler: Any = None
+
         def on_train_begin(self, args: Any, state: Any, control: Any, model: Any = None, **kwargs: Any) -> None:
             if model is not None and not ranges.handles:
                 ranges.attach(model)
+            self.profiler = make_profiler()
+            self.profiler.start()
 
         def on_step_end(self, args: Any, state: Any, control: Any, **kwargs: Any) -> None:
-            profiler.step()
+            if self.profiler is not None:
+                self.profiler.step()
 
         def on_train_end(self, args: Any, state: Any, control: Any, **kwargs: Any) -> None:
+            if self.profiler is not None:
+                self.profiler.stop()
+                self.profiler = None
             ranges.detach()
 
     return StepProfiler()
 
 
 def child_main(args: argparse.Namespace) -> dict[str, Any]:
-    """In the run's own process: lab/train.py with the profiler callback (or plain, under rocprofv3)."""
+    """In the run's own process: lab/train.py with the profiler callback (or plain, under rocprofv3). The profiler
+    records every optimizer step (a schedule with one active window of --steps steps, which is what makes it mark
+    each step with a ProfilerStep#<n> range) and writes trace.json when the window closes or training ends."""
     from lab import train
 
     argv = list(args.train_args)
@@ -918,11 +929,18 @@ def child_main(args: argparse.Namespace) -> dict[str, Any]:
     trace_dir = Path(args.trace_dir)
     trace_dir.mkdir(parents=True, exist_ok=True)
     ranges = LayerRanges()
-    with torch.profiler.profile(activities=activities, record_shapes=True, profile_memory=True, with_stack=False,
-                                acc_events=True) as profiler:
-        answer = train.main(argv, callbacks=[profiler_callback(profiler, ranges)])
-    profiler.export_chrome_trace(str(trace_dir / "trace.json"))
+
+    def make_profiler() -> Any:
+        return torch.profiler.profile(
+            activities=activities, record_shapes=True, profile_memory=True, with_stack=False,
+            schedule=torch.profiler.schedule(wait=0, warmup=0, active=args.steps, repeat=1),
+            on_trace_ready=lambda prof: prof.export_chrome_trace(str(trace_dir / "trace.json")))
+
+    answer = train.main(argv, callbacks=[profiler_callback(make_profiler, ranges)])
     answer.setdefault("refs", {})["layer_ranges"] = json.dumps(dict(ranges.wrapped), sort_keys=True)
+    out = (answer.get("refs") or {}).get("out")
+    if out and Path(out).is_dir():
+        (Path(out) / "run.json").write_text(json.dumps(answer, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return answer
 
 
@@ -974,7 +992,8 @@ def run_main(args: argparse.Namespace) -> dict[str, Any]:
     env = {**os.environ, "PYTHONPATH": os.pathsep.join(p for p in (str(REPO), os.environ.get("PYTHONPATH")) if p)}
     if "torch" in args.passes:
         dataset, rows = pass_data(args, out, "torch")
-        cmd = [*me, "--mode", "torch", "--trace-dir", str(out / "torch"), *(["--cpu"] if args.cpu else []), "--",
+        cmd = [*me, "--mode", "torch", "--trace-dir", str(out / "torch"), "--steps", str(args.steps),
+               *(["--cpu"] if args.cpu else []), "--",
                *train_argv(args, out / "train", dataset, rows)]
         done = subprocess.run(cmd, cwd=str(REPO), env=env, capture_output=True, text=True, check=False)
         (out / "torch.log").write_text(done.stderr[-200000:], encoding="utf-8")
@@ -1074,6 +1093,7 @@ def build_parser() -> argparse.ArgumentParser:
     child.add_argument("--mode", choices=("torch", "rocprof"), default="torch")
     child.add_argument("--trace-dir", default="torch")
     child.add_argument("--cpu", action="store_true")
+    child.add_argument("--steps", type=int, default=DEFAULT_STEPS)
     child.add_argument("train_args", nargs=argparse.REMAINDER)
     return p
 
