@@ -137,6 +137,12 @@ gave a cited answer that still began "I didn't see that."; "while I was out" gav
     `config/rooms/dorm.yaml`; that is not a calibration of the real table, and there is no screen for
     calibrating (it is one `PUT`, see the table-day checklist).
 
+11. **One gateway test fails between 8 PM and midnight Eastern.**
+    `contexts/gateway/tests/test_app.py::test_ask_answers_from_memory_and_streams_events` expects one
+    event-log file and finds two (`2026-10-10.jsonl` and the next day's) once the UTC date has moved
+    on. It is a date-boundary assumption in the test or the log, not a demo risk; the rest of the
+    suite was green at 8:09 PM (5,366 passed).
+
 ---
 
 ## Before any run
