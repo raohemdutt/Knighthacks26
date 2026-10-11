@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { spotUrl } from "@/lib/api";
 import { useTraced, type SpotRoute } from "@/lib/guideSpot";
 import { floorAt, legBetween, snapToFloor, type WalkFloor } from "@/lib/guideWalk";
+import pl from "@/components/dayrun/plan.module.css";
 import o from "./op.module.css";
 import type { AssetState, Level, Shift } from "./types";
 
@@ -113,6 +114,7 @@ export function FloorMap({
   robotAt,
   robotMs,
   dog,
+  zoomable,
   quiet,
   title,
   note,
@@ -140,6 +142,8 @@ export function FloorMap({
   robotMs?: number;
   /** Shift Run: SPOT is drawn as a small walking robot dog, facing the way it goes and standing still at each stop. */
   dog?: boolean;
+  /** The plan can be made larger and moved about, with the same buttons as the day's map: fit, plus, minus; drag to move when zoomed. */
+  zoomable?: boolean;
   /** Round view: the equipment marks step back so the route reads first. */
   quiet?: boolean;
   title: string;
@@ -190,6 +194,39 @@ export function FloorMap({
   const box: Rect = panel ? { x: panel.x - pad, y: panel.y - pad, w: panel.w + 2 * pad, h: panel.h + 2 * pad } : { x: 0, y: 0, w: geo.w, h: geo.h };
   const u = box.w / Math.max(width, 240);
   const roomy = width >= 620;
+  // zoom: the same picture, larger, about a middle point (0..1 of the plan in view); marks, route and SPOT grow together
+  const [zoom, setZoom] = useState({ z: 1, cx: 0.5, cy: 0.5 });
+  // another floor: the zoom is kept, about SPOT when it is on the plan (a round goes on being followed), else about the middle
+  useEffect(() => {
+    setZoom((v) => (robot ? { z: v.z, cx: (robot.x - box.x) / box.w, cy: (robot.y - box.y) / box.h } : { z: v.z, cx: 0.5, cy: 0.5 }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
+  const ZOOM_MAX = 4.1;
+  const zoomBy = (k: number) => setZoom((v) => ({ ...v, z: Math.max(1, Math.min(ZOOM_MAX, Math.abs(v.z * k - 1) < 0.01 ? 1 : v.z * k)) }));
+  const within = (c: number, z: number) => Math.max(0.5 / z, Math.min(1 - 0.5 / z, c));
+  const seen: Rect = { x: box.x + (within(zoom.cx, zoom.z) - 0.5 / zoom.z) * box.w, y: box.y + (within(zoom.cy, zoom.z) - 0.5 / zoom.z) * box.h, w: box.w / zoom.z, h: box.h / zoom.z };
+  const drag = useRef<{ x: number; y: number; cx: number; cy: number; moved: boolean } | null>(null);
+  const pan =
+    zoomable && zoom.z > 1
+      ? {
+          onPointerDown: (e: React.PointerEvent) => void (drag.current = { x: e.clientX, y: e.clientY, cx: within(zoom.cx, zoom.z), cy: within(zoom.cy, zoom.z), moved: false }),
+          onPointerMove: (e: React.PointerEvent<SVGSVGElement>) => {
+            const d = drag.current;
+            if (!d) return;
+            const dx = e.clientX - d.x;
+            const dy = e.clientY - d.y;
+            if (!d.moved && Math.hypot(dx, dy) < 5) return;
+            if (!d.moved) e.currentTarget.setPointerCapture(e.pointerId);
+            d.moved = true;
+            const high = (width * box.h) / box.w;
+            setZoom((v) => ({ z: v.z, cx: within(d.cx - dx / (width * v.z), v.z), cy: within(d.cy - dy / (high * v.z), v.z) }));
+          },
+          onPointerUp: () => void window.setTimeout(() => (drag.current = null), 0),
+          onPointerCancel: () => void (drag.current = null),
+          // a drag is not a tap on a mark
+          onClickCapture: (e: React.MouseEvent) => (drag.current?.moved ? (e.stopPropagation(), e.preventDefault()) : undefined),
+        }
+      : {};
   const visible = (loc: string) => Boolean(geo.pos[loc]) && (view === "both" || geo.pos[loc]?.floor === view);
 
   const byHome = useMemo(() => {
@@ -301,8 +338,8 @@ export function FloorMap({
         ) : null}
       </div>
 
-      <div className={o.mapWrap} ref={wrap}>
-        <svg ref={svg} viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`} role="group" aria-label="Floor plan with one mark per piece of equipment" onClick={onTap ? tap : undefined} style={onTap ? { cursor: "crosshair" } : undefined} data-tap={onTap ? "on" : undefined}>
+      <div className={`${o.mapWrap} ${zoomable ? o.mapZoomable : ""}`} ref={wrap}>
+        <svg ref={svg} {...pan} viewBox={`${seen.x} ${seen.y} ${seen.w} ${seen.h}`} role="group" aria-label={`Floor plan with one mark per piece of equipment${zoomable ? ". Drag to move when zoomed." : ""}`} onClick={onTap ? tap : undefined} style={onTap ? { cursor: "crosshair" } : zoomable && zoom.z > 1 ? { cursor: "grab", touchAction: "none" } : undefined} data-tap={onTap ? "on" : undefined} data-zoom={zoomable ? zoom.z.toFixed(2) : undefined}>
           {geo.image ? (
             <>
               <image className={o.planImage} href={geo.image} x="0" y="0" width={geo.w} height={geo.h} preserveAspectRatio="none" />
@@ -510,6 +547,19 @@ export function FloorMap({
             </g>
           ) : null}
         </svg>
+        {zoomable ? (
+          <div className={pl.mapTools}>
+            <button type="button" className={pl.mapTool} onClick={() => setZoom({ z: 1, cx: 0.5, cy: 0.5 })} disabled={zoom.z === 1} aria-label="Fit the plan in view">
+              ⤢
+            </button>
+            <button type="button" className={pl.mapTool} onClick={() => zoomBy(1.6)} disabled={zoom.z >= ZOOM_MAX - 0.05} aria-label="Zoom in">
+              +
+            </button>
+            <button type="button" className={pl.mapTool} onClick={() => zoomBy(1 / 1.6)} disabled={zoom.z === 1} aria-label="Zoom out">
+              −
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div className={o.legend}>

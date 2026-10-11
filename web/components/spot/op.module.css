@@ -619,6 +619,11 @@
   height: auto;
 }
 
+/* a plan with zoom buttons: they sit in its corner, as on the day's map */
+.mapZoomable {
+  position: relative;
+}
+
 .planImage {
   filter: grayscale(1) contrast(0.9);
 }
