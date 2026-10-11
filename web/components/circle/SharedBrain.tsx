@@ -7,12 +7,14 @@ import { ApiError, api, type BrainLastAnswer, type BrainPower, type CircleMember
 import { useAtlasEvents } from "@/lib/atlas";
 import { time } from "@/lib/format";
 import { useFetch } from "@/lib/useFetch";
+import { BrainPair } from "./BrainPair";
 import c from "./circle.module.css";
 
 /**
- * Shared brain: the Circle's big model, which every friend's box can ask (G4's group brain). Where it runs (the
- * teacher on the lab's AMD Strix Halo pod), how many friends are on the network, its live watts as a scrolling trace
- * with its idle floor, and what the last answer cost.
+ * Shared brain: the Circle's big model, which every friend's box can ask (G4's group brain). At the top the brain as
+ * two friends (BrainPair, G6): one 122B model split across the lab's two AMD Strix Halo pods, each pod's watts, the
+ * tunnel between them and how fast it answers. Below, how many friends' boxes are on the network, the head pod's
+ * watts as a scrolling trace with its idle floor, and what the last answer cost.
  *
  * GET /api/circle/brain/power is polled once a second: the box relays the pod's own power sampler and keeps the hub
  * token to itself. The last answer's joules are the pod's power integrated over the group brain's own window
@@ -103,10 +105,7 @@ export function SharedBrain({ members }: { members: CircleMembers | undefined })
         Shared brain
       </h2>
       <div className={`${ui.card} ${c.brain}`}>
-        <p className={c.brainWhere}>
-          Runs on {power?.configured ? power.where : "the teacher on the lab's AMD Strix Halo pod"}
-          {power?.host ? <span className={ui.muted}> ({power.host})</span> : null}
-        </p>
+        <BrainPair />
         <div className={ui.stats}>
           <div className={ui.stat}>
             <div className={ui.statNum}>
@@ -118,7 +117,7 @@ export function SharedBrain({ members }: { members: CircleMembers | undefined })
             <div className={`${ui.statNum} ${c.brainWatts}`}>
               {now ? fmt(now.w) : "--"} <span className={c.brainUnit}>W</span>
             </div>
-            <div className={ui.statLabel}>the brain right now (idle floor {idle} W)</div>
+            <div className={ui.statLabel}>the head pod right now (idle floor {idle} W)</div>
           </div>
         </div>
         <Trace points={points} idle={idle} last={last} offset={power?.offset_s ?? null} />
@@ -150,7 +149,7 @@ function CostLine({ last }: { last: BrainLastAnswer | null }) {
     <div>
       <p className={c.brainCost}>that answer cost {fmt(last.joules)} J</p>
       <p className={`${ui.small} ${ui.muted}`}>
-        {fmt(last.seconds ?? 0, 1)} s at {fmt(last.mean_w ?? 0)} W average on the pod, gross; {fmt(Math.max(0, last.above_idle_j ?? 0))} J above its {last.idle_w} W idle floor.
+        {fmt(last.seconds ?? 0, 1)} s at {fmt(last.mean_w ?? 0)} W average on the head pod, gross; {fmt(Math.max(0, last.above_idle_j ?? 0))} J above its {last.idle_w} W idle floor.
         {last.low_confidence && last.reasons?.length ? ` Low confidence: ${last.reasons.join("; ")}.` : ""}
       </p>
     </div>
@@ -227,5 +226,5 @@ function Trace({ points, idle, last, offset }: { points: Point[]; idle: number; 
       g.globalAlpha = 1;
     }
   }, [points, idle, last, offset]);
-  return <canvas ref={ref} className={c.brainTrace} role="img" aria-label="The shared brain's power over the last two minutes" />;
+  return <canvas ref={ref} className={c.brainTrace} role="img" aria-label="The head pod's power over the last two minutes" />;
 }

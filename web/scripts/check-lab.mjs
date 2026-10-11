@@ -99,6 +99,32 @@ try {
   is("the speed-up is the two sweeps' own ratio", JSON.stringify(speed.big), JSON.stringify([{ n: 4.6, digits: 1 }, "× faster"]));
   is("on the same power", speed.line, "on the same 96 W: 2.7 → 12.3 tokens a second.");
   is("one sweep alone has no before: the slide is the batching saving", W.speedHero({ ...two, sweeps: [two.sweeps[1]] }, when).big[1], "× less energy");
+
+  // ---- the Circle's Shared brain card (G6): two pods, one brain (lib/sharedBrain.ts)
+  const S = await load("sharedBrain");
+  const member = (name, role, online, watts) => ({ name, role, node: role === "head" ? "pod-a" : "pod-b", layers: 24, online, watts_now: watts, watts_idle: 10.27, vram_gb: online ? 34.5 : null });
+  const brain = (configured, a, b, serving = { tok_s: 10, ttft_s: 0.29, requests_running: 0 }) => ({
+    configured,
+    model: { name: "Qwen3.5-122B-A10B", params_b: 122, active_b: 10, quant: "int4", served: ["teacher", "group-brain"] },
+    members: [member("pod C", "head", a, a ? 61.4 : null), member("pod D", "half", b, b ? 48 : null)],
+    link: { kind: "tunnel", rtt_ms: 0.36, mbps: 100 },
+    serving,
+    updated: "2026-10-11T12:00:00Z",
+    reason: null,
+  });
+  is("both online", S.pairState(brain(true, true, true)), "both");
+  is("one online", S.pairState(brain(true, true, false)), "one");
+  is("both offline is no friends online", S.pairState(brain(true, false, false)), "none");
+  is("not configured is no friends online", S.pairState(brain(false, true, true)), "none");
+  is("no answer is no friends online", S.pairState(null), "none");
+  is("model line", S.modelLine(brain(true, true, true)), "Qwen3.5-122B, split 24 and 24 layers across two friends");
+  is("link line", S.linkLine(brain(true, true, true)), "0.36 ms over a tunnel");
+  is("serving line", S.servingLine(brain(true, true, true)), "10.0 tokens a second, first token in 0.29 s");
+  is("serving line busy", S.servingLine(brain(true, true, true, { tok_s: 9.5, ttft_s: 0.3, requests_running: 2 })), "9.5 tokens a second, first token in 0.30 s, 2 answering now");
+  is("not serving", S.servingLine(brain(true, false, false, { tok_s: null, ttft_s: null, requests_running: null })), "not serving right now");
+  is("watts", S.wattsText(61.4), "61 W");
+  is("no watts", S.wattsText(null), "--");
+
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

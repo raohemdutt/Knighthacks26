@@ -142,6 +142,61 @@ function Sparks({ step }: { step: number }) {
   );
 }
 
+/* ---------- the stage ---------- */
+
+/** The two boxes, the floor, the shared glow and the contact flash; the root's data-state moves them. */
+function Stage({ sparks = null }: { sparks?: React.ReactNode }) {
+  return (
+    <div className={css.stage} aria-hidden="true">
+      <span className={css.glow} />
+      <span className={css.floor} />
+      <div className={`${css.slot} ${css.slotMe}`}>
+        <span className={css.shadow} />
+        <div className={css.bump}>
+          <div className={css.mover}>
+            <BoxArt bar="a" />
+          </div>
+        </div>
+        {sparks}
+      </div>
+      <div className={`${css.slot} ${css.slotFriend}`}>
+        <span className={css.shadow} />
+        <div className={css.bump}>
+          <div className={css.mover}>
+            <BoxArt bar="b" />
+          </div>
+        </div>
+      </div>
+      <span className={css.contact} />
+    </div>
+  );
+}
+
+export interface BuddiesStageProps {
+  state: BuddiesState;
+  /** What a screen reader hears for the picture. */
+  label: string;
+  /** Both boxes side by side without meeting (outside `with-friend`). */
+  apart?: boolean;
+  /** Boxes shown dimmed and still: `me` is the left box, `friend` the right one. */
+  off?: { me?: boolean; friend?: boolean };
+  forceReduced?: boolean;
+}
+
+/**
+ * The stage on its own, for another card (the Circle's Shared brain, G6): the same boxes and motion with no counters
+ * or loss curve. Reduced motion is respected as above.
+ */
+export function BuddiesStage({ state, label, apart = false, off = {}, forceReduced }: BuddiesStageProps) {
+  const reduced = useReduced(forceReduced);
+  const cls = [css.root, css.bare, reduced ? css.calm : "", apart ? css.apart : "", off.me ? css.offMe : "", off.friend ? css.offFriend : ""];
+  return (
+    <div className={cls.filter(Boolean).join(" ")} data-state={state} role="img" aria-label={label}>
+      <Stage />
+    </div>
+  );
+}
+
 /* ---------- the loss curve ---------- */
 
 function LossCurve({ loss, steps, growKey, reason }: { loss: number[]; steps: number; growKey: string; reason: string | null }) {
@@ -206,28 +261,7 @@ export function LearningBuddies({ state, steps, loss, joulesPerExample, friends,
       <p className={css.srOnly} aria-live="polite">
         {said}
       </p>
-      <div className={css.stage} aria-hidden="true">
-        <span className={css.glow} />
-        <span className={css.floor} />
-        <div className={`${css.slot} ${css.slotMe}`}>
-          <span className={css.shadow} />
-          <div className={css.bump}>
-            <div className={css.mover}>
-              <BoxArt bar="a" />
-            </div>
-          </div>
-          {state !== "idle" && lastStep > 0 && !reduced ? <Sparks key={`s-${lastStep}`} step={lastStep} /> : null}
-        </div>
-        <div className={`${css.slot} ${css.slotFriend}`}>
-          <span className={css.shadow} />
-          <div className={css.bump}>
-            <div className={css.mover}>
-              <BoxArt bar="b" />
-            </div>
-          </div>
-        </div>
-        <span className={css.contact} />
-      </div>
+      <Stage sparks={state !== "idle" && lastStep > 0 && !reduced ? <Sparks key={`s-${lastStep}`} step={lastStep} /> : null} />
 
       <div className={css.side} key={state === "idle" ? "rest" : "work"}>
         {state === "idle" ? (

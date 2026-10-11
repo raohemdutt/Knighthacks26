@@ -219,6 +219,44 @@
   background: var(--accent-3);
 }
 
+/* the stage on its own inside another card (BuddiesStage: the Circle's Shared brain, G6) */
+.root.bare {
+  display: block;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  border-radius: var(--radius-sm);
+}
+
+.bare .stage {
+  height: 210px;
+}
+
+/* apart: both boxes stand side by side without meeting; an offline one is dimmed and still */
+.root.apart .slotMe {
+  left: calc(50% - 150px);
+}
+
+.root.apart .slotFriend {
+  opacity: 1;
+}
+
+.root.apart .glow {
+  opacity: 0;
+}
+
+.root.offMe .slotMe,
+.root.offFriend .slotFriend {
+  opacity: 0.3;
+}
+
+.root.offMe .slotMe .mover,
+.root.offMe .slotMe .bar,
+.root.offFriend .slotFriend .mover,
+.root.offFriend .slotFriend .bar {
+  animation: none;
+}
+
 /* ---------- the side: counters and the loss curve ---------- */
 
 .side {
