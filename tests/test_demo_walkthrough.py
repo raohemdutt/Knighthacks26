@@ -57,10 +57,10 @@ def test_the_real_work_order_cards_pass_the_guard():
     """Built by the product code, not by hand: both operator actions on the sponsor's kit."""
     from contexts.spot.application import workorders
 
-    assert set(workorders.TARGETS.values()) == {"spot.reinspect", "spot.work_order"}
+    assert set(workorders.TARGETS.values()) == {"spot.reinspect", "spot.work_order", "spot.mission_request"}  # the walkthrough approves only the first two
     assert workorders.KIND == "connector_write"
     source = Path(workorders.__file__).read_text(encoding="utf-8")
-    assert source.count('"stays_on_this_box": True') == 2
+    assert source.count('"stays_on_this_box": True') == 3  # every card this module builds stays on the box
 
 
 @pytest.mark.parametrize("params", [{}, {"stays_on_this_box": False}, {"stays_on_this_box": "yes"}, {"stays_on_this_box": 1}])
