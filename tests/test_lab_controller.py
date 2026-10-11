@@ -869,6 +869,25 @@ def test_run_script_leaves_a_local_row_because_the_pods_own_ledger_is_never_read
     assert world.only_row("controller run-script")["outcome"] == "fail"
 
 
+def test_run_script_copies_the_scripts_step_lines_into_its_row_but_not_the_end_line(world, tmp_path):
+    world.hub.start_server("A")
+    output = ("teacher up on 8000\n### serve wall_s=312 rc=0 kernel=RDNAHybridW4A16LinearKernel\n"
+              "### build wall_s=4 rc=1\n### build wall_s=290 rc=0\n")
+
+    with fake_terminal(world, "A", output=output) as (port, _):
+        answer = world.make_controller(base_url=f"http://127.0.0.1:{port}").run_script(
+            "A", script_file(tmp_path), timeout_s=60, run_id="t9")
+
+    want = {"serve": {"wall_s": "312", "rc": "0", "kernel": "RDNAHybridW4A16LinearKernel"},
+            "build": {"wall_s": "290", "rc": "0"}}
+    assert answer["steps"] == want
+    assert world.only_row("pod run-script")["conditions"]["steps"] == want
+
+
+def test_step_marks_reads_only_step_lines():
+    assert ctl_module.step_marks("### END rc=0\n### serve\nnot ### a step=1\n### verify note=two words\n") == {}
+
+
 def test_run_script_times_out_when_the_end_marker_never_appears(world, tmp_path):
     world.hub.start_server("B")
     script = script_file(tmp_path)
