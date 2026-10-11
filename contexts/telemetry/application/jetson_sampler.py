@@ -1,6 +1,6 @@
 """The Jetson power sampler: tegrastats lines in, one `telemetry.jetson.power` event out per line.
 
-    sampler = JetsonPowerSampler(TegrastatsProcess(), JetsonSysfs(), NvpmodelQuery(), interval_ms=100)
+    sampler = JetsonPowerSampler(TegrastatsProcess(), JetsonSysfs(), NvpmodelQuery(), interval_ms=350)
     async for event in sampler.samples(): ...        # SamplerRunner publishes them onto the bus
 
 Every event carries each rail's current mW (never tegrastats' running average), the temperatures, the power
@@ -9,8 +9,15 @@ sampled at; `ts` is when the line arrived. The period is the configured interval
 interval when that is longer: polling faster than the sensor updates only re-reads the same value and inflates
 the sample count of every window.
 
-The default of 100 ms gives a warm caption on the box (about 2.1 s, the shortest model request measured so
-far) about 21 samples, where tegrastats' own default of 1000 ms gives about 2.
+The default is 350 ms. It was 100 ms, which gives a warm caption (about 2.1 s, the shortest model request
+measured so far) about 21 samples, but T13 measured the sampler's own CPU at 3.51 percent of one core at 100 ms
+and 1.83 at 200 ms with the gateway idle (3.28 and 1.70 under caption load; lab/refine/metrics.jsonl:59 to :62,
+one 5-minute run each), over T2's budget of 1 percent. Telemetry owner ruling 8 (lab/refine/telemetry/
+OWNER_RULINGS.md) raised it to 350 ms: scaled by rate, T13's rows predict 0.94 to 1.05 percent there (on the
+bound, unmeasured until E30), a 3.5 s window still holds 10 samples and T7's mean caption of 9.5 s about 27. A
+2.1 s caption now holds about 6, so its joules per answer is low_confidence ("fewer than 10 samples in the
+window", application/joules.py MIN_SAMPLES), never reported as if it were well sampled. tegrastats' own default
+of 1000 ms would give it about 2.
 
 The power mode is read when sampling starts and again every `nvpmodel_every_s` in the background, so a mode
 switch shows up in the samples within that time. The INA3221 settings are read again every
@@ -36,7 +43,7 @@ from contracts.telemetry import JetsonPower
 
 log = logging.getLogger("atlas.telemetry")
 
-DEFAULT_INTERVAL_MS = 100
+DEFAULT_INTERVAL_MS = 350  # was 100; raised under telemetry owner ruling 8 for the CPU budget (see above)
 SOURCE = "tegrastats"
 
 

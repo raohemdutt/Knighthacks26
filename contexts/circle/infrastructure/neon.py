@@ -10,9 +10,15 @@ the rest of the app runs without it. Every statement is safe to repeat, which
 lets NeonDb reconnect and retry once when the connection has dropped. If that
 fails too it raises CircleOffline.
 
+Two ways to the same database, chosen by ATLAS_NEON_TRANSPORT (NeonTransport below):
+- `tcp`: psycopg on Postgres's own port 5432;
+- `https`: Neon's SQL endpoint on port 443 (neon_https.py; standard library only, the driver is not needed),
+  for networks that refuse 5432. Its transactions are weaker: read "TRANSACTIONS" at the top of neon_https.py;
+- `auto` (the default): tcp, and https for the rest of the process once 5432 cannot be reached.
+
 A slow or unreachable database must never hold the box up:
 - connecting gives up after CONNECT_TIMEOUT_S, and a connection that went dead is noticed by TCP keepalives
-  (KEEPALIVE) instead of hanging for minutes;
+  (KEEPALIVE) instead of hanging for minutes; over https every request gives up after CONNECT_TIMEOUT_S;
 - once offline, calls fail at once for RETRY_S instead of each waiting out the connect timeout, so one tick of
   the app pays for one attempt, not one per job;
 - one statement runs at a time; a caller that cannot get its turn within BUSY_TIMEOUT_S gets CircleOffline
@@ -20,6 +26,7 @@ A slow or unreachable database must never hold the box up:
 """
 
 import json
+import logging
 import os
 import threading
 import time
@@ -28,9 +35,13 @@ from datetime import UTC, datetime, timedelta
 
 from contexts.circle.application.protocol import AgentMessage
 from contexts.circle.application.sharing import CircleOffline, OutboxRow
+from contexts.circle.infrastructure.neon_https import HttpsConnection
 from contracts.circle import Proposal
 
+log = logging.getLogger("atlas.circle")
+
 ENV_URL = "NEON_DATABASE_URL"
+ENV_TRANSPORT = "ATLAS_NEON_TRANSPORT"  # auto (default) | tcp | https
 CONNECT_TIMEOUT_S = 10
 RETRY_S = 15  # after a failed attempt, fail fast this long (shorter than the app's tick, so every tick tries once)
 BUSY_TIMEOUT_S = 5  # how long a caller waits for its turn on the one connection
@@ -42,15 +53,75 @@ KEEPALIVE = {"keepalives": 1, "keepalives_idle": 10, "keepalives_interval": 5, "
 MESSAGE_COLUMNS = "id, circle_id, thread_id, from_member, kind, proposal, reply, created_at"
 
 
+def _tcp_connect(url: str):
+    """psycopg on port 5432. ImportError when the driver is not installed."""
+    import psycopg
+
+    return psycopg.connect(url, connect_timeout=CONNECT_TIMEOUT_S, **KEEPALIVE)
+
+
+def _https_connect(url: str):
+    return HttpsConnection(url, timeout=CONNECT_TIMEOUT_S)
+
+
+class NeonTransport:
+    """Which way to the database, and one log line saying so. Never logs any part of the connection string.
+
+    `auto` tries psycopg first. When that cannot connect (refused, timed out, no route, or the driver is not
+    installed) it uses HTTPS instead and remembers that until the process restarts: `chosen` stays "https" and
+    port 5432 is not tried again, so a blocked port costs one failed attempt, not one per tick."""
+
+    MODES = ("auto", "tcp", "https")
+
+    def __init__(self, tcp: Callable[[str], object] = _tcp_connect, https: Callable[[str], object] = _https_connect) -> None:
+        self._tcp, self._https = tcp, https
+        self.chosen: str | None = None  # the transport of the last connection handed out
+        self._said: str | None = None
+
+    def connect(self, url: str, mode: str | None = None):
+        mode = (mode if mode is not None else os.environ.get(ENV_TRANSPORT, "")).strip().lower() or "auto"
+        if mode not in self.MODES:
+            raise CircleOffline(f"{ENV_TRANSPORT} must be auto, tcp or https")
+        if mode == "https" or (mode == "auto" and self.chosen == "https"):
+            return self._use("https", "set by " + ENV_TRANSPORT if mode == "https" else "", url)
+        try:
+            conn = self._tcp(url)
+        except ImportError as e:
+            if mode == "tcp":
+                raise CircleOffline('the Postgres driver is not installed: pip install -e ".[neon]"') from e
+            return self._use("https", "the Postgres driver is not installed", url)
+        except _dropped_errors() as e:
+            if mode == "tcp":
+                raise
+            return self._use("https", f"port 5432 could not be reached: {type(e).__name__}", url)
+        self._say("tcp", "")
+        return conn
+
+    def _use(self, name: str, why: str, url: str):
+        conn = self._https(url)
+        self._say(name, why)
+        return conn
+
+    def _say(self, name: str, why: str) -> None:
+        self.chosen = name
+        if self._said == name:
+            return
+        self._said = name
+        port = "psycopg, port 5432" if name == "tcp" else "port 443"
+        if why and not why.startswith("set by"):
+            log.warning("Circle database: using %s (%s) until this process restarts; %s", name, port, why)
+        else:
+            log.info("Circle database: using %s (%s)%s", name, port, f", {why}" if why else "")
+
+
+TRANSPORT = NeonTransport()  # the app's one: what it chose holds for the whole process
+
+
 def _connect_from_env():
-    try:
-        import psycopg
-    except ImportError as e:
-        raise CircleOffline('the Postgres driver is not installed: pip install -e ".[neon]"') from e
     url = os.environ.get(ENV_URL)
     if not url:
         raise CircleOffline(f"{ENV_URL} is not set")
-    return psycopg.connect(url, connect_timeout=CONNECT_TIMEOUT_S, **KEEPALIVE)
+    return TRANSPORT.connect(url)
 
 
 def _dropped_errors() -> tuple[type[BaseException], ...]:
@@ -63,7 +134,11 @@ def _dropped_errors() -> tuple[type[BaseException], ...]:
 
 
 class NeonDb:
-    """One lazy connection, one transaction per `run`, shared by the store, the shares and the board."""
+    """One lazy connection, one transaction per `run`, shared by the store, the shares and the board.
+
+    Over https "one transaction per `run`" holds for work that is one statement, or several writes with nothing
+    read in between (they are sent together at the end). Work that reads an answer and then writes again is two
+    transactions there; the two places that do it, record_event and NeonCleanup.sweep, say what that costs."""
 
     def __init__(self, connect: Callable[[], object] | None = None, names: dict[str, str] | None = None,
                  retry_s: float = RETRY_S, busy_timeout_s: float = BUSY_TIMEOUT_S,
@@ -104,7 +179,8 @@ class NeonDb:
                 return out
             except dropped as e:
                 self._close()
-                if not reused:  # a fresh connection failed too: we are offline
+                # a fresh connection failed too, or an https request already waited out its timeout: we are offline
+                if not reused or not getattr(e, "retry", True):
                     self.offline = f"Neon is unreachable ({type(e).__name__})"
                     raise CircleOffline(self.offline) from e
             except CircleOffline as e:  # no driver or no URL: nothing to roll back
@@ -185,7 +261,13 @@ class NeonCircleStore:
         return [_message(r) for r in self.db.run(work)]
 
     def record_event(self, circle_id: str, thread_id: str, proposal: Proposal, created_by: str) -> None:
-        """The agreed event goes on the shared calendar once; the first record for a thread wins."""
+        """The agreed event goes on the shared calendar once; the first record for a thread wins.
+
+        Over https this is two transactions, because `rowcount` is read between the event and its RSVPs: the
+        circle, member and event rows are committed first, the RSVP rows after. If the second request is lost,
+        the event stays without RSVP rows, and a repeat does not add them (the event is "already recorded").
+        The calendar then shows that event with nobody listed (upcoming_events returns it once, answer None).
+        Over tcp it is one transaction and this cannot happen."""
         attendees = sorted({*proposal.invitees, created_by})
 
         def work(cur):
@@ -390,7 +472,11 @@ class NeonCleanup:
         self.limit = limit
 
     def sweep(self, circle_id: str, member_id: str, keep: timedelta) -> dict[str, int]:
-        """Rows removed per table. `keep` is measured on the database's clock."""
+        """Rows removed per table. `keep` is measured on the database's clock.
+
+        Over https each of the three deletes is its own transaction (`rowcount` is read after each). Nothing
+        depends on them happening together: a sweep that stops half-way has removed some old rows, the next
+        one removes the rest; only the count in the log line is lost."""
         if keep <= timedelta(0):
             return {}
 

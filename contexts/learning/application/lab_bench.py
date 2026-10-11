@@ -29,6 +29,13 @@ current lab. A row from another chip is never put on a Strix Halo curve: it form
 is left out of `power`'s bars (listed under `power.other_chip` instead) and says so in `not_charted`. A current
 sweep lists under `comparisons` the other chips' sweeps that recorded the same metrics at the same batch sizes.
 
+The file is append-only and several lanes write it, so the same row can be in it twice (a merge that kept both
+copies, one of them with fewer condition fields). `repeats` finds those: a row whose metric, node, unit, value and
+time equal an earlier row's, and whose conditions agree with it on every field both carry, one set holding the
+other. Nothing is dropped: both copies stay in `series` under their own lines, the later one says `repeat_of`, the
+payload lists them under `repeats`, and they are not counted as separate readings (a sweep's `superseded`, a
+benchmark session's row count).
+
 A number is a small dict in the lab view's shape, `{label, value, unit, source, low_confidence, reason}`, plus
 `kind`: "measured" (a row's own value) or "derived" (worked out here from rows, with the formula in `formula`).
 On a present value `reason` is why it is low confidence, in the row's own words.
@@ -161,7 +168,32 @@ def read_rows(path: str | Path | None = METRICS_FILE) -> tuple[list[dict[str, An
             row["conditions"] = {}
         row["_line"] = n
         rows.append(row)
+    by_line = {r["_line"]: r for r in rows}
+    for line, first in repeats(rows).items():
+        by_line[line]["_repeat_of"] = first
     return rows, skipped
+
+
+def repeats(rows: list[dict[str, Any]]) -> dict[int, int]:
+    """Rows that are an earlier row written again: `{line: the line of the first copy}`. Two rows are the same row
+    when their metric, node, unit, value and time are equal and their conditions agree on every field both carry,
+    with one set of fields holding the other (a copy may have lost, or gained, backfilled fields). A row with no
+    time is never called a repeat."""
+    seen: dict[tuple, list[dict[str, Any]]] = {}
+    out: dict[int, int] = {}
+    for r in sorted(rows, key=lambda r: r["_line"]):
+        if not r.get("ts"):
+            continue
+        firsts = seen.setdefault((r["metric"], r.get("node"), r.get("unit"), r["value"], r["ts"]), [])
+        mine = r.get("conditions") or {}
+        for first in firsts:
+            theirs = first.get("conditions") or {}
+            if (set(mine) <= set(theirs) or set(theirs) <= set(mine)) and all(mine[k] == theirs[k] for k in set(mine) & set(theirs)):
+                out[r["_line"]] = first["_line"]
+                break
+        else:
+            firsts.append(r)
+    return out
 
 
 # --- one row as a number ---
@@ -228,7 +260,7 @@ def point(row: dict[str, Any], label: str | None = None) -> dict[str, Any]:
         "runs": _number(stats.get("n")) if _number(stats.get("n")) is not None else _runs_listed(c), "statistic": _text(c.get("statistic")),
         "spread": {k: stats[k] for k in ("min", "max", "sd") if _number(stats.get(k)) is not None} or None,
         "model": model_of(c), "build": build_of(c), "session": _text(c.get("session")), "state": state_of(row),
-        "other_chip": not chip["current"], "chip": chip,
+        "other_chip": not chip["current"], "chip": chip, "repeat_of": row.get("_repeat_of"),
     }
 
 
@@ -293,14 +325,16 @@ def sweeps(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if len(batches) < 2:
             continue
         metrics: dict[str, list[dict[str, Any]]] = {}
-        superseded = 0
+        superseded = repeated = 0
         for name in sorted({r["metric"].split(".", 1)[1] for r in members}):
             pts = []
             for b in batches:
                 same = [r for r in members if r["metric"].split(".", 1)[1] == name and batch_of(r) == b]
                 if same:
                     pts.append(point(_newest(same)))
-                    superseded += len(same) - 1
+                    again = sum(r.get("_repeat_of") is not None for r in same)  # the same reading written twice
+                    repeated += again
+                    superseded += len(same) - again - 1
             metrics[name] = pts
         newest = _newest(members)
         c = newest["conditions"]
@@ -314,7 +348,7 @@ def sweeps(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "model": model_of(c), "build": build_of(c),
             "mode": _text(c.get("mode")), "prompt_set": (c.get("prompt_set") or {}).get("id") if isinstance(c.get("prompt_set"), dict) else None,
             "max_tokens": _number(c.get("max_tokens")), "ts": newest.get("ts"), "recorded_by": _text(newest.get("source")),
-            "batches": batches, "metrics": metrics, "superseded": superseded,
+            "batches": batches, "metrics": metrics, "superseded": superseded, "repeated": repeated,
             "other_metrics": sorted(set(metrics) - set(SWEEP_METRICS)),
             "points": len(every), "low_confidence": sum(p["low_confidence"] for p in every),
             "confidence_note": _confidence_note(every),
@@ -341,12 +375,19 @@ def _confidence_note(points: list[dict[str, Any]]) -> str:
     """What the rows themselves say about how far to trust the sweep: how many runs stand behind a point."""
     runs = {p["runs"] for p in points}
     sessions = {p["session"] for p in points if p["session"]}
-    stat = next((p["statistic"] for p in points if p["statistic"]), None)
-    if runs <= {None, 1} and not stat:
+    stats: dict[str, int] = {}
+    for p in points:
+        if p["statistic"]:
+            stats[p["statistic"]] = stats.get(p["statistic"], 0) + 1
+    if runs <= {None, 1} and not stats:
         head = "Each point is a single run."
     else:
         n = "/".join(f"{r:g}" for r in sorted(r for r in runs if r))
-        head = f"Each point is the {stat}" if stat else f"Each point stands on {n} runs"
+        if len(stats) > 1:  # the points are not all the same statistic: say which, and how many of each
+            most = max(stats, key=lambda k: stats[k])
+            head = f"{stats[most]} of {len(points)} points are the {most}; the others are the {', the '.join(k for k in stats if k != most)}"
+        else:
+            head = f"Each point is the {next(iter(stats))}" if stats else f"Each point stands on {n} runs"
         head += f", all from one session ({next(iter(sessions))})." if len(sessions) == 1 else "."
     low = [p for p in points if p["low_confidence"]]
     if not low:
@@ -480,6 +521,8 @@ def bench(rows: list[dict[str, Any]], skipped: list[dict[str, Any]] | None = Non
     return {
         "file": REL, "rows": len(rows), "skipped": skipped or [],
         "low_confidence_rows": sum(bool(r.get("low_confidence")) for r in rows),
+        "repeated_rows": sum(r.get("_repeat_of") is not None for r in rows),
+        "repeats": [{"line": r["_line"], "of": r["_repeat_of"]} for r in rows if r.get("_repeat_of") is not None],
         "other_chip_rows": sum(other_chip(r) for r in rows), "other_chip_label": OTHER_CHIP, "lab_moved_at": LAB_MOVED_AT,
         "chips": _by_chip([p for p in (point(r) for r in rows) if p["node"] != STUDENT_NODE]),
         "newest": max((str(r.get("ts")) for r in rows if r.get("ts")), default=None),

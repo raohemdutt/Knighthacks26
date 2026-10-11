@@ -28,6 +28,8 @@ camera = ["opencv-python-headless>=4.8", "numpy"]
 browser = ["patchright>=1.50"]
 # Circle's Neon Postgres store and outbox sync (N1)
 neon = ["psycopg[binary]>=3.2"]
+# File inbox (W1): text out of shared PDF and Word files; plain text needs nothing
+files = ["pypdf>=4", "python-docx>=1"]
 
 [tool.setuptools.packages.find]
 include = ["contracts*", "runtime*", "bus*", "contexts*"]

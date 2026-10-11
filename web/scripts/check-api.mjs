@@ -83,6 +83,8 @@ const CITATION = { episode_id: "string?", frame_ref: "string?", ts: isoDateOrNul
 const ANSWER = { ...ENVELOPE, question_id: "string", answer: "string", model_version: "string", citations: listOf(CITATION) };
 const EPISODE = { id: "string", camera_id: "string", start: isoDate, end: isoDateOrNull, labels: stringList, captions: stringList, summary: "string?", keyframe_refs: stringList };
 const STATS = { hours_recorded: "number", episodes: "number", captions: "number", first_event: isoDateOrNull };
+const DIGEST = { day: "string", text: "string", episodes: "number", people_episodes: "number", first: isoDateOrNull, last: isoDateOrNull };
+const INBOX_FILE = { file_id: "string", name: "string", content_type: "string", size: "number", added_at: isoDate, text_chars: "number", excerpt: "string" };
 const HIT = { episode_id: "string", camera_id: "string", ts: isoDate, text: "string", score: "number", frame_ref: "string?", kind: "string", url: "string?", title: "string?" };
 const ITEM = { connector: "string", kind: "string", external_id: "string", title: "string", when: isoDateOrNull, url: "string?", summary: "string?" };
 const NUDGE = { message: "string", tone: oneOf("warn", "celebrate"), ts: isoDate };
@@ -422,6 +424,8 @@ console.log("\nTimeline");
 await check("GET /memory/stats", "GET", "/memory/stats", STATS);
 const episodes = await check("GET /memory/episodes", "GET", "/memory/episodes", EPISODE, { list: true });
 if (episodes?.[0]) await check(`GET /memory/episodes?camera=${episodes[0].camera_id}`, "GET", `/memory/episodes?camera=${encodeURIComponent(episodes[0].camera_id)}`, EPISODE, { list: true });
+await check("GET /api/digest", "GET", "/api/digest", DIGEST);
+await check("GET /api/files", "GET", "/api/files", INBOX_FILE, { list: true });
 await check("GET /memory/search?q=keys", "GET", "/memory/search?q=keys&limit=20", HIT, { list: true });
 await check("GET /memory/items", "GET", "/memory/items", ITEM, { list: true });
 

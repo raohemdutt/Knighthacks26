@@ -18,7 +18,9 @@ Three kinds of record, each read with the lab's own code (imported; nothing in l
   MERGE_LOG.md, parsed by `lab.machine.refine_formats.parse_log`: the date, how many changes it made, how many
   questions it raised for the owner, and whether the track converged.
 - benchmark sessions: the rows of lab/refine/metrics.jsonl that share a `conditions.session`, as one card per
-  session (what was measured, on which node, how many rows, how many are low confidence).
+  session (what was measured, on which node, how many rows, how many are low confidence). A row the file holds
+  twice (lab_bench.repeats) is counted once and the card says how many were written twice; the card cites the
+  session's own lines as runs ("67-96, 130-159"), never a span that takes in another session's rows.
 
 Status is one of queued, running, won (an arm beat the control), lost (the control stayed ahead), inconclusive (no
 difference, or too early to call), dropped, measured (a session with no verdict) and, for a pass, converged or
@@ -192,25 +194,44 @@ def session_cards(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if session:
             sessions.setdefault(session, []).append(r)
     cards = []
-    for session, members in sessions.items():
-        lines = sorted(r["_line"] for r in members)
-        low = sum(bool(r.get("low_confidence")) for r in members)
+    for session, every in sessions.items():
+        members = [r for r in every if r.get("_repeat_of") is None] or every  # a row written twice is one reading
+        again = len(every) - len(members)
+        low = [r for r in members if r.get("low_confidence")]
         families = sorted({r["metric"].split(".")[0] for r in members})
         nodes = sorted({str(r.get("node")) for r in members})
         batches = sorted({b for b in (r["conditions"].get("batch_size") for r in members) if isinstance(b, int | float)})
-        source = by_file(f"{REL}:{lines[0]}-{lines[-1]}")
-        reason = _text(members[0]["conditions"].get("low_confidence_reason"))
+        source = by_file(f"{REL}:{line_runs(r['_line'] for r in every)}")
+        reasons: dict[str, int] = {}
+        for r in low:
+            why = _text(r["conditions"].get("low_confidence_reason"))
+            if why:
+                reasons[why] = reasons.get(why, 0) + 1
+        ranked = sorted(reasons, key=lambda k: -reasons[k])
+        said = ranked[0] if len(ranked) == 1 else "; ".join(f"{k} ({reasons[k]} row{'s' if reasons[k] != 1 else ''})" for k in ranked)
+        numbers = [_num("Rows recorded", len(members), "rows", source), _num("Rows marked low confidence", len(low), "rows", source)]
+        if again:
+            numbers.append(_num("Rows the file holds twice, counted once here", again, "rows", source))
         cards.append({
             "id": session, "kind": "bench", "title": f"Benchmark: {', '.join(families)} on {', '.join(nodes)}",
             "status": "measured", "ts": max(str(r.get("ts")) for r in members), "day_only": False, "track": None,
             "node": nodes[0] if len(nodes) == 1 else None,
             "lever": "batch size " + ", ".join(f"{b:g}" for b in batches) if len(batches) > 1 else None,
-            "verdict": "Measured, no verdict: " + reason if low and reason else "Measured",
-            "detail": _text(members[0]["conditions"].get("mode")), "source": source,
-            "numbers": [_num("Rows recorded", len(members), "rows", source),
-                        _num("Rows marked low confidence", low, "rows", source)],
+            "verdict": "Measured, no verdict: " + said if said else "Measured",
+            "detail": _text(members[0]["conditions"].get("mode")), "source": source, "numbers": numbers,
         })
     return cards
+
+
+def line_runs(lines: Any) -> str:
+    """Line numbers as the runs they form: 67..96 and 130..159 -> "67-96, 130-159"."""
+    runs: list[list[int]] = []
+    for n in sorted(set(lines)):
+        if runs and n == runs[-1][1] + 1:
+            runs[-1][1] = n
+        else:
+            runs.append([n, n])
+    return ", ".join(str(a) if a == b else f"{a}-{b}" for a, b in runs)
 
 
 def timeline(rows: list[dict[str, Any]], state_dir: str | Path | None = None, refine_dir: str | Path = REFINE_DIR,

@@ -184,7 +184,8 @@ def test_score_sends_the_instruction_the_context_and_the_gates_decode(joined):
     body = server.requests[0]["body"]
     assert body["messages"][0] == {"role": "system", "content": split.data.manifest.spec.instruction}
     assert body["messages"][1] == {"role": "user", "content": examples[0].context}
-    assert body["max_tokens"] == gate.DECODE["max_tokens"] and body["temperature"] == 0
+    assert body["max_tokens"] == gate.decode_for("spot-qa")["max_tokens"] == gate.SPOT_MAX_TOKENS
+    assert body["temperature"] == 0
     assert body["chat_template_kwargs"] == {"enable_thinking": False}
     assert body["model"] == spot_fake.SERVED_MODEL
     assert out["model"] == spot_fake.SERVED_MODEL and out["spot.n_items"] == 12
@@ -242,6 +243,17 @@ def test_a_dry_run_of_the_gate_scores_before_after_and_teacher_on_the_held_out_s
     saved = json.loads(Path(out["scores_json"]).read_text())
     assert saved["task"] == "spot-qa" and saved["held_out"] == 240 and saved["unscored"] == 0
     assert saved["event"]["type"] == "learning.run.evaluated"
+    # the run's one decode setting carries SPOT's own maximum output length, not the default 512
+    assert saved["decode"] == {"thinking": "off", "sampling": "greedy", "max_tokens": gate.SPOT_MAX_TOKENS}
+
+
+def test_spot_qa_has_its_own_maximum_output_length_and_every_other_task_keeps_512():
+    # SPOT's longest held-out reference answer is 977 tokens (Qwen3.5-4B tokenizer); 512 would cut 78 of 240 short
+    assert gate.SPOT_MAX_TOKENS > 977
+    assert gate.decode_for("spot-qa") == {**gate.DECODE, "max_tokens": gate.SPOT_MAX_TOKENS}
+    assert gate.decode_for("tool-calling") == gate.decode_for(None) == gate.DECODE
+    assert gate.DECODE["max_tokens"] == 512                      # what runtime/llama.py sends for chat, unchanged
+    assert ss.DECODE["max_tokens"] == gate.SPOT_MAX_TOKENS
 
 
 def test_the_gate_verb_routes_a_spot_dataset_to_the_spot_client(joined, monkeypatch, tmp_path):

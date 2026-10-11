@@ -20,7 +20,8 @@ is counted as unscored and left out. An item passes when the scorer's own Result
 
 How. One scorer commit for every score (the client's scorer_commit(), asked once) and one decode setting, DECODE:
 thinking off, greedy decoding and one fixed maximum output length (512 tokens, what runtime/llama.py sends for
-chat). The client's decode(base_url) reads a server's setting; a server that reports another setting stops the gate,
+chat; a task in SCORERS may set its own, as spot-qa does with SPOT_MAX_TOKENS, and decode_for(task) is the run's
+setting). The client's decode(base_url) reads a server's setting; a server that reports another setting stops the gate,
 and one whose setting cannot be read (None) is accepted only with decode_attested, which the row records. The
 current model is scored at least MIN_CURRENT_RUNS times; the spread of its scores (max minus min) is the run-to-run
 noise. The candidate must be the packaged Q4_K_M GGUF (its ModelManifest.gguf, from L5); a bf16 score of it may be
@@ -77,7 +78,7 @@ from lab.dataset import MIN_HELD_OUT, DatasetError, Split, _question_key, load, 
 from lab.machine.record import record
 from runtime.registry import load_models_config, model_version
 
-__all__ = ["DECODE", "MIN_ITEMS", "ALPHA", "MIN_CURRENT_RUNS", "PACKAGED_QUANT", "PREVIEW_KEY", "SCORES_FILE",
+__all__ = ["DECODE", "SPOT_MAX_TOKENS", "decode_for", "MIN_ITEMS", "ALPHA", "MIN_CURRENT_RUNS", "PACKAGED_QUANT", "PREVIEW_KEY", "SCORES_FILE",
            "EVENT_FILE", "SCORERS", "Scorer", "GateError", "Client", "RealClient", "make_client", "client_for",
            "sign_flip_p", "run_gate", "main"]
 
@@ -143,15 +144,27 @@ class RealClient:
 @dataclass(frozen=True)
 class Scorer:
     """A task's own scorer, as "module:name" paths: client(dataset folder) is the gate's Client; group(example), when
-    set, is the paired test's unit for a text example."""
+    set, is the paired test's unit for a text example; max_tokens, when set, replaces DECODE's maximum output length
+    for this task (still one setting for all three models of a run)."""
 
     client: str
     group: str | None = None
+    max_tokens: int | None = None
 
+
+# SPOT's reference answers run to 977 tokens (Qwen3.5-4B tokenizer, 240 held-out items; 78 are over 512), so the
+# default 512 would cut a right answer short and score it wrong. 1280 covers the longest with 30 percent to spare.
+SPOT_MAX_TOKENS = 1280
 
 SCORERS: dict[str, Scorer] = {   # by the dataset manifest's task; every other task is scored by RealClient
-    "spot-qa": Scorer("lab.spot_score:GateClient", "lab.spot_score:group_of"),
+    "spot-qa": Scorer("lab.spot_score:GateClient", "lab.spot_score:group_of", max_tokens=SPOT_MAX_TOKENS),
 }
+
+
+def decode_for(task: str | None) -> dict[str, Any]:
+    """The one decode setting for a task's run: DECODE, with the task's own maximum output length when it has one."""
+    scorer = SCORERS.get(task or "")
+    return {**DECODE, "max_tokens": scorer.max_tokens} if scorer and scorer.max_tokens else dict(DECODE)
 
 
 def _named(path: str) -> Any:
@@ -317,6 +330,7 @@ def run_gate(*, client: Client, dataset: str | os.PathLike[str], current_url: st
     episode_map = json.loads(Path(episodes).read_text(encoding="utf-8")) if episodes else None
     task = task or split.data.manifest.spec.task
     scorer = SCORERS.get(task)
+    decode = decode_for(task)
     groups = _groups(split, episode_map, _named(scorer.group) if scorer and scorer.group else None)
     commit = client.scorer_commit()
 
@@ -333,11 +347,11 @@ def run_gate(*, client: Client, dataset: str | os.PathLike[str], current_url: st
                 raise GateError(f"the {role} server's decode setting cannot be read; launch it as "
                                 "lab/L4_REAL_RUN.md says and attest it (--decode-attested)")
             decode_source[role] = "attested"
-        elif dict(setting) != DECODE:
-            raise GateError(f"the {role} server decodes with {dict(setting)}, not the one decode setting {DECODE}")
+        elif dict(setting) != decode:
+            raise GateError(f"the {role} server decodes with {dict(setting)}, not the one decode setting {decode}")
         else:
             decode_source[role] = "reported"
-    base = {"decode": dict(DECODE), "scorer_commit": commit, "split_sha256": split.sha256,
+    base = {"decode": dict(decode), "scorer_commit": commit, "split_sha256": split.sha256,
             "dataset_id": split.dataset_id}
     refs = {"run_id": run_id, "commit": commit, "split_sha256": split.sha256}
 
@@ -431,7 +445,7 @@ def run_gate(*, client: Client, dataset: str | os.PathLike[str], current_url: st
         "scores": scores, "noise": float(noise), "delta": float(delta), "p_value": float(p_value),
         "n_items": n_items, "n_groups": n_groups, "held_out": len(split.held_out),
         "unscored": len(split.held_out) - n_items, "outside_split": outside, "split_sha256": split.sha256,
-        "dataset_id": split.dataset_id, "scorer_commit": commit, "decode": dict(DECODE),
+        "dataset_id": split.dataset_id, "scorer_commit": commit, "decode": dict(decode),
         "decode_source": decode_source, "current_runs": [float(s) for s in run_scores],
         "event": json.loads(event.model_dump_json()), "out": str(out),
     }
@@ -483,5 +497,5 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
                         decode_attested=args.decode_attested, min_held_out=args.min_held_out, task=args.task)
     except GateError as err:
         record("eval-gate", "refused", refs={"run_id": args.run_id}, note=str(err)[:500],
-               conditions={"decode": dict(DECODE)})
+               conditions={"decode": decode_for(task)})
         return {"ok": False, "outcome": "refused", "error": str(err), "run_id": args.run_id}

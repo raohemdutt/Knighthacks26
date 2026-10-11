@@ -5,7 +5,10 @@
 A plan that does not work is a plan that needs fixing, not a failure: each problem is one plain sentence
 (contexts/play/dayrun/words.py) and one suggested edit, as the whole list of moves with the edit applied, so the
 phone applies it in one tap and re-simulates. Every suggestion is tried through the engine first: `mends` says
-whether it makes that problem go away. Pure: no clock, no I/O, never a model.
+whether it makes that problem go away. A problem with no edit of its own that gets one (or goes away) once another
+is mended says so: `after` is that other problem and `hint` the line to show ("Fix the one above first", or by
+name when it is not the row right above: "Fix your sleep first").
+Pure: no clock, no I/O, never a model.
 """
 
 from datetime import datetime
@@ -84,7 +87,8 @@ def _swap(moves: list[Move], index: int, **update) -> list[Move]:
     return [m.model_copy(update=update) if i == index else m for i, m in enumerate(moves)]
 
 
-def suggest(cfg: DayRunConfig, w: Walks, board: Board, moves: list[Move], result: SimResult, limit: int = 6) -> list[Fix]:
+def suggest(cfg: DayRunConfig, w: Walks, board: Board, moves: list[Move], result: SimResult, limit: int = 6,
+            waits: bool = True) -> list[Fix]:
     out: list[Fix] = []
 
     def run(candidate: list[Move]) -> SimResult:
@@ -139,7 +143,42 @@ def suggest(cfg: DayRunConfig, w: Walks, board: Board, moves: list[Move], result
         if best:
             fix = fix.model_copy(update={"label": best[1], "moves": best[2], "changed": best[3], "mends": best[4]})
         out.append(fix)
-    return out[:limit]
+    out = out[:limit]
+    return _waiting(cfg, w, board, moves, out) if waits else out
+
+
+def _same(fix_id: str, moves: list[Move], then: list[Move]) -> str | None:
+    """The id a problem of `moves` goes by in the edited plan `then` (a move's index shifts when one is added or
+    dropped); None when the edit changed that very move."""
+    if not fix_id.startswith("move:"):
+        return fix_id
+    mine = moves[int(fix_id[5:])]
+    at = next((i for i, m in enumerate(then) if m is mine), None)  # an edit keeps the moves it does not touch
+    return None if at is None else f"move:{at}"
+
+
+def _waiting(cfg: DayRunConfig, w: Walks, board: Board, moves: list[Move], out: list[Fix]) -> list[Fix]:
+    """For each problem with no edit: the first other problem whose edit, once made, leaves this one mended or
+    with an edit of its own. Found by making that edit and asking again, never guessed."""
+    if all(f.label for f in out):
+        return out
+    later: dict[str, dict[str, Fix]] = {}  # what needs fixing after each other edit, by that edit's problem
+    for n, fix in enumerate(out):
+        if fix.label:
+            continue
+        for k, other in enumerate(out):
+            if other is fix or other.moves is None:
+                continue
+            me = _same(fix.id, moves, other.moves)
+            if me is None:
+                continue
+            if other.id not in later:
+                after = simulate(cfg, w, board, other.moves)
+                later[other.id] = {f.id: f for f in suggest(cfg, w, board, other.moves, after, limit=99, waits=False)}
+            if me not in later[other.id] or later[other.id][me].label:
+                out[n] = fix.model_copy(update={"after": other.id, "hint": words.fix_first(other.id, board, above=k == n - 1)})
+                break
+    return out
 
 
 def _candidates(cfg: DayRunConfig, w: Walks, board: Board, moves: list[Move], result: SimResult, check_id: str) -> list[Try]:

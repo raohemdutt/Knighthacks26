@@ -49,6 +49,12 @@ class ModelDeployed(TypedEvent):
     type: Literal["learning.model.deployed"] = "learning.model.deployed"
     model_version: str
     previous_version: str | None = None
+    # what `python -m lab deploy` (L6) knows about the package it pulled; None from a swap that did not pull one
+    base: str | None = None
+    task: str | None = None
+    package_mb: float | None = None  # the model gguf plus the mmproj, MB of 10^6 bytes
+    pulled_seconds: float | None = None  # wall-clock of the pull through the hub proxy
+    checksums_ok: bool | None = None  # every file matched its sha256 in manifest.json
 
 
 # --- box <-> lab file formats (the only coupling between Atlas and lab/) ---

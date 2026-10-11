@@ -45,7 +45,8 @@ def test_times_and_lengths_read_as_a_person_writes_them():
     assert [words.hours(h) for h in (1, 5.33, 8.0)] == ["1 hour", "5.3 hours", "8 hours"]
     assert [words.span(h) for h in (5, 38, 48)] == ["5 h", "1 day 14 h", "2 days"]
     assert words.short("Knight Hacks: judging and demos") == "judging and demos" and words.short("COP4533 lecture") == "COP4533 lecture"
-    assert words.assignment("Project - Milestone1 Fall2026 [COP4533]") == "Project Milestone1"
+    assert words.assignment("Project - Milestone1 Fall2026 [COP4533]") == "Project Milestone 1"
+    assert [words.assignment(t) for t in ("Quiz10", "HW3 [COP4533]", "Lab 2", "COP4533")] == ["Quiz 10", "HW3", "Lab 2", "COP4533"]
     assert words.assignment("COP4533 Project Milestone 1") == "Project Milestone 1"
     assert [words.headline(n) for n in (0, 1, 2, 3)] == ["This plan works", "One thing to fix", "Two things to fix", "Three things to fix"]
 
@@ -160,6 +161,28 @@ def test_what_needs_fixing_is_plain_and_each_fix_is_tried_first(service, plans):
 
     _, good = run(service, plans["good"])
     assert fixes.suggest(service.cfg, service.walks, board, plans["good"], good) == []
+
+
+def test_a_problem_with_no_edit_yet_names_the_one_to_fix_first(service, plans):
+    board, bad = run(service, plans["bad"])
+    found = fixes.suggest(service.cfg, service.walks, board, plans["bad"], bad)
+    by = {f.id: f for f in found}
+    stuck = by[MILESTONE]  # the desk session runs past bedtime: there is no room for more work until the night is settled
+    assert stuck.label is None and stuck.moves is None
+    assert (stuck.after, stuck.hint) == ("sleep", "Fix your sleep first")
+    assert all(f.after is None and f.hint is None for f in found if f.label)  # only a row with no button carries the line
+    # it is true, not guessed: once the sleep is fixed, the milestone has an edit of its own
+    then = by["sleep"].moves
+    again = {f.id: f for f in fixes.suggest(service.cfg, service.walks, board, then, simulate(service.cfg, service.walks, board, then))}
+    assert again[MILESTONE].label and again[MILESTONE].hint is None
+    # and fixing the row above it (the meal that runs into judging) would not have done it
+    late = by["move:1"].moves
+    still = {f.id: f for f in fixes.suggest(service.cfg, service.walks, board, late, simulate(service.cfg, service.walks, board, late))}
+    assert still[MILESTONE].label is None and still[MILESTONE].after == "sleep"
+    # the row right above needs no name
+    assert words.fix_first("sleep", board, above=True) == "Fix the one above first"
+    assert words.fix_first(MILESTONE, board, above=False) == "Fix Project Milestone 1 first"
+    assert words.fix_first("move:1", board, above=False) == "Fix what doesn't fit first"
 
 
 def test_fixing_one_thing_at_a_time_ends_in_a_plan_that_works(service):

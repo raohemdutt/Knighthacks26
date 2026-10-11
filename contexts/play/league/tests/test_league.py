@@ -313,6 +313,11 @@ def test_day_run_stars_come_from_the_committed_plans_calendar_card_and_counts_fr
         assert by["dayrun_stars"] == {"target": "dayrun_stars", "label": "Day Run stars", "unit": "plans", "weight": 1, "met": 1,
                                       "judged": 1, "share": 1.0, "detail": None}
         assert by["recycling"]["met"] == 1 and "100%" in by["recycling"]["detail"]
+        # the card as it is written since the screen became Today's Plan counts the same way; the old one above still reads
+        tuesday = MONDAY + timedelta(days=1)
+        await bus.publish(ActionProposed(ts=at(tuesday, 8), action_id="tp1", kind="connector_write", target="calendar.create_event",
+                                         reason="Add 2 Today's Plan block(s) for Tue Oct 6 (2-star plan)", params={"events": []}))
+        assert lg.plans[(lg.me, tuesday)].stars == 2 and lg.plans[(lg.me, MONDAY)].stars == 3
 
     run(go())
 

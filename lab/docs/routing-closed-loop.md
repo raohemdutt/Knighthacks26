@@ -17,5 +17,12 @@ python -m lab routing-closed-loop --account C --power-log data/events/<UTC day>.
 - Writes `<out>/<run id>/requests.jsonl`, `report.json` and `t0_result.txt` (the T0 experiment result text with its
   citation, for the dispatcher to post), one ledger row per arm (verb `routing-closed-loop`, task T11) and two T0
   experiments with their results. A `--fake` run keeps its ledger in `<out>/<run id>/state`.
+- The two experiments are added under ids of the test's own, `T11-energy` and `T11-quality`: the experiments ledger
+  hands out an E number only when it already holds one beyond T0's seeds, which a fresh state dir does not.
+  `--experiment-ids E<n> E<m>` uses the two numbers T0 gave instead.
+- `--metrics-file` also appends the run to `lab/refine/metrics.jsonl`: per arm, the mean of each of the three metrics,
+  with `conditions.policy` (`capability` or `energy`) and `conditions.requests`, which is what the Learning lab's
+  Routing tab reads as the measured closed loop (`closed_loop` in `contexts/learning/application/lab_routing.py`).
+  `--row-condition NAME=VALUE` adds the told conditions of those rows (`gpu`, the hub, the teacher's build).
 - Whether telemetry rubric test 6 is met is a finding in the report and the T0 text; nothing under `lab/refine/` is
   written. The real run's commands and what stays deferred: `lab/T11_REAL_RUN.md`.
