@@ -280,9 +280,11 @@ class Driver:
         self.strategy: Any = None
         self.commit_errors: list[str] = []
         self.arms = initial_arms(lane, space)
-        mismatch = check_lane(lane, space)
-        if mismatch:
-            raise RunError("; ".join(mismatch))
+        # the lane's own search space must match it exactly; another space (--space, a tiny one for tests or a
+        # rehearsal) runs with the difference recorded in run.json
+        self.mismatch = check_lane(lane, space)
+        if self.mismatch and space.path == lane.search_space:
+            raise RunError("; ".join(self.mismatch))
 
     # manifest and replay
 
@@ -295,7 +297,8 @@ class Driver:
                 "constraints": [c.text() for c in self.lane.constraints], "strategy": self.o.strategy,
                 "seed": self.o.seed, "node": self.o.node, "fake": self.o.fake,
                 "workers": [{"name": w.name, "runner": w.runner.describe()} for w in self.workers],
-                "initial_arms": [a["name"] for a in self.arms], "git": self.git, "versions": self.versions,
+                "initial_arms": [a["name"] for a in self.arms], "lane_space_differences": self.mismatch,
+                "git": self.git, "versions": self.versions,
                 "sessions": []}
 
     def check_manifest(self, m: Mapping[str, Any]) -> None:
@@ -916,8 +919,8 @@ def show_plan(p: Mapping[str, Any]) -> None:
         f"run dir {p['run_dir']} ({'resume' if p['resumes'] else 'new'})")
     for a in p["initial_arms"]:
         log(f"  initial arm {a['name']}: {a['attach_as']}, {a['restart']} start, priors {', '.join(a['priors']) or '-'}")
-    log(f"  within {p['minutes']:g} minutes{'' if p['budget'] is None else f' and {p['budget']} trials'}: "
-        f"{p['fit']} trials fit, restarts {p['restarts']}")
+    cap = "" if p["budget"] is None else f" and {p['budget']} trials"
+    log(f"  within {p['minutes']:g} minutes{cap}: {p['fit']} trials fit, restarts {p['restarts']}")
     for t in p["trials"]:
         log(f"    trial {t['trial']} {t['arm']} on worker {t['worker']}: {t['restart']} start at minute "
             f"{t['start_min']}, about {t['est_s']:g} s")
