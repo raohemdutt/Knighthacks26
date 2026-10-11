@@ -969,3 +969,74 @@ two-minute version. The runner refuses (exit 2) unless rocminfo names gfx1151.
 On a machine with no GPU, `python -m lab chipsheet self-check` (or `python3 lab/kernels/chipsheet/chipsheet.py
 self-check`) parses the recorded tool output in `fixtures/lab/chipsheet/`, writes a sheet marked self-check to a
 temporary folder, reads it back and exits 0; it measures nothing and `ingest` refuses its sheet.
+
+## The LoRA trainer: `lab/train.py`
+
+LoRA SFT of the student (`Qwen/Qwen3.5-4B`, the base the Jetson runs) on the rows `lab/format_traces.py --split`
+writes. Pod B's role is now held by the SJC Strix Halo pod on account D (Radeon 8060S, gfx1151, 64 GB shared, ROCm
+7.13, torch 2.9.1+rocm7.13.0), whose image has torch and triton and nothing else. The module docstring holds every
+rule; the short version:
+
+```
+# on the workstation: the rows, from the dataset's frozen split
+python lab/format_traces.py <dataset folder> --out rows.jsonl --split
+# to the pod: lab/ and contracts/ (the repo cannot be cloned there), the dataset folder and rows.jsonl
+python -m lab.transfer push-dataset --account D <dataset folder> --to datasets
+python -m lab.transfer push-file --account D rows.jsonl datasets/rows.jsonl
+# the pod's power sampler running first, so each step gets its watts
+python -m lab.controller run-script --account D --with lab/pod_power.py lab/pod_power.sh start gpu-b
+# on the pod, from the Jupyter root the pushes landed in
+python3 lab/train.py --dataset datasets/<dataset_id> --rows datasets/rows.jsonl --model ~/models/Qwen3.5-4B
+```
+
+- **It installs its own stack.** On the first run it finds the pins of `lab/requirements-train.txt` (PEFT 0.21.2,
+  TRL 1.15.0, transformers 5.19.0, accelerate, datasets, pydantic, Pillow) missing, runs pip on that file with a
+  constraint file that pins the torch, torchvision, torchaudio and triton already installed (so pip can never swap the
+  pod's ROCm torch for a PyPI build), writes a `train-install` ledger row and starts itself again. `--no-install`
+  skips the step.
+- **It runs only on the trainer pod.** Without `--cpu` it refuses unless torch is a ROCm build and the GPU is
+  `--gfx` (default gfx1151). `--cpu` is a rehearsal anywhere the stack is installed: a tiny model, the CPU, nothing
+  deleted, and TRL's fused LM-head loss (a Triton GPU kernel) swapped for the same computation in torch.
+- **What it trains on.** Membership comes from `load_split()` only: a row that is held out, unknown to the dataset,
+  from another `frame_ref` or showing another picture refuses the run, as does a split with fewer than 50 held out.
+  The loss sits on the rows' `spans` and nowhere else; a span that does not start and end on a token boundary of the
+  whole text, or a text the tokenizer does not give back, refuses the run. Nothing is truncated: `--max-length` below
+  the longest example refuses the run.
+- **Settings.** The defaults are R36's pinned baseline for this step on gfx1151
+  (`lab/refine/research/kernels/settings_training_gfx1151.md` section 13): LoRA r 16, alpha 32, dropout 0, learning
+  rate 2e-4, batch 4 by gradient accumulation 4 (effective batch 16), gradient checkpointing with `use_reentrant`
+  False, SDPA, fused AdamW, two forkserver workers with pinned memory, seed 42, no packing, no length grouping, no
+  torch.compile. On the pod it exports `MIOPEN_FIND_MODE=NORMAL` and unsets every other variable the sheet pins
+  before torch is imported. The search-space settings a flag can move: `--no-gradient-checkpointing`, `--batch`
+  with `--grad-accum`, `--group-by-length`, `--aotriton-experimental`, `--blas-backend hipblaslt` and
+  `--tunableop <results file>`. `refs.settings` gives the run's value of every search-space parameter under its own
+  name (as `data/searchspace-training-gfx1151.json` names them), `refs.env` the environment.
+- **The model.** Loaded in bfloat16 by the script; the text-only class for text rows, the image-text class and its
+  processor for image rows (with the labels following the processor's image-token expansion). LoRA on every linear
+  layer of the language model, the vision encoder and projector excluded and checked frozen before the first step.
+  Image rows also need torchvision, which the requirements cannot pin without replacing the pod's torch: check
+  `python3 -c "import torchvision"` on the pod before an image run (it is refused up front without it).
+- **What it leaves.** One `train` ledger row per run whatever the outcome (run_id, dataset_id, action_id, the sha256
+  of `examples.jsonl`, of `split.json` and of the rows, the base's Hub repo and commit, seed and data_seed, the
+  library versions, the full LoraConfig and SFTConfig as JSON text, and `trainer.samples_per_s` measured as
+  `metrics.jsonl:13` measures it); one `telemetry.train.step` event per optimizer step in `<out>/telemetry.jsonl`
+  on node `pod-b` (loss, step_ms, tokens, socket_w); the adapter in `<out>/adapter/` and the answer in
+  `<out>/run.json` (`--out` defaults to `~/runs/<run_id>`). The row is written to the pod's own
+  `lab/state/ledger.jsonl`; bring it back with the run.
+- **Power has one reading path.** The trainer never reads amd-smi. It reads the pod sampler's samples in
+  `~/atlas-power` as they are written and puts every window through `lab/pod_power.py`'s `summarize()`, the summary
+  `python -m lab gpu-power record` stores: a step's `socket_w` is its window's `mean_w` (null when the step is
+  shorter than the sampler's period and holds no sample), its `energy_j` is set only from the card's energy counter
+  (N/A on the Strix Halo, so null there), and the run's own window gives `trainer.mean_socket_w`,
+  `trainer.peak_socket_w` and `trainer.energy_j` (integrated power), with the whole summary in `refs.power_window`.
+- **What it deletes.** On the pod, once the node check passed, the dataset copy and the rows file are deleted however
+  the run ends; `refs.data_deleted` says whether that worked, and a folder that does not look like an export is
+  left and named (a trained run then ends `data-left`, exit 1).
+- **Base commit.** A folder from `hf download --local-dir` records its commit (`.cache/huggingface/download/*.metadata`),
+  which the row takes; a folder without it needs `--base-revision <40 hex>`.
+
+Tests: `tests/test_lab_train.py` (rows, membership, span labels, the base's commit, the power feed, the step events,
+the node check, deletion, the install, the entry point's refusals) runs everywhere; `tests/test_lab_train_cpu.py`
+trains tiny Qwen3.5 models, text and image-text, on the CPU and is skipped where the training stack is not
+installed (CI). `fixtures/learning/train-tiny/` is six labeled train examples of the no-camera fixture with that
+split's held-out side, and the rows `format_traces.py --split` writes for them.
