@@ -21,6 +21,7 @@ from difflib import SequenceMatcher
 
 from contexts.spot.application import plain
 from contexts.spot.application.service import Spot
+from contexts.spot.domain.route import WalkNet, heading
 
 CONFIDENT = 0.75  # at or above: point there. Below: offer the closest instead of guessing
 OFFER = 0.34  # the least an alternative may score
@@ -142,6 +143,7 @@ class Guide:
     def __init__(self, spot: Spot) -> None:
         self.spot = spot
         self._targets: list[Target] | None = None
+        self._net: WalkNet | None = None
 
     # --- what is on the screen ---
 
@@ -334,6 +336,64 @@ class Guide:
         if m and f"round:{int(m.group(1))}" in by_id:
             return by_id[f"round:{int(m.group(1))}"]
         return None
+
+    # --- the way there, on foot ---
+
+    def _place_of(self, ref: str) -> str | None:
+        """A waypoint from a waypoint id, an equipment tag, or a guide id ('asset:HX-202', 'place:WP05')."""
+        kit = self.spot.kit
+        key = ref.strip().upper().split(":")[-1]
+        if key in kit.location:
+            return key
+        return kit.asset[key].location_id if key in kit.asset else None
+
+    def _plan_xy(self, location_id: str) -> tuple[float, float]:
+        """Where a waypoint is drawn: on the plan picture when the box has one, else the kit's own x/y."""
+        point = (self.spot.plan or {}).get("waypoints", {}).get(location_id)
+        loc = self.spot.kit.location[location_id]
+        return (point["x"] * 100, point["y"] * 100) if point else (loc.x_coord, loc.y_coord)
+
+    def start(self) -> str | None:
+        """Where a route starts when nobody said: the first stop of SPOT's latest round."""
+        kit = self.spot.kit
+        acts = kit.actions_of.get(kit.missions[-1].mission_id, []) if kit.missions else []
+        return acts[0].location_id if acts else (kit.locations[0].location_id if kit.locations else None)
+
+    def route(self, start: str | None, goal: str) -> dict:
+        """A walking route between two places (or pieces of equipment), over legs SPOT has walked, with the words for it."""
+        note = "Route follows paths SPOT has walked in the recorded rounds. Lengths are plan units, not metres."
+        base = {"configured": self.spot.configured, "from": None, "to": None, "path": [], "legs": [], "length": 0.0, "floor_changes": 0,
+                "found": False, "say": [], "summary": "", "note": note, "places": []}
+        if not self.spot.configured:
+            return base
+        kit = self.spot.kit
+        if self._net is None:
+            self._net = WalkNet.of(kit)
+        a = self._place_of(start) if start else self.start()
+        b = self._place_of(goal)
+        places = [{"location_id": x.location_id, "name": plain.place_name(kit, x.location_id), "floor": x.floor,
+                   "walked": bool(self._net.neighbours(x.location_id))} for x in kit.locations]
+        base = {**base, "from": a, "to": b, "places": places}
+        if a is None or b is None:
+            return {**base, "say": ["I do not know that place on this plan."], "summary": "Unknown place."}
+        name = lambda loc: plain.place_name(kit, loc)  # noqa: E731
+        if a == b:
+            return {**base, "found": True, "path": [a], "say": [f"You are already at {name(a)}."], "summary": f"You are at {name(a)}."}
+        found = self._net.route(a, b)
+        if found is None:
+            line = f"SPOT has never walked a path that joins {name(a)} and {name(b)}, so I will not draw one."
+            return {**base, "say": [line], "summary": line}
+        say = []
+        for i, leg in enumerate(found["legs"]):
+            lead = f"From {name(leg['from'])}, go" if i == 0 else "Then"
+            if leg["floor_change"]:
+                say.append(f"{lead} to floor {kit.location[leg['to']].floor}, to {name(leg['to'])}.")
+            else:
+                say.append(f"{lead} {heading(self._plan_xy(leg['from']), self._plan_xy(leg['to']))} on the plan to {name(leg['to'])}.")
+        n = len(found["legs"])
+        summary = (f"{name(a)} to {name(b)}: {n} leg{'s' if n != 1 else ''}"
+                   + (f", {found['floor_changes']} change of floor" if found["floor_changes"] else "") + ", all walked by SPOT before.")
+        return {**base, **found, "found": True, "say": say[:4] + ([f"{n - 4} more legs after that."] if n > 4 else []), "summary": summary}
 
     @staticmethod
     def _brief(t: Target, score: float) -> dict:

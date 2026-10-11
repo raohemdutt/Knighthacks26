@@ -6,8 +6,10 @@ import { api } from "@/lib/api";
 import { useAtlas } from "@/lib/atlas";
 import { Dwell, onTarget } from "@/lib/gaze";
 import { gaze } from "@/lib/gazeTracker";
-import { SCREENS, classify, ease, fromGaze, narration, pathPoint, pinTarget, pinnedThing, resolveApp, spotTarget, thingName, trail, travelMs, type GuideTarget, type Locator, type Pt, type Reveal } from "@/lib/guide";
+import { SCREENS, classify, ease, fromGaze, narration, pathPoint, pinTarget, pinnedThing, resolveApp, thingName, trail, travelMs, type GuideTarget, type Locator, type Pt, type Reveal } from "@/lib/guide";
 import { offer, onGuide, pointAt, type GuideMessage, type GuideRun } from "@/lib/guideBus";
+import { along, length as routeLength, pointerRoute, type Box } from "@/lib/guidePath";
+import { spotRun } from "@/lib/guideSpot";
 import { oneSentence } from "@/lib/speechText";
 import { useVoice } from "@/lib/voice";
 import { Calibrate } from "./Calibrate";
@@ -37,6 +39,10 @@ interface View {
   phase: Phase;
   t: number;
   start: Pt;
+  /** The way round the cards (and through a walking route's waypoints), in screen points; null: the eased arc. */
+  route: Pt[] | null;
+  /** Where the target's middle was when the route was planned, so the end can follow the target if it moves. */
+  anchor: Pt | null;
   rect: DOMRect | null;
   lines: string[];
   note: string | null;
@@ -124,7 +130,7 @@ export function GuideLayer() {
       const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
       const held = run.t !== null && run.t !== undefined;
       const lines: string[] = [];
-      const show = (patch: Partial<View>) => alive() && setView((v) => ({ ...(v ?? { run, phase: "reveal", t: 0, start: { x: 0, y: 0 }, rect: null, lines: [], note: null }), ...patch }));
+      const show = (patch: Partial<View>) => alive() && setView((v) => ({ ...(v ?? { run, phase: "reveal", t: 0, start: { x: 0, y: 0 }, route: null, anchor: null, rect: null, lines: [], note: null }), ...patch }));
       const tell = (text: string) => {
         if (!text || !alive()) return;
         lines.push(text);
@@ -220,17 +226,22 @@ export function GuideLayer() {
       const words = narration(target.steps, done, null, gazeLine);
       const arrive = run.arrive ?? words.arrive;
       const note = run.note?.(found) ?? null;
-      show({ start: origin, rect: last, note });
+      // around the cards rather than across their text; through the walking route's waypoints when there is one
+      const stops = (run.via ?? []).map((at) => locate(at)).filter((x): x is Element => x !== null).map((x) => visible(x)!).map((r) => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 }));
+      const first = stops[0] ?? centre;
+      const around = pointerRoute(origin, first, obstacles(found), [], vw, vh);
+      const route = stops.length > 0 ? [...(around ?? [origin, first]), ...stops.slice(1), centre] : around;
+      show({ start: origin, route, anchor: centre, rect: last, note });
 
       if (held || still) {
         const at = held ? Math.max(0, Math.min(1, run.t!)) : 1;
-        for (const line of words.travel) tell(line);
+        for (const line of [...words.travel, ...(run.extra ?? [])]) tell(line);
         if (at >= 1) tell(arrive);
         show({ phase: at >= 1 ? "arrived" : "travel", t: at });
       } else {
-        for (const line of words.travel) tell(line);
+        for (const line of [...words.travel, ...(run.extra ?? [])]) tell(line);
         show({ phase: "travel", t: 0 });
-        const ms = travelMs(origin, centre);
+        const ms = route ? Math.round(Math.max(900, Math.min(3200, 500 + routeLength(route) * 1.3))) : travelMs(origin, centre);
         const t0 = performance.now();
         await new Promise<void>((resolve) => {
           const frame = (now: number) => {
@@ -280,12 +291,9 @@ export function GuideLayer() {
       const here = pathRef.current;
       if (samePath(here, "/spot/")) {
         try {
-          const found = await api.spotGuide(query);
-          const target = spotTarget(found);
-          if (target) return void start({ target, t });
-          const app = resolveApp(query, here);
-          if (app.target && app.confidence >= 0.8) return void start({ target: app.target, t });
-          if (found.alternatives.length > 0) return offer(found.steps[0]?.say ?? "Did you mean one of these?", found.alternatives.map((a) => ({ label: a.label, ask: a.target })));
+          const { run, found } = await spotRun(query, t);
+          if (run) return void start(run);
+          if (found && found.alternatives.length > 0) return offer(found.steps[0]?.say ?? "Did you mean one of these?", found.alternatives.map((a) => ({ label: a.label, ask: a.target })));
         } catch {
           /* the box is not answering: fall through to what the web layer knows */
         }
@@ -413,8 +421,20 @@ export function GuideLayer() {
   const rect = view && el.current ? visible(el.current) ?? view.rect : view?.rect ?? null;
   const centre = rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null;
   const moving = view && centre && view.phase === "travel";
-  const at = view && centre ? pathPoint(view.start, centre, ease(view.t)) : null;
-  const tail = moving && view.t > 0 && view.t < 1 ? trail(view.start, centre!, view.t) : [];
+  // on a planned route the end follows the target: the whole way is nudged by however far the target has moved since
+  const onRoute = (u: number): Pt => {
+    const p = along(view!.route!, u);
+    const k = Math.max(0, Math.min(1, u));
+    return { x: p.x + (centre!.x - view!.anchor!.x) * k, y: p.y + (centre!.y - view!.anchor!.y) * k };
+  };
+  const routed = Boolean(view?.route && view.anchor && centre);
+  const at = view && centre ? (routed ? onRoute(ease(view.t)) : pathPoint(view.start, centre, ease(view.t))) : null;
+  const tail =
+    moving && view.t > 0 && view.t < 1
+      ? routed
+        ? Array.from({ length: 18 }, (_, i) => onRoute(Math.max(0, ease(view.t) - 0.22 + (0.22 * i) / 17)))
+        : trail(view.start, centre!, view.t)
+      : [];
   const landed = view?.phase === "arrived";
   const small = rect ? Math.max(rect.width, rect.height) < 64 : false;
   const pad = small ? 8 : 6;
@@ -481,6 +501,21 @@ export function GuideLayer() {
       </div>
     </div>
   );
+}
+
+/** What the pointer should go round: the cards and panels on the page, except any that hold the target. */
+function obstacles(target: Element): Box[] {
+  const out: Box[] = [];
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  for (const el of document.querySelectorAll("main section, main article, main figure, main [class*='card'], main [class*='Card']")) {
+    if (el.contains(target) || target.contains(el)) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width < 80 || r.height < 60 || r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) continue;
+    if (r.width > vw * 0.9 && r.height > vh * 0.9) continue; // a wrapper around everything is not a card
+    out.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+  }
+  return out;
 }
 
 /** The pointer's run for an answer about a thing in the room: to the picture under the answer, or to the answer when it has none. */

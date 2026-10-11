@@ -7,12 +7,16 @@
  *   offer(say, options)          "Did you mean ...?" with the closest targets as buttons
  */
 
-import { classify, type GuideTarget } from "./guide";
+import { classify, type GuideTarget, type Locator } from "./guide";
 
 export interface GuideRun {
   target: GuideTarget;
   /** From a link: draw the pointer at this fraction of its way (0..1) and hold it there. */
   t?: number | null;
+  /** Points the pointer passes through on its way, in order (a walking route's waypoints on a map). Those not on screen are skipped. */
+  via?: Locator[];
+  /** More sentences for the way there, after the target's own (the walking route in words). */
+  extra?: string[];
   /** Said and shown on arrival instead of the target's own last sentence. */
   arrive?: string;
   /** A line under the caption that is shown but not said. May depend on what was found on the page. */

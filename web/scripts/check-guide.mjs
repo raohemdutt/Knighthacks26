@@ -124,6 +124,35 @@ try {
   yes("trail ends at the pointer", tr.length === 14 && Math.abs(tr[13].x - G.pathPoint(a, b, G.ease(0.6)).x) < 1e-9);
   yes("travel time is bounded", G.travelMs(a, a) === 700 && G.travelMs({ x: 0, y: 0 }, { x: 5000, y: 0 }) === 1800 && G.travelMs(a, b) > 700);
 
+  // ---- A* around the cards (lib/guidePath.ts, the room twin's router ported)
+  const P = await load("guidePath");
+  const open5 = Array.from({ length: 5 }, () => new Array(5).fill(1));
+  eq("astar: a straight run on an open grid", P.astar(open5, [0, 2], [4, 2]), [[0, 2], [1, 2], [2, 2], [3, 2], [4, 2]]);
+  eq("astar: the diagonal on an open grid", P.astar(open5, [0, 0], [4, 4]).length, 5);
+  const wall = open5.map((row, r) => row.map((v, c) => (c === 2 && r < 4 ? Infinity : v)));
+  const round = P.astar(wall, [0, 0], [4, 0]);
+  yes("astar: goes round a wall through its one gap", round.some(([c, r]) => c === 2 && r === 4) && round.every(([c, r]) => Number.isFinite(wall[r][c])));
+  eq("astar: no way through a full wall", P.astar(open5.map((row) => row.map((v, c) => (c === 2 ? Infinity : v))), [0, 0], [4, 0]), null);
+  eq("astar: a blocked start", P.astar(wall, [2, 0], [4, 0]), null);
+  const costly = open5.map((row, r) => row.map((v, c) => (c === 2 && r < 4 ? 7 : v)));
+  yes("astar: a costly card is gone round when the gutter is cheaper", P.astar(costly, [0, 0], [4, 0]).some(([c, r]) => c === 2 && r === 4));
+  yes("astar: but crossed when the way round is longer than it is worth", P.astar(open5.map((row, r) => row.map((v, c) => (c === 2 ? 2 : v))), [0, 0], [4, 0]).every(([, r]) => r === 0));
+  const grid = P.occupancy(480, 240, [{ left: 200, top: 0, right: 280, bottom: 190 }], [], 24);
+  eq("occupancy: size", [grid.cols, grid.rows], [20, 10]);
+  eq("occupancy: a card cell and a gutter cell", [grid.cost[2][9], grid.cost[9][9], grid.cost[2][2]], [P.CARD_COST, 1, 1]);
+  const card = [{ left: 200, top: 0, right: 280, bottom: 190 }];
+  const way = P.pointerRoute({ x: 40, y: 60 }, { x: 440, y: 60 }, card, [], 480, 240);
+  yes("route: goes under the card, not through it", way && way.every((q) => !(q.x > 205 && q.x < 275 && q.y < 185)), JSON.stringify(way?.slice(0, 4)));
+  yes("route: starts and ends where asked", way && way[0].x === 40 && way[way.length - 1].x === 440 && way[way.length - 1].y === 60);
+  yes("route: is a detour, but under 2.5 times the straight way", way && P.length(way) > 400 && P.length(way) < 1000);
+  eq("route: nothing in the way means the plain eased path", P.pointerRoute({ x: 40, y: 220 }, { x: 440, y: 220 }, card, [], 480, 240), null);
+  eq("route: the target's own card is free", P.pointerRoute({ x: 40, y: 60 }, { x: 240, y: 60 }, card, card, 480, 240), null);
+  eq("along: halfway by distance", P.along([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 30 }], 0.5), { x: 10, y: 10 });
+  eq("along: the ends", [P.along([{ x: 1, y: 2 }, { x: 5, y: 2 }], 0), P.along([{ x: 1, y: 2 }, { x: 5, y: 2 }], 1)], [{ x: 1, y: 2 }, { x: 5, y: 2 }]);
+  const bent = P.curve([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }]);
+  yes("curve: passes through its points and rounds the corner", bent[0].x === 0 && bent[bent.length - 1].y === 100 && bent.length > 15 && bent.some((q) => q.x === 100 && q.y === 0));
+  eq("pull: waypoints in the open are dropped", P.pull(P.occupancy(480, 240, [], [], 24), [{ x: 10, y: 10 }, { x: 100, y: 12 }, { x: 200, y: 10 }, { x: 400, y: 10 }]).length, 2);
+
   // ---- words for places and directions (a 1440 x 900 screen)
   eq("region: top left", G.regionWords({ x: 100, y: 100 }, 1440, 900), "the top left");
   eq("region: middle", G.regionWords({ x: 720, y: 450 }, 1440, 900), "the middle");

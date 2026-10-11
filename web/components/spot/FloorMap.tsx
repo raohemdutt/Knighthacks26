@@ -266,6 +266,7 @@ export function FloorMap({
             const empty = n === 0;
             return (
               <g key={l.location_id} data-guide={guide === "map" ? `place:${l.location_id}` : undefined}>
+                {guide === "map" ? <circle data-guide={`at:${l.location_id}`} cx={p.x} cy={p.y} r={2 * u} fill="none" /> : null}
                 {empty ? <circle cx={p.x} cy={p.y} r={4 * u} fill="var(--surface)" stroke="var(--muted)" strokeWidth={1.5 * u} /> : null}
                 {roomy ? (
                   <text className={o.placeLabel} x={p.x} y={p.y + ((rows > 0 ? (rows - 1) * 34 + 16 : 6) + 14) * u} textAnchor="middle" fontSize={11.5 * u} strokeWidth={3.5 * u}>

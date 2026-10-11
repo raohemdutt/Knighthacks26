@@ -3,8 +3,9 @@
 import { useState } from "react";
 import ui from "@/components/ui.module.css";
 import { ApiError, api } from "@/lib/api";
-import { resolveApp, spotTarget, whereIntent } from "@/lib/guide";
+import { plainText, whereIntent } from "@/lib/guide";
 import { pointAt } from "@/lib/guideBus";
+import { NEXT, nextDoFirst, spotRun } from "@/lib/guideSpot";
 import { useVoice } from "@/lib/voice";
 import o from "./op.module.css";
 import { Why } from "./Shift";
@@ -34,12 +35,9 @@ export function OperatorAsk({ chips, onWhy, guideChips = [] }: { chips: string[]
   /** True when the pointer took the question. */
   const guide = async (question: string): Promise<boolean> => {
     try {
-      const found = await api.spotGuide(question);
-      const target = spotTarget(found);
-      if (target) return pointAt({ target }), true;
-      const app = resolveApp(question, "/spot/"); // "where is my League?": somewhere else in the app
-      if (app.target && app.confidence >= 0.8) return pointAt({ target: app.target }), true;
-      setMeant(found.alternatives);
+      const { run, found } = await spotRun(question);
+      if (run) return pointAt(run), true;
+      setMeant(found?.alternatives ?? []);
     } catch {
       /* the guide is an extra: the question is still answered */
     }
@@ -54,6 +52,8 @@ export function OperatorAsk({ chips, onWhy, guideChips = [] }: { chips: string[]
     setMeant([]);
     setText(question);
     void (async () => {
+      // hands busy: "next" steps through the do-first list with the pointer
+      if (NEXT.test(plainText(question)) && (await guide(nextDoFirst()))) return setBusy(false), setText("");
       if (whereIntent(question) !== null && (await guide(question))) return setBusy(false);
       api.spotAskPlain(question).then(setAnswer).catch(fail).finally(() => setBusy(false));
     })();
