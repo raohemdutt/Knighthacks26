@@ -1,6 +1,6 @@
 """The search of the L16 retrain as tables: every trial in order of proposal, what the search learned, the choice.
 
-    python lab/l16v2/report.py <folder holding bo.json and chosen.json> [--line] [--edge] [--downloads <colab folder>]
+    python lab/l16v2/report.py <folder holding bo.json and chosen.json> [--line] [--edge] [--ext] [--downloads <colab folder>]
 
 Prints Markdown for lab/L16V2_RESULT.md; with --line, one short paragraph for the channel. It reads the two files
 lab/l16v2/bo_local.py wrote on the workstation (work/L16v2-out/bo/) and computes nothing new beyond sums and means.
@@ -47,7 +47,9 @@ def by_kind(trials: list[dict]) -> str:
 
 
 def full_runs(chosen: dict) -> str:
-    picked = chosen["chosen"]["name"]
+    first = (chosen.get("extended_search") or {}).get("choice", {}).get("first")     # the choice before the extended search
+    picked = first or chosen["chosen"]["name"]
+    mark = " (the choice at 5:13 AM)" if first else " (chosen)"
     lines = ["| full-length run | from | learning rate | rank | alpha | dropout | warmup | steps run | example passes "
              "(run / at best) | best val loss (step) | validation agreement | worker |",
              "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
@@ -55,7 +57,7 @@ def full_runs(chosen: dict) -> str:
         origin = (f"trial {f['from_trial']} ({f['trial_kind']}, value {num(f.get('trial_value'))})"
                   if f.get("from_trial") else "the grid's run 1")
         score = f.get("val_agreement")
-        lines.append(f"| {f['name']}{' (chosen)' if f['name'] == picked else ''} | {origin} | {f['lr']:.3g} | {f['rank']} | "
+        lines.append(f"| {f['name']}{mark if f['name'] == picked else ''} | {origin} | {f['lr']:.3g} | {f['rank']} | "
                      f"{f['alpha']} | {f['dropout']:.3f} | {f['warmup_ratio']:.3f} | {f.get('steps')} | "
                      f"{f.get('passes')} / {f.get('best_passes')} | {num(f.get('best_val'))} ({f.get('best_step')}) | "
                      f"{str(score['correct']) + '/' + str(score['n']) if score else 'not scored'} | {f.get('worker')} |")
@@ -123,6 +125,67 @@ def edge_tables(folder: Path) -> str:
     return "\n".join(out)
 
 
+def config_of(f: dict) -> str:
+    return f"lr {f['lr']:.3g}, rank {f['rank']}, alpha {f['alpha']}, dropout {f['dropout']:.2f}, warmup {f['warmup_ratio']:.2f}"
+
+
+def ext_tables(folder: Path) -> str:
+    """The extended search (bo-ext.json): every full-length run, the configurations run with two seeds, the best per
+    rank and per learning-rate band, the kinds, and each change of the choice."""
+    ext = json.loads((folder / "bo-ext.json").read_text(encoding="utf-8"))
+    runs = sorted(ext["runs"], key=lambda f: (f.get("number", 0), f["name"]))
+    done = [f for f in runs if f.get("ok") and f.get("best_val") is not None]
+    key = lambda f: (round(f["lr"], 9), f["rank"], f["alpha"], round(f["dropout"], 4), round(f["warmup_ratio"], 4))  # noqa: E731
+    lines = ["| n | kind | run | seed | learning rate | rank | alpha | dropout | warmup | steps run | best step (example passes) | "
+             "best val loss | validation agreement | worker | seconds |",
+             "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
+    for f in runs:
+        agree = f"{f['agree']}/126" if f.get("agree") is not None else "not scored"
+        lines.append(f"| {f.get('number', 0) or ''} | {f.get('kind')} | {f['name'][:44]} | {f.get('seed', 42)} | {f['lr']:.3g} | {f['rank']} | "
+                     f"{f['alpha']} | {f['dropout']:.2f} | {f['warmup_ratio']:.2f} | {f.get('steps') if f.get('ok') else f.get('outcome')} | "
+                     f"{f.get('best_step')} ({f.get('best_passes')}) | {num(f.get('best_val'))} | {agree} | {f.get('worker')} | "
+                     f"{f.get('wall_s')} |")
+    out = ["\n".join(lines), "", "| configuration run with two seeds | validation agreement, seed 42 / 43 | mean | difference | "
+           "best val loss, seed 42 / 43 | difference |", "| --- | --- | --- | --- | --- | --- |"]
+    pairs = []
+    for one in sorted({key(f) for f in done}):
+        rows = sorted([f for f in done if key(f) == one and f.get("agree") is not None], key=lambda f: f.get("seed", 42))
+        if len(rows) >= 2:
+            pairs.append(rows)
+            out.append(f"| {config_of(rows[0])} | {' / '.join(str(f['agree']) for f in rows)} | "
+                       f"{sum(f['agree'] for f in rows) / len(rows):.1f} | {abs(rows[0]['agree'] - rows[1]['agree'])} | "
+                       f"{' / '.join(num(f['best_val']) for f in rows)} | {abs(rows[0]['best_val'] - rows[1]['best_val']):.4f} |")
+    if pairs:
+        gaps = [abs(rows[0]["agree"] - rows[1]["agree"]) for rows in pairs]
+        out += ["", f"Noise of one run's validation agreement, from {len(pairs)} configurations run with two seeds: the two runs "
+                    f"differ by {min(gaps)} to {max(gaps)} examples of 126 (mean {sum(gaps) / len(gaps):.1f})."]
+    out += ["", "| rank | full-length runs | best val loss | best validation agreement | mean validation agreement |", "| --- | --- | --- | --- | --- |"]
+    for rank in (2, 4, 8, 16, 32, 64):
+        of = [f for f in done if f["rank"] == rank]
+        scored = [f["agree"] for f in of if f.get("agree") is not None]
+        out.append(f"| {rank} | {len(of)} | {num(min((f['best_val'] for f in of), default=None))} | "
+                   f"{str(max(scored)) + '/126' if scored else 'n/a'} | {f'{sum(scored) / len(scored):.1f}' if scored else 'n/a'} |")
+    out += ["", "| learning rate | full-length runs | best val loss | best validation agreement | mean validation agreement |", "| --- | --- | --- | --- | --- |"]
+    for label, low, high in (("8e-5 to 1e-4", 8e-5, 1e-4), ("1e-4 to 2e-4", 1e-4, 2e-4), ("2e-4 to 4e-4", 2e-4, 4e-4), ("4e-4 to 1e-3", 4e-4, 1.1e-3)):
+        of = [f for f in done if low <= f["lr"] < high]
+        scored = [f["agree"] for f in of if f.get("agree") is not None]
+        out.append(f"| {label} | {len(of)} | {num(min((f['best_val'] for f in of), default=None))} | "
+                   f"{str(max(scored)) + '/126' if scored else 'n/a'} | {f'{sum(scored) / len(scored):.1f}' if scored else 'n/a'} |")
+    out += ["", "| kind | runs | mean best val loss | mean validation agreement |", "| --- | --- | --- | --- |"]
+    for kind, label in (("earlier", "earlier (the three runs before it)"), ("edge", "edge (forced)"), ("model", "model (the sampler's)"), ("repeat", "repeat (seed 43)")):
+        of = [f for f in done if f.get("kind") == kind]
+        scored = [f["agree"] for f in of if f.get("agree") is not None]
+        out.append(f"| {label} | {len(of)} | {num(sum(f['best_val'] for f in of) / len(of) if of else None)} | "
+                   f"{f'{sum(scored) / len(scored):.1f}' if scored else 'n/a'} |")
+    failed = [f for f in runs if not (f.get("ok") and f.get("best_val") is not None)]
+    if failed:
+        out += ["", "Runs that did not finish: " + "; ".join(f"{f['name']} ({f.get('outcome')})" for f in failed) + "."]
+    changes = ext["choice"].get("replaced") or []
+    out += ["", "Changes of the choice, in order: " + ("; ".join(f"{c['key']} (mean {c['mean']:.1f}/126) replaced by {c['by']} (mean {c['mean_by']:.1f}/126)"
+                                                                 for c in changes) if changes else "none") + "."]
+    return "\n".join(out)
+
+
 def downloads_table(colab: Path) -> str:
     """Every product that came back, once each (the last verified line of colab/downloads.txt per name)."""
     seen: dict[str, tuple[str, str]] = {}
@@ -140,6 +203,9 @@ if __name__ == "__main__":
     if "--edge" in sys.argv:
         print()
         print(edge_tables(Path(sys.argv[1])))
+    if "--ext" in sys.argv:
+        print()
+        print(ext_tables(Path(sys.argv[1])))
     if "--downloads" in sys.argv:
         print()
         print(downloads_table(Path(sys.argv[sys.argv.index("--downloads") + 1])))
