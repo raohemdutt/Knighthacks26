@@ -1,0 +1,185 @@
+{
+  "run_id": "agr-a100-20261011",
+  "dataset_id": "tool-calling-fixture",
+  "task": "tool-calling",
+  "verdict": "inconsistent",
+  "sample": {
+    "mode": "first",
+    "seed": null,
+    "size": 30,
+    "wanted": 30,
+    "ids": [
+      "golden-01",
+      "golden-01-1",
+      "golden-01-2",
+      "golden-01-3",
+      "golden-01-4",
+      "golden-01-5",
+      "golden-02",
+      "golden-02-1",
+      "golden-02-2",
+      "golden-02-3",
+      "golden-02-4",
+      "golden-02-5",
+      "golden-03",
+      "golden-03-1",
+      "golden-03-2",
+      "golden-03-3",
+      "golden-03-4",
+      "golden-03-5",
+      "golden-06",
+      "golden-06-1",
+      "golden-06-2",
+      "golden-06-3",
+      "golden-06-4",
+      "golden-06-5",
+      "v-446faf1b",
+      "v-1ad7bdb7",
+      "v-fb73a588",
+      "v-0663ece2",
+      "v-b0a83206",
+      "v-8ad80728"
+    ]
+  },
+  "second_pass": {
+    "seed": 1,
+    "first_seed": 0,
+    "rewording": "Read the instructions below with care and follow them exactly."
+  },
+  "threshold": {
+    "value": 0.9,
+    "source": "default: lab/refine/learning/RUBRIC.md LT2 names no number, so 0.9 is used"
+  },
+  "overall": {
+    "agree": 49,
+    "total": 60,
+    "rate": 0.8166666666666667
+  },
+  "fields": {
+    "answer": {
+      "agree": 21,
+      "total": 30,
+      "rate": 0.7
+    },
+    "tool_calls": {
+      "agree": 28,
+      "total": 30,
+      "rate": 0.9333333333333333
+    }
+  },
+  "examples": {
+    "agree": 19,
+    "total": 30
+  },
+  "unanswered": [],
+  "disagreements": [
+    {
+      "id": "golden-01",
+      "field": "answer",
+      "first": "Overnight, the table was empty at 11 PM with a phone charger still plugged in, and a person in a hoodie walked past the door around 2 AM. Then at 6 AM someone sat at the table and drank coffee, leaving at 7 AM.",
+      "second": "Overnight, the table was empty at 11:00 PM with a phone charger still plugged in, and a person in a hoodie walked past the door around 2:00 AM. Then at 6:00 AM someone sat at the table and drank coffee, leaving at 7:00 AM."
+    },
+    {
+      "id": "golden-01-1",
+      "field": "answer",
+      "first": "Overnight, a person in a hoodie walked past the door around 2:00 AM, then came back around 6:00 AM to sit at the table and drink coffee, leaving at 7:00 AM.",
+      "second": "Overnight, a person in a hoodie walked past the door around 2:00 AM, then came back around 6:00 AM to sit at the table and drink coffee before leaving at 7:00 AM."
+    },
+    {
+      "id": "golden-01-2",
+      "field": "answer",
+      "first": "Last night, two people worked at the table with laptops around 6 PM, a person put keys next to a coffee mug at 7 PM, and someone packed a laptop and left at 9 PM. The table was empty by 11 PM, and a person in a hoodie walked past the door around 2 AM.",
+      "second": "Last night, two people worked at the table with laptops from 6 PM, a person put keys next to a coffee mug at 7 PM, and someone packed a laptop and left at 9 PM. The table was empty by 11 PM, and a person in a hoodie walked past the door at 2 AM."
+    },
+    {
+      "id": "golden-01-3",
+      "field": "answer",
+      "first": "Last night (Saturday) two people worked at the table with laptops around 6:10 PM, a person packed up a laptop and left around 9:15 PM, and by 11:50 PM the table was empty with a phone charger still plugged in.",
+      "second": "Last night (Saturday) two people worked at the table with laptops around 6:10 PM, a person packed up a laptop and left at 9:15 PM, and by 11:50 PM the table was empty with a phone charger still plugged in."
+    },
+    {
+      "id": "golden-01-4",
+      "field": "answer",
+      "first": "While you were asleep, a person in a hoodie walked past the door around 2:00 AM, and then a person came back, sat at the table, and drank coffee around 6:00 AM.",
+      "second": "While you were asleep, a person in a hoodie walked past the door around 2:00 AM. Earlier at 11:00 PM the table was empty with a phone charger still plugged in, and at 6:00 AM someone came back, sat at the table, and drank coffee."
+    },
+    {
+      "id": "golden-01-5",
+      "field": "answer",
+      "first": "Last night, two people worked at the table with laptops around 6 PM, and a person put keys next to a coffee mug around 7 PM. A person packed a laptop and left the table around 9 PM, the table was empty with a phone charger still plugged in by 11 PM, and a person in a hoodie walked past the door around 2 AM.",
+      "second": "Last night, two people worked at the table with laptops around 6 PM, and a person put keys next to a coffee mug around 7 PM. A person packed a laptop and left the table around 9 PM, the table was empty by 11 PM, and a person in a hoodie walked past the door around 2 AM."
+    },
+    {
+      "id": "golden-02",
+      "field": "answer",
+      "first": "Your keys were last seen at 7:41 PM in the desk zone on cam-desk, next to the coffee mug.",
+      "second": "Your keys were last seen at 7:41 PM on Saturday in the desk zone on cam-desk, next to the coffee mug."
+    },
+    {
+      "id": "golden-02-5",
+      "field": "answer",
+      "first": "Your keys were last seen on Saturday at 7:41 PM in the desk zone on cam-desk, next to the coffee mug.",
+      "second": "Your keys were last seen at 7:41 PM on Saturday in the desk zone on cam-desk, next to the coffee mug."
+    },
+    {
+      "id": "golden-03-1",
+      "field": "answer",
+      "first": "Yes, a courier dropped a cardboard box at the door at 9:05 AM.",
+      "second": "Yes, a courier was at the door at 9:05 AM, dropping off a cardboard box."
+    },
+    {
+      "id": "golden-06-2",
+      "field": "tool_calls",
+      "first": [
+        {
+          "name": "last_seen",
+          "arguments": {
+            "label": "wallet"
+          }
+        },
+        {
+          "name": "search_memory",
+          "arguments": {
+            "q": "wallet"
+          }
+        }
+      ],
+      "second": [
+        {
+          "name": "last_seen",
+          "arguments": {
+            "label": "wallet"
+          }
+        }
+      ]
+    },
+    {
+      "id": "v-b0a83206",
+      "field": "tool_calls",
+      "first": [
+        {
+          "name": "last_seen",
+          "arguments": {
+            "label": "wallet"
+          }
+        },
+        {
+          "name": "search_memory",
+          "arguments": {
+            "q": "wallet"
+          }
+        }
+      ],
+      "second": [
+        {
+          "name": "last_seen",
+          "arguments": {
+            "label": "wallet"
+          }
+        }
+      ]
+    }
+  ],
+  "proposed_rubric_line": "LT2 label agreement: a second teacher pass (seed 1, reworded prompt) over 30 labeled examples must agree field by field on at least 0.90 (default: lab/refine/learning/RUBRIC.md LT2 names no number, so 0.9 is used); measured 0.817, verdict inconsistent. Source: lab/label_agreement.py run agr-a100-20261011 (ledger verb label-agreement, refs run_id agr-a100-20261011), dataset tool-calling-fixture.",
+  "proposed_rubric_note": "Not written to lab/refine/learning/RUBRIC.md: tasks never write rubrics, the merge pass does. Add the line to LT2 with its citation."
+}

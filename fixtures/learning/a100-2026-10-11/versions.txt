@@ -1,0 +1,4 @@
+vllm 0.31.0 torch 2.13.0+cu130 cuda 13.0
+name, driver_version, memory.total [MiB], power.limit [W]
+NVIDIA A100-SXM4-40GB, 580.82.07, 40960 MiB, 400.00 W
+repo 2a7d3ea1461e7286840c81642833ae080dcf262e R23: AMD Quark INT4 loader backport and the comparison runner (#292)
