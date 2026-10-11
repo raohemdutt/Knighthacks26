@@ -261,3 +261,67 @@ def test_rebuild_failed_build_exits_nonzero_and_keeps_the_old_stamp(fake_pod: di
 def test_rebuild_refuses_an_unknown_patch(fake_pod: dict) -> None:
     run = rebuild(fake_pod, "nosuch")
     assert run.returncode == 2 and "no patch file" in run.stdout
+
+
+# --- part 3: the LDS recorder -----------------------------------------------------------------------------------
+
+def test_lds_reads_triton_metadata_shared_and_skips_group_files() -> None:
+    from gpu import lds_check
+    rows = lds_check.read_triton_cache(FIX / "triton_cache_stages_synthetic")
+    by_name = {r["kernel"]: r for r in rows}
+    assert set(by_name) == {"kernel_unified_attention_2d", "kernel_unified_attention_3d", "reduce_segments",
+                            "_fwd_kernel_rotary"}
+    k3 = by_name["kernel_unified_attention_3d"]
+    assert k3["lds_bytes"] == 33792 and k3["num_stages"] == 2 and k3["arch"] == "gfx1151"
+    assert k3["source"] == "triton.metadata.shared"
+
+
+def test_lds_reads_group_segment_fixed_size_from_code_object_notes() -> None:
+    from gpu import lds_check
+    rows = lds_check.parse_readelf_notes((FIX / "readelf_notes_synthetic.txt").read_text(), path="x.hsaco")
+    assert [(r["kernel"], r["lds_bytes"]) for r in rows] == [("kernel_unified_attention_3d", 33792),
+                                                             ("wvSplitK_hf_sml_", 69632)]
+    assert {r["source"] for r in rows} == {".group_segment_fixed_size"}
+    assert rows[0]["arch"] == "gfx1151"
+
+
+def test_lds_resource_failures_are_read_from_the_serve_log() -> None:
+    from gpu import lds_check
+    fails = lds_check.resource_failures((FIX / "serve_oor_synthetic.log").read_text())
+    assert [(f["required_bytes"], f["limit_bytes"], f["kernel"]) for f in fails] == [
+        (66560, 65536, None), (69632, 65536, "wvSplitK_hf_sml_")]
+
+
+def test_lds_check_passes_the_stages_arm_and_writes_the_record(tmp_path: Path) -> None:
+    out = tmp_path / "lds.json"
+    run = subprocess.run([sys.executable, str(GPU / "lds_check.py"), "--arm", "stages",
+                          "--triton-cache", str(FIX / "triton_cache_stages_synthetic"), "--out", str(out)],
+                         capture_output=True, text=True)
+    assert run.returncode == 0, run.stdout + run.stderr
+    rec = json.loads(out.read_text())
+    assert rec["limit_bytes"] == 65536 and rec["pass"] is True and rec["failures"] == 0
+    assert rec["touched"] == ["kernel_unified_attention_3d"] and rec["missing"] == []
+    assert all(k["fits"] for k in rec["kernels"])
+    assert json.loads(run.stdout.strip().splitlines()[-1])["pass"] is True
+
+
+def test_lds_check_counts_over_limit_missing_and_resource_failures_as_failures(tmp_path: Path) -> None:
+    out = tmp_path / "lds.json"
+    run = subprocess.run([sys.executable, str(GPU / "lds_check.py"), "--arm", "block",
+                          "--triton-cache", str(FIX / "triton_cache_over_synthetic"),
+                          "--code-object-notes", str(FIX / "readelf_notes_synthetic.txt"),
+                          "--serve-log", str(FIX / "serve_oor_synthetic.log"), "--out", str(out)],
+                         capture_output=True, text=True)
+    assert run.returncode == 1, run.stdout + run.stderr
+    rec = json.loads(out.read_text())
+    # 3D over the limit (triton), the HIP kernel over the limit, reduce_segments not compiled, two log failures
+    assert rec["pass"] is False and rec["failures"] == 5
+    assert rec["missing"] == ["reduce_segments"]
+    assert sorted(k["kernel"] for k in rec["kernels"] if not k["fits"]) == ["kernel_unified_attention_3d",
+                                                                            "wvSplitK_hf_sml_"]
+
+
+def test_lds_check_refuses_a_missing_cache(tmp_path: Path) -> None:
+    run = subprocess.run([sys.executable, str(GPU / "lds_check.py"), "--arm", "stages",
+                          "--triton-cache", str(tmp_path / "nope")], capture_output=True, text=True)
+    assert run.returncode == 2
