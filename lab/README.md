@@ -1410,8 +1410,10 @@ large can stall a terminal whose shell echoes faster than the terminal server dr
   (the script carries the sha256 of the user name, never the name), the server port (8100) is free and no other
   vLLM server holds the GPU (the run stops nothing it did not start). Pod C, which serves the live teacher, never
   passes.
-- **Phase torch.** The server is spawned from `lab/bench.py`'s vLLM launch line (the flags `pod_a_teacher.sh serve`
-  uses, `--mm-encoder-attn-backend TRITON_ATTN` on gfx115x) plus `--profiler-config
+- **Phase torch.** The server is spawned from `lab/bench.py`'s vLLM launch line (`pod_a_teacher.sh serve`'s
+  checkpoint, context length, memory share, dtype and `--mm-encoder-attn-backend TRITON_ATTN` on gfx115x; the live
+  teacher's second served name and `--scheduling-policy priority` are left out, as these requests carry no priority)
+  plus `--profiler-config
   '{"profiler":"torch","torch_profiler_dir":...,"torch_profiler_with_memory":true,"ignore_frontend":true,...}'`:
   at b1388b1 that switch replaces the VLLM_TORCH_PROFILER_DIR variable of older releases
   (`vllm/config/profiler.py`), and the profiler only exists when it is set (`vllm/entrypoints/serve/profile`). Warm-up

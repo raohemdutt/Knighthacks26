@@ -11,11 +11,13 @@ What one run does, on pod D (account D, node pod-b) inside one GPU Queue slot:
    and which Triton kernels the build ships (asked of the pod's own Python).
 3. amd-smi power sampling for the whole run (lab/bench.py's LocalPower over lab/pod_power.py's reader), and the
    idle watts with no server.
-4. Phase "torch": the server is started from lab/bench.py's vLLM launch line (the one lab/pod_a_teacher.sh serves
-   with) plus `--profiler-config` (vLLM 0.19's switch for its torch profiler; the VLLM_TORCH_PROFILER_DIR
-   variable of older releases is gone at b1388b1), warmed up, then the fixed prompt set runs at batch 1 (one
-   request per prompt, one at a time) and at batch 4 (four streams, stream s on prompt s) unprofiled, then the
-   same two again between POST /start_profile and POST /stop_profile. Each stop writes one trace file.
+4. Phase "torch": the server is started from lab/bench.py's vLLM launch line (lab/pod_a_teacher.sh's checkpoint,
+   context length, memory share, dtype and encoder attention; the live teacher's second served name and priority
+   scheduling are left out, as these requests carry no priority) plus `--profiler-config` (vLLM 0.19's switch for its
+   torch profiler; the VLLM_TORCH_PROFILER_DIR variable of older releases is gone at b1388b1), warmed up, then the
+   fixed prompt set runs at batch 1 (one request per prompt, one at a time) and at batch 4 (four streams, stream s on
+   prompt s) unprofiled, then the same two again between POST /start_profile and POST /stop_profile. Each stop writes
+   one trace file.
 5. Phase "rocprof": the same server under `rocprofv3 --kernel-trace --memory-copy-trace --output-format csv`, the
    engine-core child started with spawn (VLLM_WORKER_MULTIPROC_METHOD=spawn) so it leaves through the normal
    interpreter exit that flushes rocprofv3's buffers; the same two batches run once. The stop is ordered so the

@@ -37,6 +37,8 @@ B1_SHARES = {"w4a16_matmul": 0.6, "attention": 0.1, "sampling": round(4 / 300, 6
              "copies": round(1 / 300, 6), "other_gpu": 0.1, "gpu_busy": round(245 / 300, 6)}
 B4_SHARES = {"w4a16_matmul": 0.59375, "attention": 0.1125, "sampling": 0.015625, "host_side": 0.175,
              "copies": 0.003125, "other_gpu": 0.1, "gpu_busy": 0.825}
+# the fake server streams 12 tokens 20 ms apart: the four batch-4 streams overlap even on a loaded machine
+FAKE_TOK_S, FAKE_TOKENS = 50.0, "12"
 ROCMINFO_GFX1151 = "Agent 2\n  Name:                    gfx1151\n  Marketing Name:          AMD Radeon 8060S\n"
 
 
@@ -580,8 +582,8 @@ def test_a_whole_run_on_the_fake_pod_then_collect_writes_the_files_and_the_ledge
     args = pd.build_parser().parse_args([
         "pod-run", "--expect-user-sha256", "unused-here", "--port", str(free_port()), "--checkpoint", str(ckpt),
         "--engine-dir", str(tmp_path), "--out", str(tmp_path / "out"), "--serve-dir", str(tmp_path / "serve"),
-        "--max-tokens", "6", "--idle-s", "0.02", "--prompts", str(bench.DEFAULT_PROMPTS),
-        "--serve-cmd", json.dumps(bench_fake.serve_command(root=str(root), stream_tok_s=200.0)),
+        "--max-tokens", FAKE_TOKENS, "--idle-s", "0.02", "--prompts", str(bench.DEFAULT_PROMPTS),
+        "--serve-cmd", json.dumps(bench_fake.serve_command(root=str(root), stream_tok_s=FAKE_TOK_S)),
         "--rocprof-cmd", json.dumps(bench_fake.rocprof_command())])
     run = pod.PodRun(args, host=bench_fake.FakeHost(root), power=bench_fake.FakePower(root))
     answer = pd.run_and_report(run)
@@ -719,7 +721,7 @@ def test_attached_to_a_running_fake_server_the_profile_uses_its_routes_and_leave
     write_safetensors(ckpt / "model.safetensors", {"model.layers.0.mlp.weight_packed": 64})
     port, log = free_port(), tmp_path / "server.log"
     config = json.dumps({"profiler": "torch", "torch_profiler_dir": str(server_traces)})
-    argv = bench.fill_command(bench_fake.serve_command(root=str(root), stream_tok_s=200.0, profiler_config=config),
+    argv = bench.fill_command(bench_fake.serve_command(root=str(root), stream_tok_s=FAKE_TOK_S, profiler_config=config),
                               {"port": port, "port_file": tmp_path / "server.port", "log": log})
     server = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
@@ -734,7 +736,7 @@ def test_attached_to_a_running_fake_server_the_profile_uses_its_routes_and_leave
         args = pd.build_parser().parse_args([
             "pod-run", "--expect-user-sha256", "unused-here", "--attach-port", str(port), "--serve-log", str(log),
             "--checkpoint", str(ckpt), "--engine-dir", str(tmp_path), "--out", str(tmp_path / "out"),
-            "--max-tokens", "6", "--idle-s", "0.02", "--prompts", str(bench.DEFAULT_PROMPTS)])
+            "--max-tokens", FAKE_TOKENS, "--idle-s", "0.02", "--prompts", str(bench.DEFAULT_PROMPTS)])
         run = pod.PodRun(args, host=bench_fake.FakeHost(root), power=bench_fake.FakePower(root))
         answer = pd.run_and_report(run)
         assert answer["phases"]["torch"] == {"ok": True, "error": None}
@@ -757,7 +759,7 @@ def test_attached_to_a_server_without_profiler_config_the_unprofiled_runs_stay_a
     root = tmp_path / "root"
     root.mkdir()
     port, log = free_port(), tmp_path / "server.log"
-    argv = bench.fill_command(bench_fake.serve_command(root=str(root), stream_tok_s=200.0),
+    argv = bench.fill_command(bench_fake.serve_command(root=str(root), stream_tok_s=FAKE_TOK_S),
                               {"port": port, "port_file": tmp_path / "server.port", "log": log})
     server = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
@@ -768,7 +770,8 @@ def test_attached_to_a_server_without_profiler_config_the_unprofiled_runs_stay_a
         args = pd.build_parser().parse_args([
             "pod-run", "--expect-user-sha256", "unused-here", "--attach-port", str(port), "--serve-log", str(log),
             "--checkpoint", str(tmp_path), "--engine-dir", str(tmp_path), "--out", str(tmp_path / "out"),
-            "--phases", "torch", "--max-tokens", "6", "--idle-s", "0.02", "--prompts", str(bench.DEFAULT_PROMPTS)])
+            "--phases", "torch", "--max-tokens", FAKE_TOKENS, "--idle-s", "0.02",
+            "--prompts", str(bench.DEFAULT_PROMPTS)])
         run = pod.PodRun(args, host=bench_fake.FakeHost(root), power=bench_fake.FakePower(root))
         raw_record = run.run()
         phase = raw_record["phases"]["torch"]
