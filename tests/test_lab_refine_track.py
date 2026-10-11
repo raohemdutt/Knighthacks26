@@ -68,6 +68,19 @@ def put_dry_run(tmp_path, text, name="2026-10-10-pass-01.md", track="telemetry")
     return path
 
 
+def with_changes_line(text, line, sixth_change=False):
+    """The recorded entry (or the dry-run record around it) with its 'Changes (...)' line replaced.
+
+    sixth_change repeats the fifth change as a sixth that the same finding also cites, so the entry holds six
+    complete changes and nothing else about it is wrong.
+    """
+    if sixth_change:
+        fifth = re.search(r"^5\. .*?^   METRIC: [^\n]*\n", text, flags=re.MULTILINE | re.DOTALL).group(0)
+        text = edit(text, fifth, fifth + fifth.replace("5. ", "6. ", 1))
+        text = edit(text, "of the record). FIXED (5).", "of the record). FIXED (5, 6).")
+    return edit(text, "Changes (5 of at most 5):", line)
+
+
 # --- the committed tree ------------------------------------------------------------------------------------------
 
 
@@ -190,6 +203,40 @@ def test_a_change_without_a_source_is_reported(tmp_path):
     folder = make_track(tmp_path, entries=[edit(text, source, "")])
 
     assert rt.check_track(folder) == ["REFINE_LOG.md: pass 1: change 2 has no SOURCE"]
+
+
+@pytest.mark.parametrize(
+    ("line", "sixth_change", "problem"),
+    [
+        ("Changes (5 of at most 7):", False, "pass 1: the Changes line names a cap of 7 but a pass makes at most 5"),
+        ("Changes (6 of at most 5):", True, "pass 1: the entry makes 6 changes but a pass makes at most 5"),
+        (
+            "Changes (5 changes):",
+            False,
+            "pass 1: the Changes line must read 'Changes (<n> of at most 5):', found 'Changes (5 changes)'",
+        ),
+    ],
+    ids=["another-cap", "more-changes-than-the-cap", "no-cap-named"],
+)
+def test_a_pass_that_names_another_cap_or_makes_more_changes_than_the_cap_is_reported(tmp_path, line, sixth_change, problem):
+    assert rt.change_cap() == 5  # PASS_RULES.md, "What a pass does"; telemetry ruling 6 answered 5
+
+    log = make_track(tmp_path / "log", entries=[with_changes_line(entry_text(), line, sixth_change)])
+    record = put_dry_run(tmp_path / "record", with_changes_line(recorded_text(), line, sixth_change))
+
+    assert rt.check_track(log) == [f"REFINE_LOG.md: {problem}"]
+    assert rt.check_dry_run(record) == [f"2026-10-10-pass-01.md: {problem}"]
+
+
+def test_pass_rules_that_state_no_change_cap_are_reported_instead_of_guessed(tmp_path):
+    rules = tmp_path / "PASS_RULES.md"
+    rules.write_text("# Refinement pass rules\n\nA pass makes the changes its findings justify.\n", encoding="utf-8")
+    message = "PASS_RULES.md: no per-pass change cap found; 'What a pass does' must say 'at most <N> changes'"
+
+    assert rt.check_track(make_track(tmp_path / "log", entries=[entry_text()]), rules_path=rules) == [message]
+    assert rt.check_dry_run(put_dry_run(tmp_path / "record", recorded_text()), rules_path=rules) == [
+        f"2026-10-10-pass-01.md: {message}"
+    ]
 
 
 def test_a_metrics_line_cited_for_another_metric_is_reported(tmp_path):
