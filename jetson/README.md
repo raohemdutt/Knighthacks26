@@ -155,8 +155,10 @@ event log. `--web` builds the phone app first. The default address is `alexander
 ## 9. Voice on the box (X16)
 
 The Jetson listens through the USB webcam's built-in microphone and speaks through a Bluetooth speaker. Speech to text is
-whisper.cpp (`tiny.en`), text to speech is Piper; both run on the box, one short process per use (peak about 200 MB and
-150 MB, nothing resident between questions). A question goes in through the same `POST /api/ask` as the phone's Ask
+whisper.cpp (`base.en` for the question, `tiny.en` for the "Hey Atlas" check), text to speech is Piper
+(`en_US-ryan-medium`, pitched down by `voice_pitch`); both run on the box, one short process per use (peak about 300 MB
+and 150 MB, nothing resident between questions). A question whisper is unsure of (`min_confidence`) is asked again
+("Say it again?") instead of answered. A question goes in through the same `POST /api/ask` as the phone's Ask
 screen, so it is logged as `experience.question.asked` and the spoken text is the `agent.answer.generated` text. Only
 text leaves the microphone path: no audio leaves the box and none is stored (the recording lives in memory, plus one
 temp file in RAM for the 2 seconds whisper reads it). It needs nothing from the internet, so `make offline` is fine.
