@@ -352,8 +352,9 @@ def build(settings: Settings | None = None) -> Atlas:
     alerts = AlertHistory()
 
     # The outbound gate: a picture that leaves the box (training export, phone alert photo) has its faces scrambled
-    # whatever "Blur faces before saving" is set to. Its own YuNet detector, loaded on first use; if it cannot run,
-    # the gate refuses and nothing is sent. The strict blur: lower score, wider margin, repeated until no face is found.
+    # whatever is on this box's disk (policy.blur_faces off, or an older one-pass blur). Its own YuNet detector, loaded
+    # on first use; if it cannot run, the gate refuses and nothing is sent. The strict blur: lower score, wider margin,
+    # repeated until no face is found.
     gate_blur = FaceBlur(**STRICT)
     outbound = OutboundGate(jpeg_scrambler(gate_blur.scrambled_until_clear), on_release=lambda destination, purpose, pictures, size, faces: log.info(
         "outbound: %d picture to %s (%s), %d bytes, %d faces blurred", pictures, destination, purpose, size, faces))
