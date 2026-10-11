@@ -1,0 +1,79 @@
+{
+  "base_model": "Qwen/Qwen3.8-27B",
+  "group_size": 128,
+  "calibration": "fixtures/lab/quant/calibration.jsonl",
+  "variants": [
+    {
+      "width": 3,
+      "name": "Qwen3.8-27B-W3A16-G128-GPTQ-atlas",
+      "method": "gptq",
+      "scheme": "W3A16",
+      "symmetric": true,
+      "max_seq_length": 4096,
+      "pad_to_max": false,
+      "estimate_minutes": 75,
+      "hub_repo": "<$QUANT_HUB_NAMESPACE>/Qwen3.8-27B-W3A16-G128-GPTQ-atlas",
+      "recipe": {
+        "quant_stage": {
+          "quant_modifiers": {
+            "GPTQModifier": {
+              "targets": [
+                "Linear"
+              ],
+              "scheme": "W3A16",
+              "ignore": [
+                "re:visual.*",
+                "re:model.visual.*",
+                "re:.*lm_head",
+                "re:.*embed_tokens$",
+                "re:.*linear_attn\\.in_proj_a$",
+                "re:.*linear_attn\\.in_proj_b$"
+              ],
+              "block_size": 128,
+              "dampening_frac": 0.01,
+              "actorder": "static"
+            }
+          }
+        }
+      }
+    },
+    {
+      "width": 2,
+      "name": "Qwen3.8-27B-W2A16-G128-AUTOROUND-atlas",
+      "method": "autoround",
+      "scheme": "W2A16",
+      "symmetric": true,
+      "max_seq_length": 2048,
+      "pad_to_max": true,
+      "estimate_minutes": 180,
+      "hub_repo": "<$QUANT_HUB_NAMESPACE>/Qwen3.8-27B-W2A16-G128-AUTOROUND-atlas",
+      "recipe": {
+        "quant_stage": {
+          "quant_modifiers": {
+            "AutoRoundModifier": {
+              "targets": [
+                "Linear"
+              ],
+              "scheme": "W2A16",
+              "ignore": [
+                "re:visual.*",
+                "re:model.visual.*",
+                "re:.*lm_head",
+                "re:.*embed_tokens$",
+                "re:.*linear_attn\\.in_proj_a$",
+                "re:.*linear_attn\\.in_proj_b$"
+              ],
+              "iters": 200,
+              "batch_size": 8
+            }
+          }
+        }
+      }
+    }
+  ],
+  "needs": {
+    "gpu": "CUDA (Colab A100)",
+    "gpu_memory_gb": 39,
+    "free_disk_gb": 90
+  }
+}
