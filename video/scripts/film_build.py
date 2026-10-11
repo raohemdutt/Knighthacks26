@@ -172,7 +172,7 @@ def dips(scenes: list[dict], t0: float, t1: float = 1e9) -> list[str]:
 
 
 # How the voice says a word that it would otherwise misread (the caption keeps the written word).
-PRONOUNCE = {r"YOLO": "Yo low"}  # "Yoh-loh" came out as "y-lo"
+PRONOUNCE = {"YOLO": "Yo low"}  # plain text, no regex escapes: "Yoh-loh" never reached the voice
 
 
 def say(text: str) -> str:
