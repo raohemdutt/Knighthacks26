@@ -869,13 +869,13 @@ def uc_teach(run: Run) -> None:
                     note=lambda d: f"{d['real_runs']} real run(s); showing {len(d['runs'])} {'SAMPLE ' if d['sample'] else ''}run(s)")
     if lab is not None:
         run.screen("/lab/")
-        sample = run.fetch("Learning lab: the labelled sample run", "/api/learning/lab?sample=1", ("runs", "sample"),
-                           check=lambda d: None if d["sample"] and d["runs"] and all(r.get("sample") for r in d["runs"]) else "the sample run is missing or not labelled as a sample",
-                           note=lambda d: f"simulated: run {d['runs'][0]['run_id']} ({d['runs'][0].get('status')}), labelled sample")
-        if sample:
-            rid = urllib.parse.quote(sample["runs"][0]["run_id"], safe="")
-            run.fetch("Learning lab: the run's story", f"/api/learning/lab/{rid}?sample=1", ("training", "eval", "power", "dataset"),
-                      note=lambda d: f"simulated: gate {((d.get('eval') or {}).get('verdict') or (d.get('eval') or {}).get('decision') or d.get('status'))}")
+        # No sample run is ever shown (#421): the list is only what the box recorded, and says so when it is empty.
+        run.add("Learning lab: no sample run is shown", FAIL if lab["sample"] or any(r.get("sample") for r in lab["runs"]) else PASS, None,
+                "only runs the box recorded" if lab["runs"] else "none recorded yet: the screen says so instead of showing a sample")
+        if lab["runs"]:
+            rid = urllib.parse.quote(lab["runs"][0]["run_id"], safe="")
+            run.fetch("Learning lab: the newest run's story", f"/api/learning/lab/{rid}", ("training", "eval", "power", "dataset"),
+                      note=lambda d: f"test: {((d.get('eval') or {}).get('verdict') or (d.get('eval') or {}).get('decision') or d.get('status'))}")
     if not run.writes:
         run.add("teach a task -> export approval card", SKIP, None, "read-only: teaching raises a card")
         return
