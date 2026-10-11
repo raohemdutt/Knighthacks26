@@ -454,3 +454,64 @@ no comment after 2026-09-25. The pods moved from the DUB hub to AMD's SJC hub on
   Expected movement: none in tok/s; every spawn gets a correct band label. Minimum sample size: 8
   spawns per arm. Confidence: medium (0.6) that `mem_busy_percent` separates our clusters once its
   threshold is set from them.
+
+## 8. Pass 3 additions: the stream-wait reproducer as a gate on gfx1151
+
+Added by kernels refinement pass 3 on 2026-10-10. The lab now runs on the SJC Strix Halo pods
+(gfx1151, RDNA 3.5), and every report of the spawn bands and of the stream-wait cost so far is from
+gfx1201 hosts. T0's E28 supersedes E18 (KE17 as queued) for this chip.
+
+- **[measured]** A fourth gfx1201 host showed the stream-wait cost on 2026-10-10: an R9700 on kernel
+  7.0.0-30 with the in-tree amdgpu driver (no DKMS), MES `0x89`, HIP 7.15.26333, ran the issue's
+  reproducer unmodified and read a median of 2.341 us per tiny kernel at no waiting stream and
+  8.995 us at two (graph mode; 2.721 against 11.503 us eager); `GPU_MAX_HW_QUEUES` of 1 or 2 held
+  every column near 2.3 us, while 3, 4 and 8 showed the step at two waits; the 1 GiB read rose from
+  1.686 to about 1.717 ms. Source: [S171] ROCm/legacy-rocm-build#6685, comment by lobo235 of
+  2026-10-10, read through the GitHub API.
+
+  Implication: the cost is now seen on three of four gfx1201 hosts, with in-tree and DKMS drivers
+  alike, and on none outside gfx1201; neither #6685 nor #6347 (no comment after 2026-09-25) carries
+  a gfx1151 report, so whether the lever has a mechanism on our chip is unknown, as the gfx1151
+  settings note's KS3 says (confidence 0.25).
+
+  Candidate experiment: E28 gate 1 (the next finding). Expected movement: none on gfx1151 if the
+  cost is absent (median per tiny kernel within 0.5 us from zero to four waiting streams at every
+  `GPU_MAX_HW_QUEUES` value); a step at two waits would be the first gfx1151 sighting. Minimum
+  sample size: 1 run per `GPU_MAX_HW_QUEUES` value (unset, 1, 2, 4), each the reproducer's own p10,
+  p50 and p90 over 200 kernels. Confidence: 0.25 that gfx1151 shows the step.
+
+- **[practitioner]** The reproducer is one HIP file of about 200 lines, `gfx1201-pending-wait-repro.hip`,
+  printed in the issue body: it queues a spin kernel, times 200 tiny elementwise kernels and a 1
+  GiB read between events, then makes K other streams wait on a later event, and reports the p10,
+  p50 and p90 time per tiny kernel for K = 0 to 4 in graph and eager mode; it builds with
+  `hipcc -O2 --offload-arch=<target>` and needs no framework. Source: [S171]
+  ROCm/legacy-rocm-build#6685, body of 2026-09-25 ("Reproducer 1: plain HIP, no framework").
+
+  Implication: built with `--offload-arch=gfx1151` it runs in seconds on pod B, where the chip sheet
+  built its HIP probes with `/opt/rocm/bin/hipcc` ([L10], section "Wavefront size the compiler
+  chose"), against the 16 cold server spawns of E18 at 297 to 523 s each
+  (`lab/refine/metrics.jsonl:34`, R30's cold start), so it is the cheap gate before any server
+  spawn is spent on the queue lever.
+
+  Candidate experiment: E28 gate 1, as specified in the previous finding. Expected movement: as
+  there. Minimum sample size: as there. Confidence: as there.
+
+- **[opinion]** R20's stock spawns at the default queue limit are E28's arm A: R11's harness bands a
+  configuration's spawns by their own probe decode rates once it has at least 4 spawns
+  (largest-gap split at 10% of the median) and records `GPU_MAX_HW_QUEUES` as read back from the
+  server process, so R20's rows say whether our build splits into bands on gfx1151 at the default
+  without a spawn of E28's own. Source: [L12] `lab/README.md`, section "Benchmark harness:
+  `lab/bench.py` (R11)", bullets "Conditions on every row" and "Bands", on main at 4e084dc; [L13] R20 task
+  page, line of Sat 8:27 PM ET (by Ilan3's clock): R20 started on pod D with the harness, whose
+  serve line sets no `GPU_MAX_HW_QUEUES` (`settings_inference_gfx1151.md`, "What runs today"), so
+  the value in use is the image's, read back per spawn.
+
+  Implication: E28's arm B (the variable at 1) needs pod time only if gate 1 shows the cost or R20's
+  spawns show two bands; if R20 runs fewer than 4 spawns per configuration the harness cannot band
+  them and E28 runs as written, alternating its arms.
+
+  Candidate experiment: E28 gate 2. Expected movement: none in teacher.decode_tok_s from the gate
+  itself; one band at the default closes E28 with no change, by kernels ruling 6. Minimum sample
+  size: 4 spawns per configuration in R20 (5 by R20's Done when). Confidence: 0.75 that R20 shows
+  one band.
+
