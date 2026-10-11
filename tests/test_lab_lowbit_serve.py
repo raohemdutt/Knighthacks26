@@ -113,10 +113,31 @@ def test_zero_point_columns_rule():
 
 # --- the serve script -----------------------------------------------------------------------------------------------
 
+GIT_BASH = Path("C:/Program Files/Git/bin/bash.exe")
+
+
+def _runs(program):
+    try:
+        return subprocess.run([program, "-c", "true"], capture_output=True).returncode == 0
+    except OSError:
+        return False
+
+
+def _bash():
+    # On Windows a bare "bash" can be WSL's, which neither sees this PATH nor reads a Windows path: Git Bash first
+    # (the same choice as tests/test_lab_pod_a_teacher.py).
+    candidates = (str(GIT_BASH), "bash") if os.name == "nt" else ("bash",)
+    found = next((b for b in candidates if _runs(b)), None)
+    assert found is not None, "bash is needed to run lab/serve_lowbit.sh (Git Bash on Windows)"
+    return found
+
+
 def serve(*args, env=None, step="all"):
     full = {k: v for k, v in os.environ.items() if k not in ("WIDTH", "HUB_REPO", "DRY_RUN")}
     full.update(env or {})
-    return subprocess.run(["bash", str(SERVE), step], env=full, capture_output=True, text=True)
+    # the script is named by its path inside the repo, which every bash reads; a Windows path it would not
+    return subprocess.run([_bash(), SERVE.relative_to(REPO_ROOT).as_posix(), step], cwd=REPO_ROOT, env=full,
+                          capture_output=True, text=True)
 
 
 def test_dry_run_prints_download_patch_and_a_float16_bench_at_batch_1_and_4():
@@ -144,9 +165,9 @@ def fake_rocminfo(tmp_path, gfx):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     tool = bin_dir / "rocminfo"
-    tool.write_text(f"#!/bin/bash\necho '  Name:                    {gfx}'\n", encoding="utf-8")
+    tool.write_bytes(f"#!/bin/bash\necho '  Name:                    {gfx}'\n".encode("ascii"))   # LF on Windows too
     tool.chmod(0o755)
-    return f"{bin_dir}:{os.environ.get('PATH', '')}"
+    return f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"
 
 
 def test_the_node_gate_refuses_another_chip(tmp_path):
@@ -157,7 +178,9 @@ def test_the_node_gate_refuses_another_chip(tmp_path):
 def test_the_node_gate_refuses_a_machine_without_rocm(tmp_path):
     empty = tmp_path / "empty"
     empty.mkdir()
-    out = serve(env={"WIDTH": "3", "HUB_REPO": "a/b", "PATH": f"{empty}:/usr/bin:/bin"}, step="patch")
+    # Git Bash finds grep and uname through the machine's PATH; Windows has no rocminfo there to hide
+    rest = os.environ.get("PATH", "") if os.name == "nt" else "/usr/bin:/bin"
+    out = serve(env={"WIDTH": "3", "HUB_REPO": "a/b", "PATH": f"{empty}{os.pathsep}{rest}"}, step="patch")
     assert out.returncode == 2 and "expected gfx1151" in out.stderr
 
 
