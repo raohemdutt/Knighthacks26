@@ -283,7 +283,8 @@ GPU or the Jetson. Kernel changes are covered in `w4a16_decode_gfx1201.md`, the 
   - TTFT 0.39 s; 120 W average and 129 W peak while decoding; idle 9.2 W with the teacher loaded.
   - 2.88 tok/s is also 23% to 25% of the public llama.cpp 27B Q4_K_M rows.
 
-  - Source: [L4] `lab/README.md`, section "Teacher on SJC today (pod C, Strix Halo)"; the prior from
+  - Source: [L4] `lab/README.md`, section "Teacher on the Strix Halo (pod A, account C)", titled "Teacher on SJC today (pod C, Strix
+    Halo)" when L4 was indexed; the prior from
     `lab/public_prior.py`.
   - Implication: the prior's vLLM term, fitted on other people's vLLM builds and kernels, is optimistic for
     our Conch W4A16 path by 2.6x. The calibration factor for our build is about 0.38 until a kernel or
