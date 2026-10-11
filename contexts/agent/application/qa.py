@@ -629,6 +629,11 @@ class QA:
         text, named, found = schedule.said(ask, self.memory, now, tz, names=self.names, listings=self.listings, plan=self.plan())
         if self.talk is not None and found:  # "Want the rest?": a "yes" goes to the conversation, which then says all of it
             self.talk.rest = (schedule.replace(ask, everything=True), now) if text.endswith(ear.MORE) else None
+        offer = getattr(self.talk, "offer", None)  # "Want me to plan your day?": remembered there, so "yes" starts the plan
+        if offer is not None:
+            text = offer(text, now)
+        elif text.endswith(ear.PLAN_OFFER):  # no conversation to take the "yes": an offer that works
+            text = text[: -len(ear.PLAN_OFFER)] + ear.PLAN_ELSEWHERE
         for i in named:
             extra = f" ({i.summary})" if i.summary else ""
             ev.add(f"{i.title}: {self._t(i.when)}{extra} [{i.connector}]", Citation(url=i.url, title=i.title, ts=i.when))

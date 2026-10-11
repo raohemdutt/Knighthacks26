@@ -13,6 +13,13 @@ THE CONTRACT (the owner: "we can't have hard-coded answers, because Atlas has to
   1. The facts are always fetched live, every time: the calendar and what is due from Memory, the agreed plan through
      the Day context's port (`plan`: DayLoop.blocks, wired in contexts/gateway/bootstrap.py). Nothing is cached or canned.
   2. The sentences built in code are only a FAST LANE for the phrasings `parse` recognises.
+     LENGTH FITS THE QUESTION (the owner's correction): the "about three things, then 'Want the rest?'" cap is for
+     casual or narrow questions only ("what's on today?", "anything today?", "what's on my calendar", "do I have
+     anything this afternoon", "what's coming up"); "what's next?" stays one thing. A request to walk through the day
+     ("what does my day look like", "run/walk me through my day", "brief me", "what's my day", "give me the rundown",
+     "what do I have today", "what have I got today", "what's the plan") is the WHOLE day (`Ask.whole`, ear.said_walkthrough): every own
+     event, the plan's blocks, when to leave, what is due, then the campus things as a closing clause, by part of the
+     day, with no cap and no "Want the rest?". An own commitment is never silently dropped.
   3. Any other question about the day ("is today going to be rough?", "when can I fit the gym in?") goes to the
      model, which is given the same facts in the same for-the-ear wording (`day` -> ear.day_fact_lines, talk.py `facts`).
 Campus listings are never the person's own: which stored items are listings is read from the item itself against
@@ -74,6 +81,9 @@ DAY = re.compile(
 EVERYTHING = re.compile(r"\b(?:everything|all of (?:it|them)|whole|full|entire|every|all my|list)\b")
 ENDS = re.compile(r"\bhow long\b|\buntil when\b|\b(?:end|ends|finish|finishes|over)\b")
 UNTIL = re.compile(r"\buntil\s+(\d{1,2}):(\d{2})\s*([AP]M)", re.I)
+ANYTHING = re.compile(rf"^(?:is there |got |have i got )?anything(?: on| planned| going on)?(?: for)? {WINDOW}[?.! ]*$")  # "anything today?"
+# a casual or narrow way of asking about the day: answered short (about three things and an offer of the rest)
+CASUAL = re.compile(r"\bwhat(?:'s| is) (?:on|planned|scheduled)\b|\banything\b")
 CALENDAR_ONLY = re.compile(r"\bcalendar\b")  # asked for the calendar by name: the calendar, not the whole day
 NOT_A_PLACE = re.compile(r"^(?:free|optional|with |hosted by |via |until )", re.I)
 CLASS_WORDS = re.compile(r"\b(?:lecture|class|lab|seminar|recitation|section|discussion)\b|\b[A-Z]{2,4} ?\d{3,4}[A-Z]?\b")
@@ -94,7 +104,8 @@ class Ask:
     where: bool = False
     ends: bool = False
     kinds: tuple = ("calendar_event",)  # memory item kinds; (None,) is any kind
-    rundown: bool = False  # "what does my day look like?": the whole day (own events, the plan's blocks, what is due, listings)
+    rundown: bool = False  # about the whole day: own events, the plan's blocks, what is due, listings (not the calendar alone)
+    whole: bool = False  # a walk-through was asked for ("run me through my day"): every thing is said, no cap, no "Want the rest?"
 
 
 @dataclass(frozen=True)
@@ -223,9 +234,13 @@ def parse(question: str, now: datetime, tz: tzinfo) -> Ask | None:
         what = re.sub(r"^(?:a|an|any) ", "", m["what"])
         thing = what if re.fullmatch(THING, what) else ""
         return Ask("day", start, end, span, thing=thing, yes_no="have", everything=everything, kinds=_thing_kinds(thing))
-    if WHAT_HAVE.search(q) or DAY.search(q):
+    if WHAT_HAVE.search(q) or DAY.search(q) or ANYTHING.search(q):
         start, end, span = window(q, now, tz, default="week" if re.search(r"\bmy week\b", q) else "today")
-        return Ask("day", start, end, span, everything=everything, rundown=span == "today" and not CALENDAR_ONLY.search(q))
+        rundown = span == "today" and not CALENDAR_ONLY.search(q)
+        # A walk-through ("what does my day look like", "run me through my day", "brief me", "what's my day", "give me
+        # the rundown", "what do I have today", "what's the plan") is the WHOLE day. A casual ask ("what's on today?",
+        # "anything today?") is the same day capped at about three things with an offer of the rest.
+        return Ask("day", start, end, span, everything=everything, rundown=rundown, whole=rundown and not CASUAL.search(q))
     if listed:  # "what's on my calendar?", "any events this weekend?": as the fixed path always took them
         start, end, span = window(q, now, tz, default="week")
         return Ask("day", start, end, span, everything=everything, kinds=_kinds(q))
@@ -333,9 +348,13 @@ def answer(ask: Ask, items: list[Item], now: datetime, tz: tzinfo, names: dict |
     midnight = local.replace(hour=0, minute=0, second=0, microsecond=0)
     if ask.rundown:  # the whole day: own events, the plan's blocks, what is due, and one clause for what is on nearby
         d = day(items, now, tz, listings, plan)
-        text = ear.said_rundown(d["things"], local, dues=d["dues"], listed=d["listed"], leave=d["leave"], names=names,
-                                everything=ask.everything, planned=d["planned"], earlier=d["earlier"])
-        dues = d["dues"] if ask.everything else d["dues"][:1]
+        if ask.whole:  # a walk-through: every thing of theirs, by part of the day, never cut short
+            text = ear.said_walkthrough(d["things"], local, dues=d["dues"], listed=d["listed"], leave=d["leave"], names=names,
+                                        planned=d["planned"], earlier=d["earlier"])
+        else:
+            text = ear.said_rundown(d["things"], local, dues=d["dues"], listed=d["listed"], leave=d["leave"], names=names,
+                                    everything=ask.everything, planned=d["planned"], earlier=d["earlier"])
+        dues = d["dues"] if ask.everything or ask.whole else d["dues"][:1]
         return Said(text, _cited(d["things"] + dues + d["listed"]), bool(d["things"] or d["dues"] or d["listed"]))
     entries = entries_of(items, tz, listings)
     own = [e for e in entries if ask.kind == "due" or not e["listed"]]

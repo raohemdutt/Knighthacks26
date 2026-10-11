@@ -73,6 +73,8 @@ def box(runtime=None, items=DAY, names=None, done=DONE, web=None):
     qa.names = dict(names or {})
     qa.talk.day_facts = lambda: dict(THEIR_DAY)
     qa.talk.done_for_you = lambda: list(done)
+    qa.plans_started = []  # the Day loop's plan proposal, as the gateway wires it: "yes" to "Want me to plan your day?"
+    qa.talk.plan_day = lambda: qa.plans_started.append(qa.clock())
     qa.talk.about = "A student with classes, assignments on Canvas and a desk the box watches."
     return qa, rt
 
@@ -149,9 +151,14 @@ def test_facts_follow_the_topic_of_the_question():
 
 # --- (3) the calendar, said like a person ---
 
-# the whole day (section 6 below): the first two things, one closing clause for the optional evening, and the offer
-RUNDOWN = ("You've got four things today, starting with your COP 4533 lecture at 10:40, then your PHY 2049 lecture at 2. "
-           "Also, there's one thing on campus if you want it. Want the rest?")
+# A walk-through is the WHOLE day (the owner's correction): everything of theirs by part of the day, the optional evening as
+# one closing clause, and an offer about the plan. Never capped, never "Want the rest?".
+RUNDOWN = ("This morning you've got your COP 4533 lecture at 10:40. This afternoon it's your PHY 2049 lecture at 2, then the mentor check-in at 4:30 PM. "
+           "Tonight there's Dinner with Maya at 7. If you want a break, on campus there's Board game night at 8 tonight. Want me to plan your day?")
+# A casual ask is the same day, short: the first two things, the listings counted, and an offer of the rest.
+CASUAL = ("You've got four things today, starting with your COP 4533 lecture at 10:40, then your PHY 2049 lecture at 2. "
+          "Also, there's one thing on campus if you want it. Want the rest?")
+WALKED = ("What does my day look like?", "run me through my day")
 SCHEDULE = {
     "what's on my calendar today?": "You've got four things today. First is your COP 4533 lecture at 10:40, then your PHY 2049 lecture at 2. Want the rest?",
     "What does my day look like?": RUNDOWN,
@@ -165,6 +172,7 @@ SCHEDULE = {
     "am I busy at 11?": "Yes, you've got your COP 4533 lecture then, until 11:30.",
     "what's on tonight?": "Tonight you've got Dinner with Maya at 7, and that's it tonight.",
     "run me through my day": RUNDOWN,
+    "what's on today?": CASUAL,
     "what's due this week?": "You've got Project Milestone 1 due Tuesday at 3:55 PM.",
 }
 ALLOWED = {"what's next?": 1, "Hey Atlas, what's next": 1, "when is my next class?": 1, "what time is my next class, and where?": 1, "am I free at 3?": 1,
@@ -178,9 +186,12 @@ def test_a_schedule_question_is_answered_in_sentences_never_read_out(question):
         said = ask(qa, question)
         assert said == SCHEDULE[question]
         assert not RECORD.search(said), said  # no ranges, brackets, source tags, camera ids, weekday stamps or semicolon lists
-        assert all(s[0].isupper() and s[-1] in ".?" for s in sentences(said)) and len(sentences(said)) <= 3
+        assert all(s[0].isupper() and s[-1] in ".?" for s in sentences(said))
         named = sum(1 for t in ("lecture at", "lecture then", "check-in", "Dinner with Maya", "Board game", "Milestone") if t in said)
-        assert named <= ALLOWED.get(question, 3)  # only what was asked: one thing for "what's next?", three at most for a rundown
+        if question in WALKED:  # a walk-through says the whole day and never offers "the rest"
+            assert named == 4 and "Want the rest" not in said  # both lectures, the check-in, dinner, and the optional evening
+        else:  # only what was asked: one thing for "what's next?", three at most for a casual question
+            assert named <= ALLOWED.get(question, 3) and len(sentences(said)) <= 3
         assert "rehearse" not in said and "Based on" not in said
         assert getattr(rt, "seen", []) == []  # from the data: no model retells the calendar, so none can invent an event
 
@@ -200,8 +211,8 @@ def test_the_rest_comes_when_asked_for_and_everything_is_everything():
     assert not RECORD.search(rest)
     assert ask(qa, "what's everything on my calendar today?") == rest  # asked for all of it: the optional evening too
     assert qa.talk.rest is None and qa.talk.template("yes") != rest  # a later "yes" is just a yes
-    # the whole day's "rest" is all of it too, with the optional evening still said as on campus, never theirs
-    assert ask(qa, "what does my day look like?").endswith("Want the rest?")
+    # a casual ask about the day: its "rest" is all of it too, with the optional evening still said as on campus, never theirs
+    assert ask(qa, "what's on today?").endswith("Want the rest?")
     assert ask(qa, "yes") == ("You've got your COP 4533 lecture at 10:40, your PHY 2049 lecture at 2, the mentor check-in at 4:30 PM, "
                               "then Dinner with Maya at 7 tonight. On campus there's Board game night at 8 tonight.")
 
@@ -214,7 +225,8 @@ def test_the_jetson_transcript_campus_listings_are_not_read_out_and_not_called_y
         ("UCF Women's Soccer vs. Oklahoma State", 13, 0), ("Graduate School Mixer", 15, 0)])]
     night = datetime(2026, 10, 11, 5, 37, tzinfo=UTC)  # Sunday 1:37 AM
     said = {"What's on my calendar today?": "There are five things on campus today. First is U Can Finish Race at 7:30, then Theatre UCF Open House at 11. Want the rest?",
-            "What does my day look like?": "Nothing of yours is on today. There are five things on campus if you want them. Want me to plan your day?"}
+            "What does my day look like?": ("Nothing of yours is on today. There are five things on campus, like U Can Finish Race at 7:30 and "
+                                            "Theatre UCF Open House at 11. Want me to plan your day?")}
     for question in said:
         qa, rt = box(Recorder("I don't know your day yet, but I can see you have classes and assignments on Canvas waiting for you."), items=campus)
         qa.clock = qa.talk.clock = lambda: night

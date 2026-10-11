@@ -45,7 +45,7 @@ from runtime.interface import Runtime
 log = logging.getLogger("atlas.talk")
 ENV = "ATLAS_TALK"  # "0" turns conversation off: every open-ended question goes to the tool loop, as before
 MAX_FACT_CHARS = 240  # one fact line; the model reads 14 tokens a second, the prompt has to stay small
-MAX_DAY_FACT_CHARS = 420  # one line of the day's rundown (up to six things said with their times)
+MAX_DAY_FACT_CHARS = 900  # one line of the whole day (every thing of theirs, said with its time)
 MAX_REPLY_CHARS = 900
 MAX_CLAUSE_CHARS = 90  # the last thing a camera saw, as one clause of a sentence
 
@@ -313,6 +313,11 @@ class Talk:
         self.started = clock()
         self.answered = 0  # answers of any kind this session (on_answer)
         self.rest: tuple[schedule.Ask, datetime] | None = None  # a rundown that ended "Want the rest?": what "yes" then means
+        # "Want me to plan your day?" is only said when "yes" can do it: this starts the Day loop's own plan proposal (the
+        # plan event and its normal approval card; nothing is written to a calendar without the card). Set by the
+        # composition root; without it the line is "I can plan it with you on Today's Plan." instead.
+        self.plan_day: Callable[[], object] | None = None  # may be async
+        self.plan_offered: datetime | None = None  # when the offer was last made
 
     # --- routing ---
 
@@ -371,7 +376,7 @@ class Talk:
             return self._done(question, CRISIS_REPLY, self.runtime.model_info().version, stream)
         # Built in code, with or without a model (the owner's rule): a small model asked "how's it going?" recites the
         # time and its uptime and announces it is an AI; and the calendar is said from the data, never retold.
-        said = self.hello(question) or self.calendar(question)
+        said = await self.plan_if_asked(question) or self.hello(question) or self.calendar(question)
         if said:
             return self._done(question, said, self.runtime.model_info().version, stream)
         if isinstance(self.runtime, FakeRuntime) and not self.runtime.chat_replies:  # a laptop with no model: the templates
@@ -533,7 +538,32 @@ class Talk:
                 return whole(" ".join(SENTENCE_END.split(now_said)[:2]), MAX_FACT_CHARS)
         if text.endswith(ear.MORE):
             self.rest = (schedule.replace(ask, everything=True), now)
+        return self.offer(text, now)
+
+    def offer(self, text: str, now: datetime) -> str:
+        """An answer that ends by offering to plan the day: remembered, so "yes" starts the plan; on a box that cannot
+        start one, the offer is one that works."""
+        self.plan_offered = None
+        if text.endswith(ear.PLAN_OFFER):
+            if self.plan_day is None:
+                return text[: -len(ear.PLAN_OFFER)] + ear.PLAN_ELSEWHERE
+            self.plan_offered = now
         return text
+
+    async def plan_if_asked(self, question: str) -> str | None:
+        """ "Yes" right after "Want me to plan your day?": the Day loop proposes its plan (and its approval card)."""
+        offered, self.plan_offered = self.plan_offered, None
+        q = normal(question)
+        if offered is None or self.plan_day is None or abs(self.clock() - offered) > REST_TTL or not YES_THE_REST.search(LEAD.sub("", q, count=1) or q):
+            return None
+        try:
+            made = self.plan_day()
+            if asyncio.iscoroutine(made):
+                await made
+            return ear.PLAN_STARTED
+        except Exception:
+            log.exception("could not start the day plan")
+            return f"I couldn't start a plan just now. {ear.PLAN_ELSEWHERE}"
 
     def their_day(self) -> dict:
         if not self.day_facts:
@@ -644,3 +674,4 @@ class Talk:
         self.turns.clear()
         self.last = None
         self.rest = None
+        self.plan_offered = None

@@ -12,6 +12,13 @@ ranges, no ids, source tags, brackets, camera or zone ids.
     said_agenda / said_rundown / said_next / said_when / said_free / said_due / said_last_seen / said_visit / said_done
     day_fact_lines(...)            the same day, as the FACTS a model is given for any other question about it
 
+LENGTH FITS THE QUESTION (the owner's correction). The "about three things, then 'Want the rest?'" cap is only for
+casual or narrow questions ("what's on today?", "anything today?", "what's on my calendar", "do I have anything
+this afternoon": said_agenda, said_rundown). A request to walk through the day ("what does my day look like", "run
+me through my day", "brief me", "what do I have today") is the WHOLE day (said_walkthrough): every own event and
+plan block by part of the day, when to leave, what is due, the campus things as one closing clause, then an offer
+about the plan. "What's next?" is one thing. An own commitment is never silently dropped.
+
 THE CONTRACT (the owner, on why nothing here is a canned answer): the facts are always fetched live, every time.
 The sentences built here are only a FAST LANE for the phrasings the agent's patterns recognise. Any other way of
 asking about the day goes to the model, which is given the same live facts in this same wording (`day_fact_lines`),
@@ -36,7 +43,11 @@ MAX_SAID = 3  # things named in one answer unless everything was asked for
 MAX_EVERYTHING = 8
 OFFER = "What else can I do for you?"
 OFFER_QUIET = "What can I do for you?"
-PLAN_OFFER = "Want me to plan your day?"  # ends a rundown of a day with nothing of the person's own and no plan
+PLAN_OFFER = "Want me to plan your day?"  # ends a rundown of a day with no plan; "yes" starts the Day loop's plan (talk.py)
+PLAN_ELSEWHERE = "I can plan it with you on Today's Plan."  # the same offer on a box whose conversation cannot start a plan
+PLAN_STARTED = "Okay, I've drafted a plan for today. Have a look on Today's Plan; nothing goes on your calendar until you approve it."
+PLAN_CHECK = "Does that look right, or should I change something?"  # ends a walk-through of a day that has a plan
+MAX_WALKED = 12  # a walk-through names everything up to this many things; past it the plan's blocks are counted, not named
 MORE = "Want the rest?"  # ends a rundown that named only the first things; "yes" then gets all of it (talk.py)
 
 COURSE_CODE = re.compile(r"\b([A-Z]{2,4}) ?(\d{3,4}[A-Z]?)\b")
@@ -254,8 +265,59 @@ def said_rundown(things: list[dict], now: datetime, *, dues: list[dict] = (), li
     return " ".join(out)
 
 
+def _part(t: datetime) -> str:
+    return "morning" if t.hour < 12 else "afternoon" if t.hour < 17 else "tonight"
+
+
+def said_walkthrough(things: list[dict], now: datetime, *, dues: list[dict] = (), listed: list[dict] = (), leave: dict | None = None,
+                     names: dict | None = None, planned: bool = False, earlier: bool = False) -> str:
+    """ "Run me through my day": the WHOLE day, in flowing sentences by part of the day. Every thing of the person's
+    is said (events, the plan's blocks), then when to leave, what is due today or tomorrow, the campus things as one
+    closing clause (how many, and two of them at most: they are not theirs), and an offer about the plan. No cap and
+    no "Want the rest?". Only an absurd day (more than `MAX_WALKED` things) is shortened, and then only by counting
+    the plan's blocks instead of naming them: an own commitment is never dropped."""
+    things, dues, listed = list(things), list(dues), list(listed)
+    out: list[str] = []
+    if not things:
+        out.append("Nothing else of yours today." if earlier or planned else "Nothing of yours is on today.")
+    else:
+        if len(things) >= 6:
+            out.append("Big day.")
+        crowded = len(things) > MAX_WALKED
+        first = True
+        for part in ("morning", "afternoon", "tonight"):
+            group = [e for e in things if _part(e["start"]) == part]
+            if not group:
+                continue
+            said = [e for e in group if not (crowded and e.get("block"))] or group
+            extra = len(group) - len(said)
+            run = series([_named(e, now, names, tonight=part != "tonight") for e in said])
+            run += f", with {say_number(extra)} plan {'block' if extra == 1 else 'blocks'} in between" if extra else ""
+            lead = "Tonight" if part == "tonight" else f"This {part}"
+            verb = "you've got" if first else "there's" if part == "tonight" else "it's"
+            out.append(f"{lead} {verb} {run}.")
+            first = False
+            if leave and any(e["title"] == leave["title"] for e in said):
+                last = said[-1]["title"] == leave["title"]
+                out.append(f"Leave by {_clock(leave['by'], True, tonight=False)} for {'that one' if last else ear_title(leave['title'], names)}.")
+    if due := _due_clause(dues, now, names, everything=True):
+        out.append(f"{due}.")
+    if listed:
+        two = " and ".join(_named(e, now, names) for e in listed[:2])
+        lead = "If you want a break, " if things else ""
+        if len(listed) <= 2:
+            out.append(cap(f"{lead}on campus there's {two}."))
+        else:
+            out.append(cap(f"{lead}there are {say_number(len(listed))} things on campus, like {two}."))
+    if things:
+        out.append(PLAN_CHECK if planned else PLAN_OFFER)
+    elif not planned and not earlier:
+        out.append(PLAN_OFFER)
+    return " ".join(out)
+
+
 def day_fact_lines(things: list[dict], now: datetime, *, dues: list[dict] = (), listed: list[dict] = (), leave: dict | None = None,
-                   names: dict | None = None, limit: int = 6) -> list[str]:
+                   names: dict | None = None, limit: int = 14) -> list[str]:
     """The same day as `said_rundown`, as the FACTS a model is given for any question about the day the patterns do
     not recognise ("is today going to be rough?", "when can I fit the gym in?"): one line per kind, in this module's
     wording, with the campus listings marked as optional so the model never calls them the person's."""

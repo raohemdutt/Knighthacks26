@@ -135,6 +135,32 @@ def test_the_whole_day_is_two_or_three_sentences_and_the_same_facts_for_a_model(
     assert ear.day_fact_lines([], NOW) == ["They have no events of their own for the rest of today.", "Nothing is due today or tomorrow."]
 
 
+def test_a_walk_through_is_the_whole_day_by_part_of_the_day_and_ends_with_an_offer_about_the_plan():
+    block, lunch = {"title": "a study block", "start": at(9, 15), "block": True}, {"title": "lunch", "start": at(12), "block": True}
+    things = [block, e("COP4533 lecture", 10, 40), lunch, e("PHY2049 lecture", 14), e("Knight Hacks: mentor check-in", 16, 30), e("Dinner with Maya", 19)]
+    due = [{"title": "HW 4: linked lists", "start": at(23, 59), "due": True}, {"title": "Quiz 5", "start": at(10, 0, 1), "due": True}]
+    campus = [e("Theatre UCF Open House", 11), e("Graduate School Mixer", 15), e("Board game night", 20)]
+    said = ear.said_walkthrough(things, NOW, dues=due, listed=campus, leave={"title": "COP4533 lecture", "by": at(10, 30)}, planned=True)
+    assert said == ("Big day. This morning you've got a study block at 9:15, then your COP 4533 lecture at 10:40. Leave by 10:30 for that one. "
+                    "This afternoon it's lunch at noon, your PHY 2049 lecture at 2, then the mentor check-in at 4:30 PM. Tonight there's Dinner with Maya at 7. "
+                    "HW 4: linked lists is due today at 11:59 PM, then Quiz 5 tomorrow at 10. "
+                    "If you want a break, there are three things on campus, like Theatre UCF Open House at 11 and Graduate School Mixer at 3. "
+                    "Does that look right, or should I change something?")
+    assert ear.MORE not in said and not re.search(r"\b[AP]M to\b|[\[\]()]|;", said)
+    # a small day needs no "Big day"; with no plan the offer is to make one; one or two listings are simply named
+    assert ear.said_walkthrough(things[1:2], NOW, listed=campus[2:]) == (
+        "This morning you've got your COP 4533 lecture at 10:40. If you want a break, on campus there's Board game night at 8 tonight. Want me to plan your day?")
+    assert ear.said_walkthrough(things[3:], NOW, planned=True) == (
+        "This afternoon you've got your PHY 2049 lecture at 2, then the mentor check-in at 4:30 PM. Tonight there's Dinner with Maya at 7. "
+        "Does that look right, or should I change something?")
+    assert ear.said_walkthrough([], NOW) == "Nothing of yours is on today. Want me to plan your day?"
+    assert ear.said_walkthrough([], NOW, planned=True) == "Nothing else of yours today."
+    # only past the ceiling are the plan's blocks counted instead of named, and no event is ever left out
+    many = [e(f"Meeting {i}", 9 + i, 30) for i in range(8)] + [{"title": "a short study block", "start": at(9 + i, 5), "block": True} for i in range(1, 7)]
+    crowded = ear.said_walkthrough(sorted(many, key=lambda x: x["start"]), NOW, planned=True)
+    assert all(f"Meeting {i}" in crowded for i in range(8)) and "study block" not in crowded and "plan blocks in between" in crowded
+
+
 def test_what_did_you_do_for_me_is_all_of_it_in_two_sentences_and_an_offer():
     done = ["re-planned your day", "sent the message you approved", "reminded you twice", "checked in on you", "answered six questions", "flagged one thing for you"]
     assert ear.said_done(done, full=True) == ("Today I've re-planned your day and sent the message you approved. I've also reminded you twice, "

@@ -43,9 +43,23 @@ HW = item("a2", "HW 4: linked lists [COP3502]", 23, 59, kind="assignment", conne
 PLAN = [{"kind": "study", "title": "a study block", "start": NOW + timedelta(minutes=15), "end": NOW + timedelta(minutes=80)},
         {"kind": "meal", "title": "lunch", "start": NOW + timedelta(hours=3), "end": NOW + timedelta(hours=3, minutes=30)},
         {"kind": "leave", "title": "COP4533 lecture", "start": NOW + timedelta(minutes=90)}]
-WHOLE_DAY = ("You've got six things today, starting with a study block at 9:15, then your COP 4533 lecture at 10:40. "
+# Six things of their own from 9:00 (two plan blocks, four events), one thing due, five listings. A walk-through says ALL of it.
+WHOLE_DAY = ("Big day. This morning you've got a study block at 9:15, then your COP 4533 lecture at 10:40. Leave by 10:30 for that one. "
+             "This afternoon it's lunch at noon, your PHY 2049 lecture at 2, then the mentor check-in at 4:30 PM. Tonight there's Dinner with Maya at 7. "
+             "HW 4: linked lists is due today at 11:59 PM. If you want a break, there are five things on campus, like Theatre UCF Open House at 11 "
+             "and Dungeons & Dynos at noon. Does that look right, or should I change something?")
+# A casual ask about the same day is short: the first two things, the first thing due, the listings counted, an offer of the rest.
+SHORT_DAY = ("You've got six things today, starting with a study block at 9:15, then your COP 4533 lecture at 10:40. "
              "Leave by 10:30 for that one. HW 4: linked lists is due today at 11:59 PM, and there are five things on campus if you want them. "
              "Want the rest?")
+OWN = ("a study block at 9:15", "your COP 4533 lecture at 10:40", "lunch at noon", "your PHY 2049 lecture at 2", "the mentor check-in at 4:30 PM",
+       "Dinner with Maya at 7")
+# The two groups (schedule.py `Ask.whole`). "What's next?" is neither: it is one thing.
+WALK_THROUGH = ["What does my day look like?", "run me through my day", "walk me through my day", "brief me", "what's my day", "give me the rundown",
+                "What do I have today?", "what have I got today", "Hey Atlas, what does my day look like today?", "how's my day looking?",
+                "what's the plan for today?", "give me a rundown of my day"]
+CASUAL_DAY = ["what's on today?", "anything today?", "what is on today", "anything on today?"]
+CASUAL_CALENDAR = ["what's on my calendar?", "what's on my calendar today?", "do I have anything this afternoon?", "what's coming up?"]
 DONE_FULL = "Today I've planned your day and reminded you twice. I've also answered six questions. What else can I do for you?"
 
 
@@ -96,7 +110,8 @@ def test_campus_listings_are_on_campus_never_yours_and_never_make_you_busy():
     assert asyncio.run(qa.ask("am I busy at 3?")).text == "No, you're free at 3 this afternoon. There's Theatre UCF Open House on campus then if you want it."
     assert asyncio.run(qa.ask("What's next?")).text == "Nothing of yours is next. On campus there's U Can Finish Race at 7:30."
     assert asyncio.run(qa.ask("What does my day look like?")).text == (
-        "Nothing of yours is on today. There are five things on campus if you want them. Want me to plan your day?")
+        "Nothing of yours is on today. There are five things on campus, like U Can Finish Race at 7:30 and Theatre UCF Open House at 11. "
+        "Want me to plan your day?")
     assert rt.seen == []  # all from the data
     for question in ("What's on my calendar today?", "Am I free at 3?", "What's next?", "What does my day look like?", "do I have anything today?"):
         assert not re.search(r"\byou(?:'ve| have) got\b|\bNext up\b|^No\b", asyncio.run(qa.ask(question)).text), question
@@ -178,33 +193,103 @@ def test_a_genuine_camera_question_about_today_stays_with_the_cameras(question):
 
 # --- (3) a day rundown is the whole day: own events, the plan's blocks, what is due, then the listings ---
 
-@pytest.mark.parametrize("question", ["What does my day look like?", "what's my day", "What do I have today?", "run me through my day"])
-def test_the_rundown_is_the_whole_day_in_time_order_from_now(question):
+@pytest.mark.parametrize("question", WALK_THROUGH)
+def test_a_walk_through_says_the_whole_day_by_part_of_the_day_with_no_cap(question):
+    qa, rt = the_box(CAMPUS + DAY + [HW], plan=PLAN, runtime=Recorder("You have a lot on."))
+    a = asyncio.run(qa.ask(question))
+    said = a.text
+    assert said == WHOLE_DAY and rt.seen == []
+    assert all(thing in said for thing in OWN)  # every one of the six things that are theirs: nothing dropped, nothing offered "later"
+    assert "Want the rest" not in said and said.endswith("should I change something?")  # an offer about the plan instead
+    assert [said.index(t) for t in OWN] == sorted(said.index(t) for t in OWN)  # one order: the clock's
+    assert said.index("This morning") < said.index("This afternoon") < said.index("Tonight") < said.index("is due") < said.index("on campus")
+    assert not RECORD.search(said) and "U Can Finish Race" not in said  # no list read out; 7:30 is behind us at 9
+    # the campus things stay capped (they are not theirs): how many, and two of them
+    assert sum(1 for i in CAMPUS if i.title.split(": ")[-1] in said) == 2 and "five things on campus" in said
+    assert qa.talk.rest is None  # nothing was held back, so a later "yes" is just a yes
+    assert len(a.citations) == 10  # the items behind it are still cited
+
+
+@pytest.mark.parametrize("question", CASUAL_DAY)
+def test_a_casual_question_about_the_same_day_is_capped_with_an_offer_of_the_rest(question):
     qa, rt = the_box(CAMPUS + DAY + [HW], plan=PLAN, runtime=Recorder("You have a lot on."))
     said = ask(qa, question)
-    assert said == WHOLE_DAY and rt.seen == []
-    assert len(sentences(said)) <= 4 and not RECORD.search(said)  # three sentences and the offer
-    named = sum(1 for t in ("study block", "lecture at", "lunch", "check-in", "Dinner with Maya", "HW 4", "Race", "Open House", "Mixer") if t in said)
-    assert named == 3  # the first two things and the first thing due; the listings are only counted
-    assert "U Can Finish Race" not in said  # 7:30 is behind us at 9: from now on
-    rest = ask(qa, "yes")
+    assert said == SHORT_DAY and rt.seen == []
+    assert sum(1 for thing in OWN if thing in said) == 2 and len(sentences(said)) <= 4  # two things, the first due, then the offer
+    rest = ask(qa, "yes")  # and the rest is all of it
     assert rest == ("You've got a study block at 9:15, your COP 4533 lecture at 10:40, lunch at noon, your PHY 2049 lecture at 2, "
                     "the mentor check-in at 4:30 PM, then Dinner with Maya at 7 tonight. Leave by 10:30 for your COP 4533 lecture. "
                     "HW 4: linked lists is due today at 11:59 PM. On campus there's Theatre UCF Open House at 11, Dungeons & Dynos at noon, "
                     "UCF Women's Soccer vs. Oklahoma State at 1, Graduate School Mixer at 3, then Board game night at 8 tonight.")
-    assert rest.index("study block") < rest.index("COP 4533 lecture at") < rest.index("lunch") < rest.index("PHY 2049")  # one order: the clock's
 
 
-def test_the_rundown_is_read_live_every_time_never_a_kept_string():
+@pytest.mark.parametrize("question", CASUAL_CALENDAR)
+def test_a_narrow_calendar_question_stays_short(question):
+    qa, _ = the_box(CAMPUS + DAY + [HW], plan=PLAN)
+    said = ask(qa, question)
+    assert len(sentences(said)) <= 3 and sum(1 for t in ("lecture at", "check-in", "Dinner", "study block", "lunch") if t in said) <= 3
+    assert "Big day" not in said and "This morning" not in said
+    qa, _ = the_box(DAY)
+    assert ask(qa, "What's next?") == "Next up is your COP 4533 lecture at 10:40."  # one thing, always
+
+
+def test_only_an_absurd_day_is_shortened_and_never_by_dropping_a_commitment():
+    events = [item(f"m{h}", f"Meeting {chr(65 + h - 9)}", h, 30) for h in range(9, 19)]  # ten meetings of their own
+    blocks = [{"kind": "study", "title": "a short study block", "start": NOW + timedelta(hours=h, minutes=5), "end": NOW + timedelta(hours=h, minutes=25)}
+              for h in (1, 2, 4, 5)]
+    qa, _ = the_box(events, plan=blocks)  # fourteen things: past the ceiling
+    said = ask(qa, "run me through my day")
+    assert all(f"Meeting {chr(65 + i)}" in said for i in range(10))  # every commitment is still named
+    assert "study block" not in said and said.count("plan blocks in between") == 2  # the small ones are counted, not listed
+    assert "with two plan blocks in between" in said and "Want the rest" not in said
+    qa, _ = the_box(events[:8], plan=blocks)  # twelve: all of it, blocks too
+    assert ask(qa, "run me through my day").count("a short study block") == 4
+
+
+def test_the_walk_through_is_read_live_every_time_never_a_kept_string():
     plan = list(PLAN)
     qa, _ = the_box([DAY[0]], plan=plan)
-    assert ask(qa, "what does my day look like?") == "You've got a study block at 9:15, your COP 4533 lecture at 10:40, then lunch at noon. Leave by 10:30 for your COP 4533 lecture."
+    assert ask(qa, "what does my day look like?") == ("This morning you've got a study block at 9:15, then your COP 4533 lecture at 10:40. "
+                                                      "Leave by 10:30 for that one. This afternoon it's lunch at noon. Does that look right, or should I change something?")
     plan[:] = [{"kind": "study", "title": "a long study block", "start": NOW + timedelta(hours=2), "end": NOW + timedelta(hours=4)}]  # a re-plan
-    assert ask(qa, "what does my day look like?") == "You've got your COP 4533 lecture at 10:40, then a long study block at 11."
+    assert ask(qa, "what does my day look like?") == ("This morning you've got your COP 4533 lecture at 10:40, then a long study block at 11. "
+                                                      "Does that look right, or should I change something?")
     qa.day_plan = qa.talk.day_plan = lambda: None  # no plan any more, and a port that fails must not break the answer
-    assert ask(qa, "what does my day look like?") == "You've got your COP 4533 lecture at 10:40."
+    assert ask(qa, "what does my day look like?") == "This morning you've got your COP 4533 lecture at 10:40. Want me to plan your day?"
     qa.day_plan = qa.talk.day_plan = lambda: 1 / 0
-    assert ask(qa, "what does my day look like?") == "You've got your COP 4533 lecture at 10:40."
+    assert ask(qa, "what does my day look like?") == "This morning you've got your COP 4533 lecture at 10:40. Want me to plan your day?"
+
+
+def test_yes_to_want_me_to_plan_your_day_starts_the_day_loops_own_plan_and_its_card():
+    qa, _ = the_box([])
+    assert ask(qa, "what does my day look like?") == "Nothing of yours is on today. Want me to plan your day?"
+    assert qa.plans_started == []
+    assert ask(qa, "yes") == "Okay, I've drafted a plan for today. Have a look on Today's Plan; nothing goes on your calendar until you approve it."
+    assert qa.plans_started == [NOW]  # the gateway's port: DayLoop.planner.plan, which proposes the plan and its approval card
+    assert ask(qa, "yes") != ask(qa, "what does my day look like?") and qa.plans_started == [NOW]  # a later "yes" is just a yes
+    ask(qa, "what does my day look like?")
+    ask(qa, "tell me a joke")
+    ask(qa, "yes")
+    assert qa.plans_started == [NOW]  # the offer does not outlive the next thing said
+    ask(qa, "what does my day look like?")
+    qa.clock = qa.talk.clock = lambda: NOW + timedelta(minutes=10)
+    ask(qa, "yes")
+    assert qa.plans_started == [NOW]  # nor a long silence
+
+    async def plan_day():  # the real port is async (it publishes on the bus)
+        qa.plans_started.append("async")
+
+    qa, _ = the_box([])
+    qa.plans_started, qa.talk.plan_day = [], plan_day
+    ask(qa, "what do I have today?")
+    assert ask(qa, "sure") .startswith("Okay, I've drafted a plan") and qa.plans_started == ["async"]
+    # a box whose conversation cannot start a plan never offers one: the line is an offer that works
+    qa, _ = the_box([])
+    qa.talk.plan_day = None
+    assert ask(qa, "what does my day look like?") == "Nothing of yours is on today. I can plan it with you on Today's Plan."
+    qa.talk.plan_day = lambda: 1 / 0  # and a plan that fails to start says so
+    ask(qa, "what does my day look like?")
+    assert ask(qa, "yes") == "I couldn't start a plan just now. I can plan it with you on Today's Plan."
 
 
 def test_with_no_plan_and_nothing_of_their_own_it_says_so_and_offers_to_plan():
@@ -255,4 +340,4 @@ def test_the_facts_say_so_when_a_kind_is_empty_and_small_talk_still_gets_none_of
 
 def test_with_no_model_an_unrecognised_day_question_still_gets_the_live_rundown():
     qa, _ = the_box(CAMPUS + DAY + [HW], plan=PLAN)  # the fake runtime on a laptop
-    assert ask(qa, "is today going to be rough?") == WHOLE_DAY
+    assert ask(qa, "is today going to be rough?") == SHORT_DAY
