@@ -35,7 +35,8 @@ scenes:
   lines:
   - who: N
     text: 'Inside: a camera, a speaker, and a Jetson that runs the vision, the memory, and an agent that acts for you.'
-  lead_s: 2.0
+    hold: 1.0
+  lead_s: 2.4
 - id: morning
   title: Good morning
   beat: 2

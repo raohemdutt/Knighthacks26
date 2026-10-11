@@ -152,7 +152,7 @@ export function buildRoom(scene, humanGltf) {
   const FACE_DESK = -Math.PI / 2;
   // Where the acts happen (room coordinates = world, the set does not move).
   const SPOTS = {
-    seat: [CHAIR[0] + 0.4, F, CHAIR[2]],          // the root of the seated pose, in the chair
+    seat: [CHAIR[0] - 1.7, F, CHAIR[2]],          // the root of the seated pose, forward on the seat (at +0.4 the legs went through the chair)
     standDesk: [CHAIR[0] - 2.0, F, CHAIR[2]],     // standing in front of the chair, back to it, facing the desk
     bedEdge: [BED_X - 4.3, F + 0.6, 7.5],          // sitting on the mattress's edge (it starts at BED_X - 5.1), feet on the floor
     bedLie: [BED_X - 0.2, F + 7.2, 17.8],          // lying on the back, head on the pillow (toward -z), feet at the foot end

@@ -1,9 +1,9 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
-  <head><meta charset="UTF-8" /></head>
+  <head><meta charset="UTF-8"></head>
   <body>
     <template>
-      <link rel="stylesheet" href="world/soft.css" />
+      <link rel="stylesheet" href="world/soft.css">
       <style>
         #root { position: absolute; inset: 0; font-family: var(--font); overflow: hidden; }
         .learn-row { position: absolute; left: 0; right: 0; top: 150px; display: flex; justify-content: center; pointer-events: none; }
@@ -32,20 +32,20 @@
         #learn-tool .v { font-size: 64px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; line-height: 1.1; white-space: nowrap; min-height: 72px; }
         #learn-caret { display: inline-block; width: 5px; height: 60px; margin-left: 6px; background: var(--accent); vertical-align: -6px; border-radius: 3px; }
       </style>
-      <div id="root" data-composition-id="learn" data-width="1920" data-height="1080">
-        <div id="learn-chapter" class="soft-raised soft-muted">It learns</div>
+      <div data-hf-id="hf-zw33" id="root" data-composition-id="learn" data-width="1920" data-height="1080">
+        <div data-hf-id="hf-6ejt" id="learn-chapter" class="soft-raised soft-muted">It learns</div>
 
-        <div id="learn-qwen" class="soft-raised"><div class="k">The model</div><div class="v">Qwen<span> · on the Jetson</span></div></div>
+        <div data-hf-id="hf-bc71" id="learn-qwen" class="soft-raised"><div data-hf-id="hf-jxnb" class="k">The model</div><div data-hf-id="hf-dfs5" class="v">Qwen<span data-hf-id="hf-fw89"> · on the Jetson</span></div></div>
 
-        <div id="learn-words">
-          <div class="learn-word soft-raised" id="learn-word-fast"><i></i>Fast</div>
-          <div class="learn-word soft-raised" id="learn-word-accurate"><i></i>Accurate</div>
-          <div class="learn-word soft-raised" id="learn-word-private"><i></i>Private</div>
+        <div data-hf-id="hf-elrx" id="learn-words">
+          <div data-hf-id="hf-7aoo" class="learn-word soft-raised" id="learn-word-fast"><i data-hf-id="hf-wt6k"></i>Fast</div>
+          <div data-hf-id="hf-saus" class="learn-word soft-raised" id="learn-word-accurate"><i data-hf-id="hf-zeb8"></i>Accurate</div>
+          <div data-hf-id="hf-j9iw" class="learn-word soft-raised" id="learn-word-private"><i data-hf-id="hf-y7e5"></i>Private</div>
         </div>
 
-        <div id="learn-score" class="soft-raised"><div class="n"><b id="learn-score-n">0</b><span> / 42</span></div><div class="s">demo questions</div></div>
+        <div data-hf-id="hf-8a72" id="learn-score" class="soft-raised"><div data-hf-id="hf-cmxa" class="n"><b data-hf-id="hf-nlik" id="learn-score-n">0</b><span data-hf-id="hf-pykk"> / 42</span></div><div data-hf-id="hf-o9at" class="s">demo questions</div></div>
 
-        <div class="learn-row" id="learn-tool-row"><div id="learn-tool" class="soft-raised"><div class="k"><i></i>New tool</div><div class="v"><span id="learn-tool-text"></span><span id="learn-caret"></span></div></div></div>
+        <div data-hf-id="hf-no8x" class="learn-row" id="learn-tool-row"><div data-hf-id="hf-bhby" id="learn-tool" class="soft-raised"><div data-hf-id="hf-lj2r" class="k"><i data-hf-id="hf-ylp6"></i>New tool</div><div data-hf-id="hf-mxpy" class="v"><span data-hf-id="hf-21cd" id="learn-tool-text"></span><span data-hf-id="hf-s1li" id="learn-caret"></span></div></div></div>
       </div>
       <script>
         (function () {
