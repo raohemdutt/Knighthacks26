@@ -39,7 +39,7 @@ def _kernel() -> Any:
         import triton.language as tl
 
         @triton.jit
-        def scan(q_ptr, k_ptr, v_ptr, o_ptr, T, NC, HV: tl.constexpr, K: tl.constexpr, V: tl.constexpr,
+        def scan(q_ptr, k_ptr, v_ptr, o_ptr, T, NC: tl.constexpr, HV: tl.constexpr, K: tl.constexpr, V: tl.constexpr,
                  BV: tl.constexpr, BT: tl.constexpr):
             seq_head = tl.program_id(0)
             vt = tl.program_id(1)

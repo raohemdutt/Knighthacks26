@@ -39,15 +39,14 @@ def _kernel() -> Any:
 
         @triton.jit
         def lora_a(x_ptr, a_ptr, out_ptr, M, K, stride_xm, stride_ak, stride_om, SPLIT_K: tl.constexpr,
-                   R: tl.constexpr, BLOCK_M: tl.constexpr, BLOCK_K: tl.constexpr):
+                   STEPS: tl.constexpr, R: tl.constexpr, BLOCK_M: tl.constexpr, BLOCK_K: tl.constexpr):
             pid_m = tl.program_id(0)
             pid_k = tl.program_id(1)
             rows = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
             cols = tl.arange(0, R)
             acc = tl.zeros((BLOCK_M, R), dtype=tl.float32)
-            span = tl.cdiv(K, SPLIT_K)
-            for k0 in range(pid_k * span, tl.minimum((pid_k + 1) * span, K), BLOCK_K):
-                ks = k0 + tl.arange(0, BLOCK_K)
+            for step in range(STEPS):  # STEPS blocks of BLOCK_K per split, the last ones masked past K
+                ks = (pid_k * STEPS + step) * BLOCK_K + tl.arange(0, BLOCK_K)
                 x = tl.load(x_ptr + rows[:, None] * stride_xm + ks[None, :],
                             mask=(rows[:, None] < M) & (ks[None, :] < K), other=0.0)
                 a = tl.load(a_ptr + ks[:, None] * stride_ak + cols[None, :], mask=ks[:, None] < K, other=0.0)
@@ -86,13 +85,14 @@ def measure(case: dict[str, Any], timer: Any) -> dict[str, Any]:
         kernel = _kernel()
         out = torch.zeros(m, r, device="cuda", dtype=torch.float32)
         grid = (-(-m // p["block_m"]), split)
+        steps = -(-(-(-k // p["block_k"])) // split)  # BLOCK_K blocks per split
         handle: dict[str, Any] = {}
 
         def step() -> None:
             if split > 1:
                 out.zero_()
             handle["k"] = kernel[grid](x, a, out, m, k, x.stride(0), a.stride(0), out.stride(0), SPLIT_K=split,
-                                       R=r, BLOCK_M=p["block_m"], BLOCK_K=p["block_k"], num_warps=p["num_warps"])
+                                       STEPS=steps, R=r, BLOCK_M=p["block_m"], BLOCK_K=p["block_k"], num_warps=p["num_warps"])
 
         first = timer.first(step)
         error = (out - reference).abs().max().item()
