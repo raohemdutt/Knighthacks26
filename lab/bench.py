@@ -456,12 +456,16 @@ def run_request(endpoint: Any, body: Mapping[str, Any], *, role: str, stream: in
 
 def run_batch(endpoint: Any, prompts: PromptSet, settings: Settings, *, batch: int, per_stream: int, role: str,
               clock: WallClock, tag: str, timeout_s: float = DEFAULT_REQUEST_TIMEOUT_S,
-              grace_s: float = 60.0) -> list[RequestResult]:
+              grace_s: float = 60.0, stop_after: Callable[[RequestResult], bool] | None = None
+              ) -> list[RequestResult]:
     """batch concurrent streams, each sending per_stream requests one after another; stream s starts at prompt s.
-    Every wait is bounded: streams not finished after grace_s plus per_stream x timeout_s raise BenchError."""
+    Every wait is bounded: streams not finished after grace_s plus per_stream x timeout_s raise BenchError.
+    stop_after, when given, is asked after every finished request; True sends no further request on any stream
+    (lab/optimize_settings.py stops a hopeless trial after its first request), so fewer results come back."""
     results: list[RequestResult] = []
     lock = threading.Lock()
     barrier = threading.Barrier(batch)
+    stopped = threading.Event()
 
     def stream(s: int) -> None:
         try:
@@ -469,6 +473,8 @@ def run_batch(endpoint: Any, prompts: PromptSet, settings: Settings, *, batch: i
         except threading.BrokenBarrierError:
             return
         for k in range(per_stream):
+            if stopped.is_set():
+                return
             index = s + k
             nonce = f"{tag}-{role}-{s}-{k}-{uuid.uuid4().hex[:8]}" if settings.nonce_on else None
             body = prompts.request_body(index, settings, nonce)
@@ -476,6 +482,8 @@ def run_batch(endpoint: Any, prompts: PromptSet, settings: Settings, *, batch: i
                               clock=clock)
             with lock:
                 results.append(out)
+            if stop_after is not None and stop_after(out):
+                stopped.set()
 
     threads = [threading.Thread(target=stream, args=(s,), daemon=True) for s in range(batch)]
     for t in threads:
@@ -487,7 +495,7 @@ def run_batch(endpoint: Any, prompts: PromptSet, settings: Settings, *, batch: i
     stuck = sum(1 for t in threads if t.is_alive())
     if stuck:
         raise BenchError(f"{stuck} of {batch} {role} streams had not finished after {limit:g} s")
-    if len(results) != batch * per_stream:
+    if len(results) != batch * per_stream and not stopped.is_set():
         raise BenchError(f"{batch * per_stream - len(results)} {role} requests never started (a stream did not join)")
     return sorted(results, key=lambda r: (r.stream, r.index))
 
@@ -1177,6 +1185,7 @@ class Config:
     serve_log: str | None = None        # attach: its log, when it is on this host
     band_gap: float = DEFAULT_BAND_GAP
     record: bool = True
+    stop_measuring: Callable[[RequestResult], bool] | None = None   # see run_batch's stop_after; measured requests only
 
     def settings(self) -> Settings:
         return Settings(model=self.model, max_tokens=self.max_tokens, thinking=self.thinking,
@@ -1345,10 +1354,12 @@ class Session:
         tag = row["run_id"]
         warm: list[RequestResult] = []
 
-        def batch(size: int, per_stream: int, role: str) -> list[RequestResult]:
+        def batch(size: int, per_stream: int, role: str,
+                  stop_after: Callable[[RequestResult], bool] | None = None) -> list[RequestResult]:
             try:
                 return run_batch(endpoint, self.prompts, self.settings, batch=size, per_stream=per_stream, role=role,
-                                 clock=self.clock, tag=tag, timeout_s=c.request_timeout_s, grace_s=c.stream_grace_s)
+                                 clock=self.clock, tag=tag, timeout_s=c.request_timeout_s, grace_s=c.stream_grace_s,
+                                 stop_after=stop_after)
             except BenchError as exc:
                 row["warmup"] = {"requests": len(warm), "discarded": True, "items": [r.as_dict() for r in warm]}
                 row["outcome"], row["reason"] = "fail", str(exc)
@@ -1375,7 +1386,7 @@ class Session:
         row["warmup"] = {"requests": len(warm), "discarded": True, "items": [r.as_dict() for r in warm]}
         if probe_now:
             row["probe"] = self.run_probe(endpoint, tag)
-        measured = batch(pb.size, self.per_stream, "measure")
+        measured = batch(pb.size, self.per_stream, "measure", c.stop_measuring)
         row["requests"] = [r.as_dict() for r in measured]
         good = [r for r in measured if r.error is None and r.first is not None and r.last is not None]
         errors = [r.error for r in measured if r.error]
