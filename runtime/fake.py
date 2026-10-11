@@ -26,7 +26,7 @@ class FakeRuntime:
         self.calls.append(("detect_track", None))
         return []
 
-    def detect_open(self, jpeg: bytes, labels: list[str]) -> list[Detection]:
+    def detect_open(self, jpeg: bytes, labels: list[str], priority: Priority = "caption") -> list[Detection]:
         self.calls.append(("detect_open", labels))
         return [d for d in self.detections if d.label in labels]
 
@@ -38,15 +38,15 @@ class FakeRuntime:
         self.calls.append(("embed_image", None))
         return _vector(jpeg)
 
-    def caption(self, jpeg: bytes, prompt: str = "Describe the scene in one sentence.") -> str:
+    def caption(self, jpeg: bytes, prompt: str = "Describe the scene in one sentence.", priority: Priority = "caption") -> str:
         self.calls.append(("caption", prompt))
         return self.caption_text
 
-    def find_objects(self, jpeg: bytes, items: list[str] | None = None) -> list[ObjectHit]:
+    def find_objects(self, jpeg: bytes, items: list[str] | None = None, priority: Priority = "caption") -> list[ObjectHit]:
         self.calls.append(("find_objects", items))
         return [o for o in self.objects if items is None or o.label in items]
 
-    def summarize(self, captions: list[str]) -> str:
+    def summarize(self, captions: list[str], priority: Priority = "summary") -> str:
         self.calls.append(("summarize", captions))
         return " ".join(captions[:2])
 
