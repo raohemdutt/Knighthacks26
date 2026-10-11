@@ -16,6 +16,9 @@ product() { # product <file in products/> <marker>: the .sha256 first, then the 
   ( cd $OUT/products && echo "$(sha256sum "$1" | cut -d' ' -f1) $(stat -c %s "$1") $1" > "$1.sha256" ) && echo "$1" > "$OUT/markers/$2"
 }
 stamp job_start; status clone
+# Colab ships torchao 0.10.0; PEFT 0.21.2 refuses any torchao below 0.16 the moment it puts LoRA on a model, and the
+# trainer uses none. Taken out here as well as in colab_setup.sh, so a session set up before this line still runs.
+pip uninstall -y -q torchao > /dev/null 2>&1; python3 -c "import importlib.util as u; print('torchao', 'present' if u.find_spec('torchao') else 'absent')" >> $OUT/versions.txt
 rm -rf $REPO
 git clone -q -b "$BRANCH" /content/l16v2.bundle $REPO || { echo clone > $OUT/markers/FAILED_clone; exit 1; }
 git -C $REPO log --format='repo %H %s' -1 >> $OUT/versions.txt

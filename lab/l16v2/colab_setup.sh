@@ -32,6 +32,9 @@ for name in ("torch", "torchvision", "torchaudio", "triton"):
 PY
 pip install -q -r /content/requirements-train.txt -c $OUT/constraints.txt pyyaml jsonschema httpx > $OUT/pip.log 2>&1
 echo "pip rc $?" >> $OUT/pip.log
+# Colab ships torchao 0.10.0, which PEFT 0.21.2 refuses (it wants 0.16 or newer) when it puts LoRA on a model; the
+# trainer uses none, so it is removed rather than upgraded.
+pip uninstall -y -q torchao >> $OUT/pip.log 2>&1
 python3 - >> $OUT/versions.txt 2>&1 <<'PY'
 import importlib.metadata as m
 for name in ("torch", "triton", "transformers", "peft", "trl", "accelerate", "datasets", "pydantic", "tokenizers"):
