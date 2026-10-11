@@ -3136,7 +3136,9 @@
      "setup": "text prompt, thinking off"
     }
    ],
+   "compared_on": null,
    "differences": [],
+   "unnamed": [],
    "not_measured": [
     "llama.cpp"
    ],

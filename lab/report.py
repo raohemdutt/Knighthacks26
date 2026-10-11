@@ -228,7 +228,7 @@ def build_label(c: dict[str, Any]) -> str:
         return "engine not recorded"
     bits = [ENGINE_NAMES.get(p["family"], p["family"])]
     if p["backend"]:
-        bits.append(p["backend"])
+        bits.append({"vulkan": "Vulkan", "rocm": "ROCm"}.get(p["backend"].lower(), p["backend"]))
     if p["commit"] or p["version"]:
         bits.append(p["commit"] or p["version"])
     label = " ".join(bits)
@@ -357,8 +357,9 @@ def awaited(root: Path, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         files = sorted(_rel(root, p) for p in (root / DATA_DIR).glob(a["glob"])) if a.get("glob") else []
         files += sorted(_rel(root, p) for p in root.glob(a["path"])) if a.get("path") else []
         matched = [r["_line"] for r in here if a.get("rows") and a["rows"](r["conditions"])]
-        evidence = ", ".join(files) if files else (f"{len(matched)} rows in {METRICS} (from line {matched[0]})"
-                                                   if matched else None)
+        evidence = ", ".join(files) if files else (
+            f"{len(matched)} {'row' if len(matched) == 1 else 'rows'} in {METRICS} (from line {matched[0]})"
+            if matched else None)
         out.append({"task": a["task"], "what": a["what"], "where": a["where"], "sections": a["sections"],
                     "status": a["status"], "as_of": STILL_COMING_AS_OF, "file_present": bool(files),
                     "landed": bool(files or matched), "evidence": evidence})
@@ -589,7 +590,8 @@ def section_frontier(root: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
                         f"{more_work[0]['value']:.0f} times as many words")
         reading += "."
         if len(here) > 1 and len(ratios) > 1:
-            reading += f" A second sweep, on {here[1]['node']}, gives {ratios[1]['value']:g} times."
+            reading += (f" A second sweep, on {here[1]['node']}, gives {ratios[1]['value']:g} times at "
+                        f"{here[1]['points'][-1]['batch']:g} streams.")
     else:
         reading = "Not measured yet: no joules-per-token sweep across stream counts from the Strix Halo is on main."
     return {"id": "frontier", "title": "The batching frontier: joules per token against concurrent streams",
@@ -640,7 +642,7 @@ def section_step(root: Path) -> dict[str, Any]:
                       f"share of a decode step in {name}, batch {first['batch']}",
                       round(100 * biggest["value"] / first["step_ms"], 1), "%",
                       "100 x the bucket's ms per step / the step's ms", [biggest], gpu=gpu, chip=chip)
-        reading = (f"At batch {first['batch']}, one decode step takes {first['step_ms']:.1f} ms and the biggest slice, "
+        reading = (f"At batch {first['batch']}, one decode step takes {first['step_ms']:,.0f} ms and the biggest slice, "
                    f"{top['value']:.0f}%, is {name}: that is where a faster kernel pays off first.")
     else:
         reading = f"{rel} is committed but gives no step breakdown."
@@ -655,22 +657,34 @@ def section_engines(root: Path, ceiling: dict[str, Any]) -> dict[str, Any]:
     families: dict[str, list[dict[str, Any]]] = {}
     for a in here:
         families.setdefault(engine_family(a["conditions"]), []).append(a)
-    best = {name: max(items, key=lambda a: a["value"]) for name, items in families.items()}
-    names = sorted(best)
+    unnamed = families.pop("not recorded", [])  # a row that names no engine cannot stand for one
+    # Like with like: when two or more engines have a row for the same prompt, each engine's bar is its best row
+    # under that prompt; an engine with no such row keeps its best row and the difference is said aloud.
+    asked: dict[str, set[str]] = {}
+    for name, items in families.items():
+        for a in items:
+            asked.setdefault(asked_of(a["conditions"]) or "", set()).add(name)
+    shared = max(asked, key=lambda k: (len(asked[k]), k != "", k)) if asked else None
+    if shared is None or len(asked[shared]) < 2:
+        shared = None
+    best = {}
+    for name, items in families.items():
+        same = [a for a in items if shared is not None and (asked_of(a["conditions"]) or "") == shared]
+        best[name] = max(same or items, key=lambda a: a["value"])
+    names = sorted(best, key=lambda n: (-best[n]["value"], n))
     differences = []
     if len(names) >= 2:  # were the engines asked the same thing? say so when the rows differ
         for what, read in (("prompts", asked_of), ("tokens out", lambda c: c.get("max_tokens")),
                            ("thinking", lambda c: c.get("thinking")),
-                           ("weights", lambda c: c.get("quantization") or c.get("checkpoint"))):
+                           ("weights", lambda c: c.get("quantization") or c.get("checkpoint") or c.get("model"))):
             seen = {name: read(best[name]["conditions"]) for name in names}
             if len({json.dumps(v, sort_keys=True, default=str) for v in seen.values()}) > 1:
                 differences.append({"what": what, "by_engine": {n: (v if v is not None else "not recorded")
                                                                  for n, v in seen.items()}})
-        order = sorted(best.values(), key=lambda a: -a["value"])
-        top, low = engine_family(order[0]["conditions"]), engine_family(order[-1]["conditions"])
-        reading = (f"On the same chip, {ENGINE_NAMES.get(top, top)} decodes {order[0]['value']:.2f} tokens a second "
-                   f"against {order[-1]['value']:.2f} for {ENGINE_NAMES.get(low, low)}"
-                   + ("; their rows differ in " + ", ".join(d["what"] for d in differences)
+        top, low = names[0], names[-1]
+        reading = (f"On the same chip, {ENGINE_NAMES.get(top, top)} decodes {best[top]['value']:.2f} tokens a second "
+                   f"against {best[low]['value']:.2f} for {ENGINE_NAMES.get(low, low)}"
+                   + ("; their rows differ in " + " and ".join(d["what"] for d in differences)
                       + ", so read the gap with that in mind." if differences else "."))
         state = "measured"
     elif names:
@@ -688,7 +702,8 @@ def section_engines(root: Path, ceiling: dict[str, Any]) -> dict[str, Any]:
             "engines": [{"engine": n, "name": ENGINE_NAMES.get(n, n), "best": best[n], "rows": families[n],
                          "builds": sorted({build_label(a["conditions"]) for a in families[n]}),
                          "setup": setup_of(best[n]["conditions"])} for n in names],
-            "differences": differences, "not_measured": [e for e in EXPECTED_ENGINES if e not in best],
+            "compared_on": shared or None, "differences": differences, "unnamed": unnamed,
+            "not_measured": [e for e in EXPECTED_ENGINES if e not in best],
             "priors": ceiling["priors"], "other_chip": ceiling["other_chip"], "awaiting": _awaiting("engines")}
 
 
@@ -1050,7 +1065,7 @@ def svg_xy(series: list[dict[str, Any]], *, xlog: bool, xname: str, yname: str, 
             out.append(f'<circle cx="{px(x):.1f}" cy="{py(y):.1f}" r="4" class="dot {s["fill"]}">'
                        f"<title>{x:g} {esc(xname)}: {esc(yfmt(y))}</title></circle>")
     (x0, y0), (x1, y1) = series[0]["points"][0], series[0]["points"][-1]
-    out.append(f'<text x="{px(x0) + 9:.1f}" y="{py(y0) + 4:.1f}" class="val">{esc(yfmt(y0))}</text>')
+    out.append(f'<text x="{px(x0) + 3:.1f}" y="{py(y0) - 9:.1f}" class="val">{esc(yfmt(y0))}</text>')
     out.append(f'<text x="{px(x1):.1f}" y="{py(y1) - 10:.1f}" text-anchor="end" class="val">{esc(yfmt(y1))}</text>')
     if note:
         out.append(f'<text x="{W - right}" y="{top + 12}" text-anchor="end" class="val">{esc(note[0])}</text>')
@@ -1178,7 +1193,7 @@ border-top:1px solid var(--line);align-items:baseline}.nums li:first-child{borde
 .sw.c1{background:var(--s1)}.sw.c2{background:var(--s2)}.sw.c3{background:var(--s3)}.sw.c4{background:var(--s4)}
 .sw.c5{background:var(--s5)}.sw.cg{background:var(--gray)}
 .apart{border:1px dashed var(--gray);border-radius:10px;padding:12px;margin-top:14px}
-.apart h3{color:var(--ink2)}.apart details{border-top:0;margin-top:6px;padding-top:0}
+.apart h3{color:var(--ink2)}.apart details{border-top:0;margin-top:6px;padding-top:0}.apart .chart{max-width:440px}
 table{border-collapse:collapse;width:100%;font-size:.85rem}
 td,th{border-bottom:1px solid var(--line);padding:6px 10px 6px 0;text-align:left;vertical-align:top}
 td.num{white-space:nowrap;font-variant-numeric:tabular-nums}.wrap{overflow-x:auto}
@@ -1478,8 +1493,8 @@ def render_html(pack: dict[str, Any], root: Path = REPO, page_dir: Path | None =
     bars = []
     if s["engines"] or s["not_measured"]:
         bars.append({"header": "Measured on the Strix Halo, best batch-1 row"})
-        bars += [{"label": e["name"], "sub": e["best"]["label"], "value": e["best"]["value"], "cls": "c1"}
-                 for e in s["engines"]]
+        bars += [{"label": e["name"], "sub": build_label(e["best"]["conditions"]), "value": e["best"]["value"],
+                  "cls": "c1"} for e in s["engines"]]
         bars += [{"label": ENGINE_NAMES.get(n, n), "value": None, "cls": "c1"} for n in s["not_measured"]]
     if s["priors"]:
         bars.append({"header": "Public prior: other people's runs, not ours"})
@@ -1494,7 +1509,8 @@ def render_html(pack: dict[str, Any], root: Path = REPO, page_dir: Path | None =
     if len(s["engines"]) >= 2:
         order = sorted(s["engines"], key=lambda e: -e["best"]["value"])
         key = page.key(f"{fmt(order[0]['best']['value'])} tok/s", f"{order[0]['name']}, the fastest engine measured "
-                       "on this chip at batch 1", order[0]["best"])
+                       "on this chip at batch 1" + (f", on the {s['compared_on']}" if s["compared_on"] else ""),
+                       order[0]["best"])
         more += notes([f"The rows differ in {d['what']}: "
                        + "; ".join(f"{ENGINE_NAMES.get(k, k)} {v}" for k, v in d["by_engine"].items()) + "."
                        for d in s["differences"]])
@@ -1507,7 +1523,8 @@ def render_html(pack: dict[str, Any], root: Path = REPO, page_dir: Path | None =
                       + ": no committed row from the Strix Halo for this engine.")
     more += page.coming(s)
     body.append(_body(viz if bars else "", key, more))
-    body.append(page.nums([n for e in s["engines"] for n in e["rows"]], "Every engine row on this chip"))
+    body.append(page.nums([*(n for e in s["engines"] for n in e["rows"]), *s["unnamed"]],
+                          "Every batch-1 decode row on this chip, by engine"))
     body.append("</section>")
 
     # 5: the fine-tune run
@@ -1585,16 +1602,25 @@ def render_html(pack: dict[str, Any], root: Path = REPO, page_dir: Path | None =
 
 # --- the verb -----------------------------------------------------------------------------------------------------
 
-def write(root: Path = REPO, out: Path | None = None) -> dict[str, Any]:
+def write(root: Path = REPO, out: Path | None = None, check: bool = False) -> dict[str, Any]:
+    """Build both files and write them; with `check`, write nothing and say which of the files on disk a build
+    would change (the committed page is stale once new rows land, until the verb is run again)."""
     root = Path(root)
     out_dir = Path(out) if out else root / OUT_DIR
-    out_dir.mkdir(parents=True, exist_ok=True)
     pack = build_pack(root)
-    page = render_html(pack, root, out_dir)
-    (out_dir / PACK_NAME).write_text(json.dumps(pack, indent=1, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
-    (out_dir / HTML_NAME).write_text(page, encoding="utf-8", newline="\n")
-    return {"ok": True, "html": str(out_dir / HTML_NAME), "pack": str(out_dir / PACK_NAME),
-            "sections": {s["id"]: s["state"] for s in pack["sections"]}, "numbers": len(pack["numbers"])}
+    built = {PACK_NAME: json.dumps(pack, indent=1, ensure_ascii=False) + "\n",
+             HTML_NAME: render_html(pack, root, out_dir)}
+    answer = {"html": str(out_dir / HTML_NAME), "pack": str(out_dir / PACK_NAME),
+              "sections": {s["id"]: s["state"] for s in pack["sections"]}, "numbers": len(pack["numbers"]),
+              "still_coming": [a["task"] for a in pack["awaited"] if not a["landed"]]}
+    if check:
+        stale = [name for name, text in built.items() if not (out_dir / name).is_file()
+                 or (out_dir / name).read_bytes().replace(b"\r\n", b"\n") != text.encode("utf-8")]
+        return {"ok": not stale, "outcome": "stale" if stale else "current", "stale": stale, **answer}
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for name, text in built.items():
+        (out_dir / name).write_text(text, encoding="utf-8", newline="\n")
+    return {"ok": True, **answer}
 
 
 def main(argv: list[str] | None = None) -> dict[str, Any]:
@@ -1602,5 +1628,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     p = argparse.ArgumentParser(prog="python -m lab report", description=__doc__.splitlines()[0])
     p.add_argument("--root", default=str(REPO), help="the checkout to read (default: this one)")
     p.add_argument("--out", help=f"where to write (default: <root>/{OUT_DIR})")
+    p.add_argument("--check", action="store_true",
+                   help="write nothing: exit 1 when the files there differ from what a build would write now")
     args = p.parse_args(argv or [])
-    return write(Path(args.root), Path(args.out) if args.out else None)
+    return write(Path(args.root), Path(args.out) if args.out else None, check=args.check)

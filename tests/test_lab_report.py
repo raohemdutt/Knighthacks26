@@ -19,6 +19,7 @@ from lab import report
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = REPO_ROOT / "fixtures" / "lab" / "report"
+LANDED = REPO_ROOT / "fixtures" / "lab" / "report_landed"  # the same tree once every awaited run has landed
 EXTERNAL = re.compile(r"https?://|<script|<link|@import|url\(|<iframe|<img|<object|<embed", re.IGNORECASE)
 
 
@@ -150,3 +151,137 @@ def test_the_verb_is_registered_in_its_alphabetical_place(tmp_path):
     answer = json.loads(done.stdout.strip().splitlines()[-1])
     assert answer["ok"] and answer["sections"]["ceiling"] == "measured" and answer["sections"]["step"] == "empty"
     assert (tmp_path / report.HTML_NAME).is_file() and (tmp_path / report.PACK_NAME).is_file()
+
+
+def test_check_says_when_the_files_on_disk_are_stale(tmp_path):
+    out = tmp_path / "out"
+    first = report.write(FIXTURE, out, check=True)
+    assert first["ok"] is False and first["stale"] == [report.PACK_NAME, report.HTML_NAME] and not out.exists()
+    report.write(FIXTURE, out)
+    current = report.main(["--root", str(FIXTURE), "--out", str(out), "--check"])
+    assert current["ok"] is True and current["outcome"] == "current" and current["stale"] == []
+    (out / report.HTML_NAME).write_text("an older page", encoding="utf-8")
+    stale = report.main(["--root", str(FIXTURE), "--out", str(out), "--check"])
+    assert stale["ok"] is False and stale["stale"] == [report.HTML_NAME]
+    assert (out / report.HTML_NAME).read_text(encoding="utf-8") == "an older page"  # a check writes nothing
+
+
+def test_names_tell_builds_and_engines_apart():
+    first = {"engine": "vllm@b1388b1+lab/vllm-gfx1201.diff, 0.19.2+gfx1151"}
+    assert report.build_label(first) == "vLLM b1388b1 + gfx1201 patch"
+    attached = {"engine": "vllm", "engine_commit": "unavailable: attached through the hub proxy",
+                "patch_hash": "unavailable: attached through the hub proxy"}
+    assert report.build_label(attached) == "vLLM, build not recorded"
+    assert report.build_label({"engine": "vllm", "vllm": "0.31.0"}) == "vLLM 0.31.0"
+    newer = {"engine": "vllm", "engine_commit": "db9527a46", "patch_hash": {"vllm-main-gfx1151-platform.diff": "00"}}
+    assert report.build_label(newer) == "vLLM db9527a + main-gfx1151-platform patch"
+    # lab/bench.py spells the engine llamacpp and records llama-server's build line as its commit
+    llama = {"engine": "llamacpp", "engine_commit": "6500 (1a2b3c4d)", "backend": "vulkan"}
+    assert report.engine_family(llama) == "llama.cpp" and report.build_label(llama) == "llama.cpp Vulkan 1a2b3c4"
+    assert report.engine_family({"engine": "llama-server"}) == "llama.cpp"
+    assert report.engine_family({}) == "not recorded" and report.build_label({}) == "engine not recorded"
+    # a prompt set is named whether the row writes it as an object or as its id (the A100 rows write the id)
+    assert report.asked_of({"prompt_set": "bench-v1"}) == "bench-v1 prompt set"
+    assert report.asked_of({"prompt_set": {"id": "bench-v1"}}) == "bench-v1 prompt set"
+    assert report.asked_of({"prompt": "text"}) == "text prompt" and report.asked_of({}) is None
+
+
+def test_the_runs_still_coming_are_named_until_their_rows_land(tmp_path):
+    pack = report.build_pack(FIXTURE)
+    waiting = {a["task"]: a for a in pack["awaited"]}
+    assert set(waiting) == {"R60", "R58", "R53", "R52", "R47", "L16"}
+    assert not any(a["landed"] or a["evidence"] for a in waiting.values())
+    assert all(a["status"] and a["as_of"] == report.STILL_COMING_AS_OF for a in waiting.values())
+    page = report.render_html(pack, FIXTURE, tmp_path)
+    for sid, tasks in (("ceiling", ("R60", "R58", "R53")), ("frontier", ("R52",)), ("step", ("R47",)),
+                       ("engines", ("R60", "R58", "R53")), ("finetune", ("L16",))):
+        part = page.split(f'<section id="{sid}">')[1].split("</section>")[0]
+        assert "Still coming" in part and report.STILL_COMING_AS_OF in part
+        for task in tasks:
+            assert f"<b>{task}</b>" in part
+    landed = report.build_pack(LANDED)
+    assert all(a["landed"] and a["evidence"] for a in landed["awaited"])
+    assert {a["task"]: a["file_present"] for a in landed["awaited"]} == {
+        "R60": False, "R58": False, "R53": False, "R52": True, "R47": True, "L16": True}
+    assert "Still coming" not in report.render_html(landed, LANDED, tmp_path)
+
+
+def test_a_tree_where_every_run_has_landed_fills_every_section():
+    pack = report.build_pack(LANDED)
+    assert {s["id"]: s["state"] for s in pack["sections"]} == {
+        "ceiling": "measured", "frontier": "measured", "step": "measured", "engines": "measured",
+        "finetune": "measured", "dropped": "partial"}
+
+    ceiling = section(pack, "ceiling")  # one bar per build, oldest first, each named from its own row
+    assert [(b["build"], b["best"]["value"]) for b in ceiling["builds"]] == [
+        ("vLLM b1388b1 + gfx1201 patch", 2.5), ("vLLM db9527a + main-gfx1151-platform patch", 6.0),
+        ("vLLM b1388b1 + gfx1151 patch", 4.0), ("llama.cpp Vulkan 1a2b3c4", 9.0), ("engine not recorded", 2.6)]
+    assert ceiling["builds"][3]["share"]["value"] == 45.0 and "about 45%" in ceiling["reading"]
+
+    engines = section(pack, "engines")
+    assert [(e["engine"], e["best"]["value"]) for e in engines["engines"]] == [("llama.cpp", 9.0), ("vllm", 6.0)]
+    assert engines["not_measured"] == [] and engines["compared_on"] == "bench-v1 prompt set"
+    assert [d["what"] for d in engines["differences"]] == ["weights"]
+    assert [n["value"] for n in engines["unnamed"]] == [2.6]  # a row that names no engine stands for none
+    assert "llama.cpp decodes 9.00" in engines["reading"] and "differ in weights" in engines["reading"]
+
+    frontier = section(pack, "frontier")
+    # the sweep with the most stream counts leads, although the other pod's metric name sorts first
+    assert [(s["node"], len(s["points"])) for s in frontier["energy"]] == [("pod-a", 3), ("pod-b", 2)]
+    assert [r["value"] for r in frontier["ratios"]] == [20.0, 3.2]
+    assert [r["value"] for r in frontier["more_work"]] == [20.0]
+    assert "by 20 times" in frontier["reading"] and "100 watts" in frontier["reading"]
+    assert "on pod-b, gives 3.2 times at 4 streams" in frontier["reading"]
+    # the settings sweep's two cells are two slices, never one sweep; its change row and its file are listed
+    assert [c["value"] for c in frontier["changes"]] == [12.5]
+    assert frontier["pending_files"] == ["sweep-request-gfx1151-2026-10-11.json"]
+    assert [s["chip_label"] for s in frontier["other_chip"]] == ["NVIDIA A100-SXM4-40GB"]
+    assert frontier["other_ratios"][0]["value"] == 5.0 and frontier["other_ratios"][0]["other_chip"]
+
+    step = section(pack, "step")
+    assert [b["step_ms"] for b in step["batches"]] == [300.0, 360.0]
+    assert step["top"]["value"] == 60.0 and "60%, is quantized matmul" in step["reading"]
+    lines = (LANDED / step["file"]).read_text(encoding="utf-8").splitlines()
+    for batch in step["batches"]:
+        for part in batch["parts"]:
+            assert '"ms_per_step"' in lines[part["source"]["line"] - 1] and part["gpu"] == "AMD Radeon 8060S"
+    assert step["batches"][0]["parts"][0]["source"]["line"] < step["batches"][1]["parts"][0]["source"]["line"]
+
+    tune = section(pack, "finetune")
+    assert [n["value"] for n in tune["loss"]] == [0.5, 0.3, 0.1]
+    assert [(n["source"]["file"], n["source"]["line"]) for n in tune["loss"]] == [
+        ("fixtures/demo/l16-telemetry.jsonl", line) for line in (1, 2, 3)]
+    assert {n["gpu"] for n in tune["loss"] + tune["step_time"]} == {"Radeon 8060S Graphics (gfx1151)"}
+    assert not any(n["other_chip"] for n in tune["loss"]) and tune["other_chip"] == []
+    assert tune["median_step"]["value"] == 50.0 and tune["run"]["run_id"] == "train-fixture"
+    assert "from 0.5 to 0.1 over 3 logged steps" in tune["reading"] and "50 seconds a step" in tune["reading"]
+    facts = {n["label"]: n for n in tune["numbers"]}
+    assert facts["trainer.samples_per_s"]["value"] == 0.25
+    assert facts["trainer.samples_per_s"]["source"] == {
+        "file": "fixtures/demo/l16-run.json", "ref": "metrics.trainer.samples_per_s, run train-fixture",
+        "line": report.line_of(LANDED / "fixtures" / "demo" / "l16-run.json", '"trainer.samples_per_s"')}
+
+    dropped = section(pack, "dropped")
+    assert [(i["what"], i["kind"], i["source"]["line"]) for i in dropped["items"]] == [
+        ("SETTING_A", "ruled out", 4), ("setting b, with a comma", "ruled out", 5)]
+    assert "2 settings ruled out" in dropped["reading"]
+    assert {x["role"] for x in pack["sources"]} == {
+        "rows", "chip sheet", "decode profile", "public prior model", "settings sweep", "search space",
+        "fine-tune run"}
+
+
+def test_the_landed_page_cites_every_number_and_keeps_the_other_chip_apart(tmp_path):
+    result = report.write(LANDED, tmp_path / "out")
+    page = Path(result["html"]).read_text(encoding="utf-8")
+    assert not EXTERNAL.search(page) and result["still_coming"] == []
+    links_resolve(page, tmp_path / "out")
+    for n in json.loads(Path(result["pack"]).read_text(encoding="utf-8"))["numbers"]:
+        if n["source"]["file"] and n["source"]["line"]:  # its file and line, as the text of a link
+            assert f'{n["source"]["file"]}:{n["source"]["line"]}</a>' in page, n["id"]
+    frontier = page.split('<section id="frontier">')[1].split("</section>")[0]
+    ours, apart = frontier.split("Other chip, shown apart: NVIDIA A100-SXM4-40GB")
+    assert "metrics.jsonl:21<" not in ours and "metrics.jsonl:21<" in apart  # the A100 rows only in their panel
+    assert ours.count("<svg") == 2 and apart.count("<svg") == 1  # and on a chart of their own, never ours
+    for sid in ("ceiling", "frontier", "step", "engines", "finetune"):
+        part = page.split(f'<section id="{sid}">')[1].split("</section>")[0]
+        assert "<svg" in part and 'class="key"' in part and 'class="say"' in part
