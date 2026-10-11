@@ -18,7 +18,7 @@ def jetson(s: int) -> JetsonPower:
                        rails={"VDD_IN": 6400}, nvpmodel="MAXN_SUPER")
 
 
-def pod(s: int, node: str = "gpu-a") -> GpuPower:
+def pod(s: int, node: str = "pod-a") -> GpuPower:
     return GpuPower(ts=T0 + timedelta(seconds=s), node=node, source="amd-smi", period_ms=1000, socket_w=39.0,
                     gfx_mhz=500, mem_mhz=96, throttled=False)
 
@@ -70,7 +70,7 @@ def test_every_sample_goes_onto_the_bus_and_into_the_log(tmp_path):
 
 def test_events_for_another_node_or_another_context_are_dropped_not_published(tmp_path):
     alert = AlertRaised(alert_id="a1", rule_id="r", message="not telemetry")
-    script = [jetson(0), pod(0, "gpu-a"), alert, jetson(1)]
+    script = [jetson(0), pod(0, "pod-a"), alert, jetson(1)]
 
     async def run():
         runner = SamplerRunner(Scripted(script), EventBus(tmp_path).publish, nodes=["jetson"])
@@ -90,14 +90,14 @@ def test_a_sampler_that_raises_is_started_again_after_the_retry_delay(tmp_path):
         waits.append(s)
 
     async def run():
-        runner = SamplerRunner(sampler, EventBus(tmp_path).publish, nodes=["gpu-a"], retry_s=7.5, sleep=fake_sleep)
+        runner = SamplerRunner(sampler, EventBus(tmp_path).publish, nodes=["pod-a"], retry_s=7.5, sleep=fake_sleep)
         await runner.run()
         return runner
 
     runner = asyncio.run(run())
     assert [e.ts for e in logged(tmp_path)] == [T0, T0 + timedelta(seconds=1), T0 + timedelta(seconds=2)]
     assert (waits, sampler.starts) == ([7.5], 2)
-    assert runner.status() == {"nodes": ["gpu-a"], "published": 3, "dropped": 0, "errors": 1,
+    assert runner.status() == {"nodes": ["pod-a"], "published": 3, "dropped": 0, "errors": 1,
                                "last_error": "RuntimeError: amd-smi exited 1"}
 
 

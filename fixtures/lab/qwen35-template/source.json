@@ -1,0 +1,12 @@
+{
+  "repo": "Qwen/Qwen3.5-4B",
+  "revision": "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a",
+  "license": "apache-2.0",
+  "chat_template_sha256": "a4aee8afcf2e0711942cf848899be66016f8d14a889ff9ede07bca099c28f715",
+  "recorded_with": {
+    "transformers": "5.19.0",
+    "tokenizers": "0.23.3"
+  },
+  "call": "AutoTokenizer.from_pretrained(<repo folder>).apply_chat_template(messages, tools=tools or None, tokenize=False, enable_thinking=False); prompts add add_generation_prompt=True on messages[:upto]",
+  "cases": 16
+}

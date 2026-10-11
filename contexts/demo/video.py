@@ -8,6 +8,7 @@ The general judges press nothing and watch slots 0 to 2.
     python -m contexts.demo video check atlas.mp4   # duration within tolerance, and where each key lands
     python -m contexts.demo video chapters          # the YouTube description: index card + chapters
     python -m contexts.demo video cards             # one title card per slot, as HTML to screen-capture
+    python -m contexts.demo video json              # the timeline for the Remotion project (video/src/timeline.json)
 """
 
 import html
@@ -17,6 +18,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+FPS = 30
 DURATION_S = 598.0  # Devpost cap is 10:00; stay under it
 TOLERANCE_S = 0.1  # key 9 lands at 90%, so a long export shifts it by 0.9 x the overrun
 SLOT_S = DURATION_S / 10
@@ -28,6 +30,7 @@ class Slot:
     key: int
     title: str
     shows: str
+    line: str = ""  # the narrator's opening line, shown as a caption for the slot's first seconds
 
 
 @dataclass(frozen=True)
@@ -37,16 +40,26 @@ class Track:
 
 
 SLOTS = (
-    Slot(0, "Atlas", "Index card (5 s), then the hook: it remembers, it watches, nothing leaves the box. Index card again at 0:55."),
-    Slot(1, "It runs your day", "Knows your week (Canvas, calendar), the Day loop plan, one approval card."),
-    Slot(2, "It learns", "The big Qwen teaches the small Qwen; before/after scores; our adapter on Hugging Face; quick unplug."),
-    Slot(3, "The learning lab", "Qwen3.8-27B teacher on R9700 A, LoRA on R9700 B, ROCm, loss curve, publishing to the Hub."),
-    Slot(4, "Box and lab", "The Q4_K_M package hot-swapped onto the Jetson; watts from amd-smi and tegrastats; joules per answer."),
-    Slot(5, "On the Jetson", "Cameras and face blur; the on-device Qwen VL understands the scene; FPS and tok/s; then unplug the internet."),
-    Slot(6, "Data into counts", "Frames to events to episodes; Waste Watch counting items and the bin zone they end in."),
-    Slot(7, "Impact, shared", "Diversion rate before vs after nudges; the leaderboard served from Neon."),
-    Slot(8, "Friends' Atlases", "Two Atlases agree on a time through Neon; the event lands in the Day Run plan; the League."),
-    Slot(9, "Day Run", "A bad plan fails, a good plan wins three stars, hard mode re-routes, Play mode, a Sort It round started by a face."),
+    Slot(0, "Atlas", "Index card (5 s), then the hook: it remembers, it watches, nothing leaves the box. Index card again at 0:55.",
+         "This is Atlas: a private AI box that sees, remembers, talks and learns. Your video never leaves it."),
+    Slot(1, "It runs your day", "Knows your week (Canvas, calendar), the Day loop plan, one approval card.",
+         "Point it at your week: it reads your Canvas and calendar, plans the day around what the cameras see, and asks before it acts."),
+    Slot(2, "It learns", "The big Qwen teaches the small Qwen; before/after scores; our adapter on Hugging Face; quick unplug.",
+         "When it needs a new skill, a big open model teaches the small one on the box."),
+    Slot(3, "The learning lab", "Qwen3.8-27B teacher on R9700 A, LoRA on R9700 B, ROCm, loss curve, publishing to the Hub.",
+         "Here is where that teaching happens: two AMD Radeon R9700s on ROCm."),
+    Slot(4, "Box and lab", "The Q4_K_M package hot-swapped onto the Jetson; watts from amd-smi and tegrastats; joules per answer.",
+         "The lesson comes back as a smaller, smarter model, hot-swapped on the Jetson. We measure every joule both ways."),
+    Slot(5, "On the Jetson", "Cameras and face blur; the on-device Qwen VL understands the scene; FPS and tok/s; then unplug the internet.",
+         "Everything you see live runs on this Jetson, with the internet unplugged."),
+    Slot(6, "Data into counts", "Frames to events to episodes; Waste Watch counting items and the bin zone they end in.",
+         "The same cameras turn a room into data: events, episodes and counts."),
+    Slot(7, "Impact, shared", "Diversion rate before vs after nudges; the leaderboard served from Neon.",
+         "Point it at a recycling bin, and a campus can measure what changed."),
+    Slot(8, "Friends' Atlases", "Two Atlases agree on a time through Neon; the event lands in the Day Run plan; the League.",
+         "Point it at your friends: Atlases agree on a time through Neon, and only free or busy leaves each box."),
+    Slot(9, "Day Run", "A bad plan fails, a good plan wins three stars, hard mode re-routes, Play mode, a Sort It round started by a face.",
+         "Point it at your habits: play tomorrow before you live it."),
 )
 
 TRACKS = (
@@ -135,3 +148,21 @@ def cards() -> str:
                                  watchers=html.escape(" · ".join(watchers(s.key))))
                      for s in SLOTS)
     return f"<!doctype html><meta charset=utf-8><title>Atlas video title cards</title><body style=margin:0>{body}</body>"
+
+
+def timeline(clips_dir: Path = Path("video/public/clips")) -> dict:
+    """The Remotion project's timeline (D12): frame-exact slots, so the number keys land where the edit puts them.
+    A slot's screen recording is used when `video/public/clips/slot-<key>.mp4` exists."""
+    slot_frames = round(SLOT_S * FPS)
+    assert slot_frames * 10 == round(DURATION_S * FPS), "a slot must be a whole number of frames"
+    return {
+        "fps": FPS,
+        "duration_frames": slot_frames * 10,
+        "slot_frames": slot_frames,
+        "index_card": index_card(),
+        "tracks": [{"name": t.name, "key": t.key} for t in TRACKS],
+        "slots": [{"key": s.key, "title": s.title, "shows": s.shows, "line": s.line, "watchers": watchers(s.key),
+                   "start_frame": s.key * slot_frames, "stamp": stamp(s.key * SLOT_S),
+                   "clip": f"clips/slot-{s.key}.mp4" if (clips_dir / f"slot-{s.key}.mp4").exists() else None}
+                  for s in SLOTS],
+    }

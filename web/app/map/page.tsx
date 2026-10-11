@@ -4,11 +4,13 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import dr from "@/components/dayrun/dayrun.module.css";
 import { Keyframe } from "@/components/Keyframe";
+import { TwinStage } from "@/components/map/TwinStage";
 import { Empty, ErrorBox, Loading } from "@/components/States";
 import ui from "@/components/ui.module.css";
 import { ApiError, api, type PlayRoute, type Sighting } from "@/lib/api";
 import { cameraName, dayTime, humanize, relative } from "@/lib/format";
 import { CAMERAS, SORT_ITEMS, WATCH_ITEMS, cameraOfZone, placePins, routePoints, type Point, type RoomPin } from "@/lib/room";
+import { useRoomTwin, useTwinPins } from "@/lib/roomTwin";
 import { useFetch } from "@/lib/useFetch";
 
 /**
@@ -25,6 +27,11 @@ import { useFetch } from "@/lib/useFetch";
  *    a text position, never coordinates. Pins sit inside their zone, on a grid when
  *    several share it; each has a number, and the list under the map names them.
  *  - The route is the existing GET /api/play/route, drawn in the bin camera's view.
+ *
+ * The 3D view is the room twin (components/map/RoomTwin.tsx) when the box has a room plan (config/rooms/<name>.yaml,
+ * GET /api/room): one furnished room in metres, with the cameras' tracks projected onto its floor through each
+ * camera's calibration, pins at the projected last-seen point, and the Sort It route planned in room space. Without
+ * a plan the older per-camera panels (Room3D) are shown instead.
  */
 
 // three.js lives in this chunk only, fetched when the 3D view is opened.
@@ -62,6 +69,13 @@ export default function RoomMapPage() {
   const [sort, setSort] = useState<string | null>(null);
   const seen = useFetch(loadSightings);
   const route = useFetch<PlayRoute | null>((s) => (sort ? api.playRoute(sort, s) : Promise.resolve(null)), sort ?? "");
+  const twin = useRoomTwin(view === "3d");
+  const twinPins = useTwinPins(view === "3d" ? twin.plan : null, twin.live);
+  // Whether the box has a floor plan at all, so the 2D view does not say there is none (the twin is only fetched for 3D).
+  const hasPlan = useFetch((s) => api.room(s).then(() => true, () => false)).data ?? false;
+  // Cameras still on the points the room file shipped with: a placeholder, not a calibration of the real camera.
+  const placeholder = Object.entries(twin.plan?.calibration ?? {}).filter(([, c]) => c.source === "default").map(([camera]) => camera);
+  const twinOn = view === "3d" && twin.plan !== null; // the box has a floor plan: one room, not a panel per camera
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
@@ -87,7 +101,7 @@ export default function RoomMapPage() {
     <>
       <div className={ui.pageHead}>
         <h1>Room map</h1>
-        <p className={ui.muted}>The zones the cameras watch, where your things were last seen, and the way to the right bin.</p>
+        <p className={ui.muted}>Where the cameras look, where your things were last seen, and the way to the bin.</p>
       </div>
 
       {CAMERAS.length === 0 ? (
@@ -104,8 +118,26 @@ export default function RoomMapPage() {
           </div>
 
           <div className={ui.card}>
-            {view === "2d" ? <Room2D pins={pins} selected={selected} route={drawn} onPick={setItem} /> : <Room3D cameras={CAMERAS} pins={pins} selected={selected} route={drawn} />}
-            {pins.length > 0 ? (
+            {view === "2d" ? (
+              <Room2D pins={pins} selected={selected} route={drawn} onPick={setItem} />
+            ) : twinOn ? (
+              <TwinStage twin={twin} pins={twinPins} previewItem={sort} controls picked={item} onPick={setItem} />
+            ) : (
+              <Room3D cameras={CAMERAS} pins={pins} selected={selected} route={drawn} />
+            )}
+            {twinOn && placeholder.length > 0 ? (
+              <p className={ui.small} role="note">
+                Not calibrated for {placeholder.length === 1 ? "this camera" : "these cameras"} yet ({placeholder.join(", ")}): positions are approximate. To calibrate, mark four spots
+                on the floor and send them once: <code>PUT /api/room/calibration/{placeholder[0]}</code> with the four picture points and the same four in room metres.
+              </p>
+            ) : null}
+            {twinOn ? (
+              <p className={`${ui.muted} ${ui.small}`}>
+                The room is drawn from its floor plan, in metres. People and things stand where each camera&apos;s calibration puts the bottom of their box on the floor; a pin stands where its
+                item was last projected, or inside its zone when the box only knows the zone.
+              </p>
+            ) : null}
+            {twinOn ? null : pins.length > 0 ? (
               <ol className={dr.pinList} aria-label="What each numbered pin is">
                 {pins.map((p) => (
                   <li key={p.label}>
@@ -123,7 +155,7 @@ export default function RoomMapPage() {
                 ))}
               </ol>
             ) : null}
-            <p className={dr.legend}>
+            <p className={dr.legend} hidden={twinOn}>
               <span>
                 <span className={dr.pinKey} aria-hidden="true" />a numbered pin is an item, placed inside its zone, not at its exact spot
               </span>
@@ -134,9 +166,11 @@ export default function RoomMapPage() {
                 </span>
               ) : null}
             </p>
-            <p className={`${ui.muted} ${ui.small}`}>
-              Each panel is one camera&apos;s own view, with its zones where they sit in the picture. The box has no floor plan, so the panels are side by side rather than joined into one room
-              {view === "3d" ? ", and the heights are only there to make the zones readable" : ""}.
+            <p className={`${ui.muted} ${ui.small}`} hidden={twinOn}>
+              Each panel is one camera&apos;s own view, with its zones where they sit in the picture.{" "}
+              {hasPlan
+                ? "The 3D view joins them into one room, drawn from the floor plan."
+                : `The box has no floor plan, so the panels are side by side rather than joined into one room${view === "3d" ? ", and the heights are only there to make the zones readable" : ""}.`}
             </p>
           </div>
         </>
@@ -235,7 +269,7 @@ function Room2D({ pins, selected, route, onPick }: { pins: RoomPin[]; selected: 
   const height = CAMERAS.length * (HEAD + PANEL_H) + (CAMERAS.length - 1) * GAP;
   const selectedPin = pins.find((p) => p.label === selected);
   return (
-    <svg className={dr.room} viewBox={`0 0 ${PANEL_W} ${height}`} role="img" aria-label={`Camera zones: ${CAMERAS.map((c) => `${cameraName(c.id)}: ${c.zones.map((z) => z.id).join(", ")}`).join(". ")}.`}>
+    <svg className={dr.room} data-guide="map:room" viewBox={`0 0 ${PANEL_W} ${height}`} role="img" aria-label={`Camera zones: ${CAMERAS.map((c) => `${cameraName(c.id)}: ${c.zones.map((z) => z.id).join(", ")}`).join(". ")}.`}>
       {CAMERAS.map((cam, i) => {
         const top = i * (HEAD + PANEL_H + GAP);
         const px = (p: Point): Point => [p[0] * PANEL_W, top + HEAD + p[1] * PANEL_H];
@@ -279,7 +313,7 @@ function Room2D({ pins, selected, route, onPick }: { pins: RoomPin[]; selected: 
               // Every pin carries its number; its name is written here only where the zone has room for
               // every name in it. The list under the map names them all.
               return (
-                <g key={p.label} onClick={() => onPick(p.label)} style={{ cursor: "pointer" }}>
+                <g key={p.label} data-guide={`pin:${p.label}`} onClick={() => onPick(p.label)} style={{ cursor: "pointer" }}>
                   <title>{humanize(p.label)}</title>
                   <circle className={`${dr.pin} ${on ? dr.pinOn : ""}`} cx={x} cy={y} r={on ? 10.5 : 9.5} />
                   <text className={`${dr.pinNumber} ${on ? dr.pinNumberOn : ""}`} x={x} y={y + 4} textAnchor="middle">

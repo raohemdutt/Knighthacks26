@@ -1,0 +1,502 @@
+/* The room twin: the stage, the names floating over it, and the Sort It read-outs. */
+
+.stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 0.82;
+  max-height: 78vh;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2); /* the 3D scene reads this as its sky and floor colour */
+  box-shadow: var(--sh-inset);
+  overflow: hidden;
+  touch-action: none; /* drags turn the room */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+@media (min-width: 700px) {
+  .stage {
+    aspect-ratio: 4 / 3;
+  }
+}
+
+.tall {
+  aspect-ratio: 1 / 1.06;
+}
+
+@media (min-width: 700px) {
+  .tall {
+    aspect-ratio: 4 / 3;
+  }
+}
+
+.fill {
+  aspect-ratio: auto;
+  max-height: none;
+  height: 100%;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.stage canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface-solid); /* a solid chip: the room behind it must not show through the text */
+  box-shadow: 0 0 0 1px var(--line), 0 2px 8px -2px var(--sh-dark);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.35;
+  white-space: nowrap;
+  will-change: transform;
+}
+
+.person {
+  background: var(--surface-solid);
+  box-shadow: 0 0 0 1px var(--accent-soft), 0 2px 8px -2px var(--sh-dark);
+}
+
+.thing {
+  font-weight: 600;
+}
+
+.bin {
+  font-size: 13px;
+}
+
+.zone {
+  box-shadow: 0 0 0 1px var(--line);
+  background: var(--bg-glass);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+}
+
+.pin {
+  min-height: 24px;
+  padding: 3px 11px;
+  background: var(--surface-solid);
+  color: var(--text);
+  font-size: 13px;
+  pointer-events: auto;
+  cursor: pointer;
+  transition: transform var(--t) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .pin:hover {
+    transform: translateY(-2px);
+  }
+}
+
+.pin:active {
+  transform: scale(0.97);
+}
+
+.pin::after {
+  /* a finger-sized target around a small chip */
+  content: "";
+  position: absolute;
+  inset: -10px -6px;
+}
+
+.pinOn {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.target {
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 14px;
+}
+
+.topBar {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 7px;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-glass);
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  box-shadow: var(--sh-raised-sm);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.chipSub {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.liveDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.chip[data-live="on"] .liveDot {
+  background: var(--accent-bright);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.views {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-glass);
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  box-shadow: var(--sh-inset-sm);
+  pointer-events: auto;
+}
+
+.viewBtn {
+  min-width: var(--tap);
+  min-height: var(--tap);
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 650;
+  transition: box-shadow var(--ease-press), background var(--t), color var(--t), transform var(--t-fast);
+}
+
+.viewBtn:active {
+  transform: scale(0.96);
+}
+
+/* the chosen view rises out of the well, as the segmented control does */
+.viewOn {
+  background: var(--surface-solid);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--accent-text);
+}
+
+.side {
+  position: absolute;
+  top: 56px;
+  z-index: 1;
+  padding: 3px 11px;
+  border-radius: 12px;
+  background: var(--surface-solid);
+  box-shadow: 0 0 0 1px var(--line), 0 2px 8px -2px var(--sh-dark);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+  pointer-events: none;
+}
+
+/* The read-outs on the big screen: in the corner, clear of the room in the middle. */
+.bottom {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  width: min(42%, 420px);
+  display: flex;
+  pointer-events: none;
+}
+
+/* The same read-outs under the stage, on a phone: the room stays in full view. */
+.under {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.under:empty {
+  display: none;
+}
+
+.under > * {
+  width: 100%;
+  background: var(--surface);
+}
+
+.round,
+.result,
+.assist,
+.pinCard {
+  width: min(100%, 520px);
+  padding: 14px 18px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-solid);
+  box-shadow: var(--sh-raised);
+  pointer-events: auto;
+}
+
+.roundHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.roundTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.roundSub {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.clock {
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+}
+
+.meter {
+  position: relative;
+  height: 8px;
+  margin: 10px 0 8px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  overflow: hidden;
+}
+
+.meterFill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--accent-bright), var(--accent));
+  transition: width 900ms var(--ease-out);
+}
+
+.meterOver {
+  background: var(--watch);
+}
+
+.meterPar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  background: var(--text);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.resultGood {
+  box-shadow: var(--sh-raised), inset 0 0 0 2px var(--accent);
+}
+
+.resultBad {
+  box-shadow: var(--sh-raised), inset 0 0 0 2px var(--danger);
+}
+
+.resultTitle {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 750;
+}
+
+.resultGood .resultTitle {
+  color: var(--accent-text);
+}
+
+.resultBad .resultTitle {
+  color: var(--danger);
+}
+
+.resultLine {
+  margin: 2px 0;
+  font-size: 15px;
+}
+
+.pinCard {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  box-shadow: var(--sh-raised), inset 0 0 0 2px var(--accent);
+}
+
+.close {
+  flex: none;
+  width: var(--tap);
+  height: var(--tap);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1;
+  transition: box-shadow var(--ease-press), transform var(--t-fast);
+}
+
+.close:active {
+  box-shadow: var(--sh-inset-sm);
+  transform: scale(0.94);
+}
+
+/* The operator screen's panel: the room fills its grid cell. */
+
+.opPanel {
+  position: relative;
+  min-height: 0;
+  height: 100%;
+  background: var(--surface);
+  box-shadow: var(--sh-raised);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.opPanel .label {
+  font-size: 15px;
+}
+
+/* The render-mode control under the stage (the Room map). */
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.barName {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.modes {
+  flex: 1 1 260px;
+}
+
+.mode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 6px;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.modeSub {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.caption {
+  font-size: 15px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.bench {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 15px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pill {
+  min-height: var(--tap);
+  padding: 6px 18px;
+  border-radius: var(--radius-pill);
+  border: 0;
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .pill:hover {
+    transform: translateY(-2px);
+  }
+}
+
+.pill:active {
+  box-shadow: var(--sh-inset-sm);
+  transform: scale(0.97);
+}
+
+.pillOn,
+.pillOn:active {
+  box-shadow: var(--sh-selected);
+  color: var(--accent-text);
+}

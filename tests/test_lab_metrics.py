@@ -36,6 +36,15 @@ def write_lines(path, *lines):
 
 # --- the seeded baseline -------------------------------------------------------------------------
 
+SAMPLER = "lab/pod_power.py 1"  # the T6 rows' conditions name the sampler that read them
+
+IDLE_DEEP = "deep idle: teacher loaded, no request in flight"
+IDLE_MCLK_UP = "idle sclk, memory clock still up (mclk 1000 MHz), the seconds after a request"
+IDLE_TWO_READERS = (
+    "deep idle with a second reader running (rocm-smi --showclocks and amd-smi metric --power forked once a second "
+    "beside the sampler)"
+)
+
 # (metric, node, conditions that select exactly one row, value, unit, low_confidence)
 EXPECTED_SEED = [
     ("teacher.decode_tok_s", "pod-a", {"prompt": "image"}, 6.6, "tok/s", False),
@@ -44,8 +53,8 @@ EXPECTED_SEED = [
     ("teacher.ttft_s", "pod-a", {"prompt": "image"}, 1.09, "s", False),
     ("teacher.ttft_s", "pod-a", {"prompt": "text", "thinking": "on"}, 0.28, "s", False),
     ("teacher.ttft_s", "pod-a", {"prompt": "text", "thinking": "off"}, 0.55, "s", False),
-    ("teacher.watts_avg", "pod-a", {}, 200, "W", False),
-    ("teacher.watts_peak", "pod-a", {}, 300, "W", False),
+    ("teacher.watts_avg", "pod-a", {"while": "generating"}, 200, "W", False),
+    ("teacher.watts_peak", "pod-a", {"while": "generating"}, 300, "W", False),
     ("teacher.engine_init_s", "pod-a", {}, 270, "s", False),
     ("teacher.vram_pct", "pod-a", {}, 84, "%", False),
     ("teacher.max_concurrency", "pod-a", {}, 10, "x", False),
@@ -54,12 +63,99 @@ EXPECTED_SEED = [
     ("trainer.peak_mem_gb", "pod-b", {}, 8.7, "GiB", False),
     ("trainer.smoke_loss_first", "pod-b", {}, 2.23, "loss", False),
     ("trainer.smoke_loss_last", "pod-b", {}, 0.16, "loss", False),
-    ("pod.idle_watts", "pod-a", {}, 39.0, "W", True),
+    ("pod.idle_watts", "pod-a", {"state": "idle", "range_w": [38, 40]}, 39.0, "W", True),
     ("pod.start_s", "pod-a", {}, 15, "s", False),
     ("pod.credits_per_min", "pod-a", {}, 4, "credits/min", False),
     ("pod.credits_per_min", "pod-b", {}, 4, "credits/min", False),
     ("pod.balance_credits", "pod-a", {}, 59960, "credits", True),
     ("pod.balance_credits", "pod-b", {}, 59960, "credits", True),
+    # R29: the teacher on the SJC pod C (Strix Halo, gfx1151)
+    ("teacher.ttft_s", "pod-c", {"prompt": "text", "thinking": "off"}, 0.39, "s", False),
+    ("teacher.decode_tok_s", "pod-c", {"prompt": "text", "thinking": "off"}, 2.88, "tok/s", False),
+    ("teacher.ttft_s", "pod-c", {"prompt": "image"}, 3.51, "s", False),
+    ("teacher.decode_tok_s", "pod-c", {"prompt": "image"}, 2.82, "tok/s", False),
+    ("teacher.e2e_s", "pod-c", {"prompt": "text"}, 27.51, "s", False),
+    ("teacher.e2e_s", "pod-c", {"prompt": "image"}, 12.85, "s", False),
+    ("teacher.watts_avg", "pod-c", {"prompt": "text"}, 120.3, "W", False),
+    ("teacher.watts_peak", "pod-c", {}, 129, "W", False),
+    ("teacher.watts_avg", "pod-c", {"prompt": "image"}, 118.3, "W", False),
+    ("pod.idle_watts", "pod-c", {"server": "teacher loaded, no request"}, 9.2, "W", False),
+    ("pod.idle_watts", "pod-c", {"server": "none"}, 8, "W", False),
+    ("teacher.engine_init_s", "pod-c", {}, 297, "s", False),
+    # T6: the pod power sampler's live run on pod C under the teacher load (recorded as node pod-a, the teacher's role);
+    # the samples are fixtures/telemetry/pod_power/strixhalo_2026-10-10_teacher_load_*.jsonl
+    ("pod.idle_watts", "pod-a", {"sampler": SAMPLER, "under_load_samples": 0}, 10.2, "W", True),
+    ("teacher.watts_avg", "pod-a", {"sampler": SAMPLER}, 106.807, "W", True),
+    ("teacher.watts_peak", "pod-a", {"sampler": SAMPLER, "value": "peak"}, 129.0, "W", True),
+    ("pod.start_s", "pod-d", {"launch_path": "form"}, 5.55, "s", False),
+    ("pod.first_request_s", "pod-d", {"launch_path": "form"}, 11.7, "s", False),
+    ("pod.keep_alive_min", "pod-d", {"launch_path": "form"}, 70, "min", False),
+    ("pod.credits_per_hour", "pod-d", {"billing": "unmetered"}, 0, "credits/h", False),
+    # T10: idle watts per observed clock state on pod C (recorded as node pod-a), from
+    # fixtures/telemetry/pod_power/strixhalo_2026-10-10_idle_baseline_*.jsonl (recomputed in test_idle_baseline_rows_*)
+    ("pod.idle_watts", "pod-a", {"state": IDLE_DEEP}, 10.27, "W", True),
+    ("pod.idle_watts", "pod-a", {"state": IDLE_MCLK_UP}, 11.14, "W", True),
+    ("pod.idle_watts", "pod-a", {"state": IDLE_TWO_READERS}, 13.84, "W", True),
+    ("pod.settle_s", "pod-a", {"sampler": SAMPLER}, 4.0, "s", True),
+    ("pod.idle_state_share", "pod-a", {"state": "deep idle (sclk below 700 MHz)"}, 62.15, "%", True),
+    ("pod.idle_state_share", "pod-a", {"state": "transition (sclk 700 to 2599 MHz)"}, 6.64, "%", True),
+    ("pod.idle_state_share", "pod-a", {"state": "busy (sclk 2600 MHz or more, mclk 1000)"}, 31.22, "%", True),
+    # R18: the proxy failure-mode map against pod D (account D on SJC, pod B's role)
+    ("proxy.status", "pod-b", {"case": "bad token", "method": "GET"}, 302, "http", False),
+    ("proxy.status", "pod-b", {"case": "bad token", "method": "POST"}, 403, "http", False),
+    ("proxy.status", "pod-b", {"case": "nothing listening"}, 500, "http", False),
+    ("proxy.status", "pod-b", {"case": "mid-restart"}, 500, "http", False),
+    ("proxy.restart_to_ready_s", "pod-b", {"case": "mid-restart"}, 294.1, "s", False),
+    ("proxy.status", "pod-b", {"case": "model server stopped"}, 500, "http", False),
+    ("proxy.stream_first_byte_s", "pod-b", {"accept": "text/event-stream"}, 0.916, "s", False),
+    ("proxy.stream_first_byte_s", "pod-b", {"accept": "application/json"}, 31.483, "s", False),
+    ("proxy.status", "pod-b", {"case": "5 MB body"}, 400, "http", False),
+    ("proxy.concurrent_wall_s", "pod-b", {"case": "20 concurrent"}, 2.998, "s", False),
+    # T13: the Jetson sampler's CPU cost and the box's idle watts, over SSH in MAXN_SUPER (fixtures/telemetry/jetson_sampler_cost)
+    ("telemetry.sampler_cpu_pct", "jetson", {"period_ms": 100, "load": "idle"}, 3.513, "percent of one core", True),
+    ("telemetry.sampler_cpu_pct", "jetson", {"period_ms": 200, "load": "idle"}, 1.833, "percent of one core", True),
+    ("telemetry.sampler_cpu_pct", "jetson", {"period_ms": 100, "load": "one caption request in flight"}, 3.28, "percent of one core", True),
+    ("telemetry.sampler_cpu_pct", "jetson", {"period_ms": 200, "load": "one caption request in flight"}, 1.703, "percent of one core", True),
+    ("jetson.idle_watts", "jetson", {"rail": "VDD_IN", "samples": 3000}, 15.76, "W", True),
+    # T7: the Jetson power sampler read once a second for 10 minutes in MAXN_SUPER, idle then under caption load, from
+    # fixtures/telemetry/jetson_power_live (recomputed in tests/test_lab_jetson_live_run.py)
+    ("jetson.idle_watts", "jetson", {"rail": "VDD_IN", "period_ms": 1000}, 12.62, "W", True),
+    ("student.watts_avg", "jetson", {"rail": "VDD_IN", "period_ms": 1000}, 17.536, "W", True),
+    ("student.watts_peak", "jetson", {"rail": "VDD_IN", "period_ms": 1000}, 19.127, "W", True),
+    # R26: the batching sweep on the pod C teacher, attach mode, 3 repeats per concurrency (node pod-a, gfx1151)
+    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 1}, 2.7021, "tok/s", True),
+    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 1}, 2.6172, "tok/s", True),
+    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 1}, 1.1809, "s", True),
+    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 1}, 36.6587, "J/token", True),
+    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 1}, 96.0046, "W", True),
+    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 1}, 97.0, "W", True),
+    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 4}, 2.5218, "tok/s", True),
+    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 4}, 9.3153, "tok/s", True),
+    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 4}, 4.8672, "s", True),
+    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 4}, 10.3071, "J/token", True),
+    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 4}, 96.0126, "W", True),
+    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 4}, 97.0, "W", True),
+    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 8}, 2.319, "tok/s", True),
+    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 8}, 16.3616, "tok/s", True),
+    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 8}, 7.7821, "s", True),
+    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 8}, 5.8676, "J/token", True),
+    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 8}, 96.004, "W", True),
+    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 8}, 97.0, "W", True),
+    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 16}, 2.0712, "tok/s", True),
+    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 16}, 26.946, "tok/s", True),
+    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 16}, 14.9531, "s", True),
+    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 16}, 3.5628, "J/token", True),
+    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 16}, 96.0052, "W", True),
+    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 16}, 97.0, "W", True),
+    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 64}, 0.8854, "tok/s", True),
+    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 64}, 49.5288, "tok/s", True),
+    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 64}, 24.3901, "s", True),
+    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 64}, 1.9384, "J/token", True),
+    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 64}, 96.0499, "W", True),
+    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 64}, 98.0, "W", True),
+    ("pod.idle_watts", "pod-a", {"server": "teacher loaded, no request"}, 10.44, "W", False),
+    # R21: the stock teacher on pod C compared with its own baseline (the K4 self-match floor), one compare
+    ("teacher.output_match_rate", "pod-a", {"chip": "gfx1151", "batch_size": 1}, 0.5, "fraction", True),
 ]
 
 # The numbers the lab setup measured, by metric name.
@@ -67,6 +163,7 @@ MEASURED_NAMES = {
     "teacher.decode_tok_s", "teacher.ttft_s", "teacher.watts_avg", "teacher.watts_peak",
     "teacher.engine_init_s", "teacher.vram_pct", "trainer.samples_per_s", "trainer.peak_mem_gb",
     "pod.idle_watts", "pod.start_s", "pod.credits_per_min", "pod.balance_credits",
+    "telemetry.sampler_cpu_pct", "jetson.idle_watts",
 }
 
 
@@ -92,14 +189,14 @@ def test_seed_covers_every_number_the_lab_setup_measured():
     assert MEASURED_NAMES <= {row["metric"] for row in metrics.load()}
 
 
-def test_unfiltered_latest_on_the_seed_is_the_headline_text_prompt():
-    assert metrics.latest("teacher.decode_tok_s")["value"] == 7.7
-    assert metrics.latest("teacher.ttft_s")["value"] == 0.55
+def test_latest_on_pod_a_is_the_headline_text_prompt():
+    assert metrics.latest("teacher.decode_tok_s", node="pod-a")["value"] == 7.7
+    assert metrics.latest("teacher.ttft_s", node="pod-a")["value"] == 0.55
 
 
-def test_seed_history_keeps_every_condition_of_a_metric_in_file_order():
-    assert [row["value"] for row in metrics.history("teacher.decode_tok_s")] == [6.6, 7.8, 7.7]
-    assert [row["value"] for row in metrics.history("teacher.ttft_s")] == [1.09, 0.28, 0.55]
+def test_seed_history_on_pod_a_keeps_every_condition_of_a_metric_in_file_order():
+    assert [row["value"] for row in metrics.history("teacher.decode_tok_s", node="pod-a")] == [6.6, 7.8, 7.7]
+    assert [row["value"] for row in metrics.history("teacher.ttft_s", node="pod-a")] == [1.09, 0.28, 0.55]
 
 
 def test_derived_joules_per_token_matches_the_inputs_it_names():
@@ -114,8 +211,17 @@ def test_derived_joules_per_token_matches_the_inputs_it_names():
 def test_every_low_confidence_seed_row_says_why():
     flagged = [row for row in metrics.load() if row["low_confidence"]]
     assert {row["metric"] for row in flagged} == {
-        "teacher.joules_per_token", "pod.idle_watts", "pod.balance_credits"}
+        "teacher.joules_per_token", "pod.idle_watts", "pod.balance_credits", "teacher.watts_avg", "teacher.watts_peak",
+        "pod.settle_s", "pod.idle_state_share",
+        "telemetry.sampler_cpu_pct", "jetson.idle_watts", "student.watts_avg", "student.watts_peak"} | {
+        # R26: the sweep's medians are of 3 repeats, under the 5 verdict() asks for
+        "teacher_batching." + name
+        for name in ("decode_tok_s", "decode_tok_s_total", "ttft_s", "joules_per_token", "watts_avg", "watts_peak")} | {
+        "teacher.output_match_rate"}
     for row in flagged:
+        if row["conditions"].get("sampler") == SAMPLER:  # the sampler's rows: its error is "unknown" until a reference run
+            assert row["conditions"]["error"] == "unknown", row["metric"]
+            continue
         reason = row["conditions"].get("low_confidence_reason")
         assert isinstance(reason, str) and reason.strip() != "", row["metric"]
 
@@ -254,6 +360,26 @@ def test_load_refuses_a_corrupt_line_and_names_it(tmp_path):
     write_lines(path, json.dumps(make_row()), '{"metric": "teacher.decode_tok_s", "value": ', json.dumps(make_row()))
     with pytest.raises(metrics.MetricsFormatError, match=r"line 2"):
         metrics.load(path)
+
+
+def test_load_numbered_counts_blank_and_crlf_lines_the_way_load_names_them(tmp_path):
+    path = tmp_path / "m.jsonl"
+    first, second = json.dumps(make_row(value=1)), json.dumps(make_row(value=2))
+    good = (first + "\n" + "\n" + second + "\r\n" + "   \n").encode("utf-8")
+    path.write_bytes(good + b"{not json\n")
+
+    with pytest.raises(metrics.MetricsFormatError, match=r"line 5\b") as from_load:
+        metrics.load(path)
+    with pytest.raises(metrics.MetricsFormatError, match=r"line 5\b") as from_numbered:
+        metrics.load_numbered(path)
+    assert "line 5" in str(from_load.value) and "line 5" in str(from_numbered.value)
+
+    path.write_bytes(good)
+    rows = metrics.load(path)
+    numbered = metrics.load_numbered(path)
+    assert numbered == [(1, rows[0]), (3, rows[1])]
+    assert [row for _, row in numbered] == rows
+    assert [row["value"] for _, row in numbered] == [1, 2]
 
 
 def test_load_refuses_bytes_that_are_not_utf8(tmp_path):
@@ -467,3 +593,49 @@ def test_concurrent_writers_lose_no_rows_and_never_interleave(tmp_path):
     assert path.read_bytes().count(b"\n") == writers * per_writer
     assert {(row["conditions"]["writer"], row["conditions"]["i"]) for row in rows} == {
         (name, i) for name in "abcd" for i in range(per_writer)}
+
+
+# --- T10: the idle-baseline rows are what the recorded readings give ------------------------------------------------
+
+
+def _idle_baseline():
+    import importlib.util
+
+    path = ROOT / "fixtures" / "telemetry" / "pod_power" / "idle_baseline.py"
+    spec = importlib.util.spec_from_file_location("idle_baseline", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.report()
+
+
+def test_idle_baseline_rows_are_what_the_recorded_readings_give():
+    report = _idle_baseline()
+    deep = metrics.latest("pod.idle_watts", node="pod-a", conditions={"state": IDLE_DEEP})
+    assert deep["value"] == report["pure_idle"]["mean"]
+    assert deep["conditions"]["samples"] == report["pure_idle"]["n"]
+    assert metrics.latest("pod.idle_watts", node="pod-a", conditions={"state": IDLE_MCLK_UP})["value"] == (
+        report["deep_idle_by_mclk"]["1000"]["mean"]
+    )
+    assert metrics.latest("pod.idle_watts", node="pod-a", conditions={"state": IDLE_TWO_READERS})["value"] == (
+        report["reader"]["deep_idle"]["mean"]
+    )
+    settle = metrics.latest("pod.settle_s", node="pod-a", conditions={"sampler": SAMPLER})
+    assert settle["value"] == report["settle"]["median_s"]
+    assert settle["conditions"]["events"] == report["settle"]["events"]
+    shares = {r["conditions"]["state"].split(" ")[0]: r["value"] for r in metrics.history("pod.idle_state_share", node="pod-a")}
+    assert shares == {"deep": report["share_pct"]["deep_idle"], "transition": report["share_pct"]["transition"], "busy": report["share_pct"]["busy"]}
+    assert round(sum(shares.values()), 1) == 100.0
+
+
+def test_idle_baseline_rows_carry_the_sampler_period_samples_and_unknown_error():
+    for metric in ("pod.idle_watts", "pod.settle_s", "pod.idle_state_share"):
+        for row in metrics.history(metric, node="pod-a"):
+            if "under_load_samples" in row["conditions"] or row["conditions"].get("state") == "idle":
+                continue
+            if "state" not in row["conditions"] and metric == "pod.idle_watts":
+                continue
+            cond = row["conditions"]
+            assert cond["sampler"] == SAMPLER and cond["period_ms"] == 1000 and cond["error"] == "unknown"
+            assert row["low_confidence"] is True
+            if metric != "pod.settle_s":
+                assert cond["samples"] > 0

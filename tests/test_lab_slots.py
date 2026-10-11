@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 from lab import __main__ as lab_cli
-from lab.machine import alerts, allowed, ledger, referee, review, slots, slots_fake, slots_notion, stop
+from lab.machine import alerts, allowed, ledger, record, referee, review, slots, slots_fake, slots_notion, stop
 from lab.machine.slots_fake import FakeNotion
 from lab.machine.slots_notion import NotionClient, NotionError
 
@@ -153,6 +153,12 @@ def test_a_query_follows_the_cursor_to_the_end_of_the_list():
     assert len([r for r in world.fake.requests if r[0] == "POST"]) == 3
 
 
+def test_the_client_takes_the_no_redirect_handler_and_the_scrub_floor_from_ready_not_a_copy():
+    from lab.machine import ready
+    assert slots_notion._NoRedirect is ready._NoRedirect
+    assert slots_notion.MIN_HIDDEN_CHARS is ready.MIN_HIDDEN_CHARS
+
+
 def test_a_429_is_retried_after_the_wait_notion_asks_for(world):
     row = world.seed("L3: job")
     world.fake.fail_next(2, status=429, code="rate_limited", retry_after="2")
@@ -176,6 +182,35 @@ def test_retries_stop_after_max_retries_and_the_error_says_what_happened(world):
     assert caught.value.kind == "unavailable" and caught.value.status == 503 and caught.value.code == "service_unavailable"
     assert len(world.fake.requests) == slots_notion.MAX_RETRIES + 1
     assert len(world.sleeps) == slots_notion.MAX_RETRIES
+
+
+@pytest.mark.parametrize("status", [503, 529])
+def test_a_create_answered_503_or_529_after_it_was_made_is_not_sent_again(status):
+    # A proxy that forwarded the create and then answered 503 or 529: sending it again would add a second row.
+    fake = FakeNotion(clock=lambda: T0)
+    answered: list[int] = []
+
+    def proxy(method, url, headers, body, timeout):
+        reply = fake.transport(method, url, headers, body, timeout)
+        if method == "POST" and url.endswith("/v1/pages") and not answered:
+            answered.append(status)
+            return status, json.dumps({"object": "error", "code": "service_unavailable"}).encode(), {}
+        return reply
+
+    sleeps: list[float] = []
+    client = NotionClient(TOKEN, transport=proxy, sleep=sleeps.append)
+    queue = slots.SlotQueue(client, now=lambda: T0)
+    with pytest.raises(NotionError) as caught:
+        queue.request(task="L3", what="smoke")
+    assert caught.value.status == status and sleeps == []
+    assert len(fake.row_ids()) == 1
+
+
+def test_a_create_refused_with_429_is_still_retried(world):
+    world.fake.fail_next(1, status=429, code="rate_limited", retry_after="1")
+    created = world.client.create_page(slots_fake.DATA_SOURCE_ID, slots.rest_properties({"Request": "L3: x"}))
+    assert slots_notion.page_id_of(created["id"]) in world.fake.row_ids() and world.sleeps == [1.0]
+    assert len(world.fake.row_ids()) == 1
 
 
 def test_a_wait_longer_than_the_cap_is_not_waited_out(world):
@@ -1230,6 +1265,33 @@ def test_exactly_twice_the_minutes_is_not_yet_starved(world):
     assert world.call("start", "--row", short_row)[0]["outcome"] == "started"
 
 
+def test_a_queued_head_whose_agent_never_starts_it_stops_holding_up_the_card(world):
+    # X's row is first in line and its agent went away; the card stands free. Once it has stood free with X first
+    # for X's own Minutes while Y waited, Y may start: the queue does not stay wedged until a person edits Notion.
+    world.seed("L3: x", agent="Xander", requested=world.ago(minutes=30))
+    late = world.seed("O4: y", agent="Ilan", requested=world.now)
+    refused, code = world.call("start", "--row", late)
+    assert code == 1 and refused["outcome"] == "not_next"
+    world.advance(hours=3)
+    assert referee.run([], client=world.client, now=lambda: world.now)[1] == 0
+    started, code = world.call("start", "--row", late)
+    assert code == 0 and started["outcome"] == "started", started
+    assert [row["request"] for row in started["passed_idle"]] == ["L3: x"]
+    assert world.stored(late)["Status"] == "Running"
+
+
+def test_a_queued_head_keeps_its_turn_while_the_card_has_been_free_for_less_than_its_minutes(world):
+    world.seed("L3: x", agent="Xander", minutes=15, requested=world.ago(minutes=90),
+               status="Queued")
+    world.seed("L1: before", agent="Hemdutt", status="Done", started=world.ago(minutes=40), ended=world.ago(minutes=10))
+    late = world.seed("O4: y", agent="Ilan", requested=world.ago(minutes=60))
+    refused, code = world.call("start", "--row", late)
+    assert code == 1 and refused["outcome"] == "not_next" and refused["ahead"][0]["request"] == "L3: x"
+    world.advance(minutes=6)
+    started, code = world.call("start", "--row", late)
+    assert code == 0 and started["outcome"] == "started", started
+
+
 def test_a_starved_row_still_waits_for_the_card_and_blocks_nothing_it_may_not(world):
     world.running("L4: eval", started_ago=5)
     long_row = world.seed("L3: train", minutes=60, requested=world.ago(minutes=130))
@@ -1653,6 +1715,88 @@ def test_the_morning_review_lists_a_slot_opened_through_the_verbs(clocked):
     assert lines == [f"- slot {row} on pod-b, task L3: 10 of 15 min, still running (ledger:2)"]
 
 
+def complaint_lines_of_the_ledger(world) -> tuple[list[str], int]:
+    """The Complaints section of the morning review, built from the ledger the verbs wrote."""
+    return review.complaint_lines(alerts.timeline(ledger_rows(), world.now))
+
+
+#: What a complaint says of its wait when the Running row 'L4: eval' started 10 minutes before it and the complaining
+#: row has waited 40 minutes.
+FILED_BEHIND_THE_EVAL = ("2026-10-10T14:00Z waited 40 minutes, more than twice the 15 asked for; waiting behind: "
+                         "Running 'L4: eval' (ends 2026-10-10T14:05:00.000Z)")
+
+
+@pytest.mark.parametrize(("extra", "said"), [
+    (("--text", "the eval has run 10 minutes of its 15"), ". the eval has run 10 minutes of its 15"),
+    ((), "")])
+def test_the_morning_review_shows_the_text_of_a_complaint_filed_through_the_verb(clocked, monkeypatch, extra, said):
+    monkeypatch.setenv("LAB_ACTOR", "sonnet-3")
+    clocked.running("L4: eval", started_ago=10)
+    row = clocked.seed("L3: smoke", requested=clocked.ago(minutes=40))
+    answer, code = clocked.call("complain", "--row", row, *extra)
+    assert code == 0 and answer["outcome"] == "complaint_recorded"
+    lines, total = complaint_lines_of_the_ledger(clocked)
+    assert total == 1
+    assert lines == [f"- 14:00:00Z slot {row} (sonnet-3): {FILED_BEHIND_THE_EVAL}{said} (ledger:1)"]
+
+
+def test_the_review_file_lists_a_complaint_filed_through_the_verb_with_its_text(clocked, monkeypatch, capsys):
+    monkeypatch.setenv("LAB_ACTOR", "sonnet-3")
+    clocked.running("L4: eval", started_ago=10)
+    row = clocked.seed("L3: smoke", requested=clocked.ago(minutes=40))
+    clocked.call("complain", "--row", row, "--text", "the eval has run 10 minutes of its 15")
+    code = lab_cli.main(["review", "--day", "2026-10-10", "--now", "2026-10-10T15:00:00Z", "--no-prs", "--no-alerts"])
+    assert code == 0 and one_json_line(capsys.readouterr().out)["counts"]["complaints"] == 1
+    text = (Path(os.environ["LAB_STATE_DIR"]) / "review" / "2026-10-10.md").read_text(encoding="utf-8")
+    complaints = text.split("### Complaints", 1)[1].split("\n## ", 1)[0].strip().splitlines()
+    assert complaints == [f"- 14:00:00Z slot {row} (sonnet-3): {FILED_BEHIND_THE_EVAL}. the eval has run 10 minutes "
+                          "of its 15 (ledger:1)"]
+
+
+def test_the_note_of_a_complaint_row_is_the_entry_the_queue_was_given_and_never_the_token(clocked):
+    clocked.running("L4: eval", started_ago=10)
+    row = clocked.seed("L3: smoke", requested=clocked.ago(minutes=40))
+    answer, _ = clocked.call("complain", "--row", row, "--text", "the eval has run 10 minutes of its 15")
+    [entry] = ledger_rows()
+    assert entry["note"] == clocked.stored(row)["Complaint"] == answer["note"]
+    assert TOKEN not in ledger.ledger_path().read_text(encoding="utf-8")
+
+
+def test_a_long_complaint_keeps_all_of_its_text_in_the_queue_and_the_start_of_it_in_the_ledger(clocked):
+    clocked.running("L4: eval", started_ago=10)
+    row = clocked.seed("L3: smoke", requested=clocked.ago(minutes=40))
+    answer, code = clocked.call("complain", "--row", row, "--text", "x" * 900)
+    assert code == 0 and answer["outcome"] == "complaint_recorded"
+    stored = clocked.stored(row)["Complaint"]
+    [entry] = ledger_rows()
+    assert stored.endswith(". " + "x" * 900)
+    assert entry["note"] == stored[:record.NOTE_CHARS] and len(entry["note"]) == record.NOTE_CHARS
+
+
+def test_each_complaint_on_a_row_shows_its_own_text_and_not_the_earlier_ones(clocked):
+    clocked.running("L4: eval", started_ago=10)
+    row = clocked.seed("L3: smoke", requested=clocked.ago(minutes=40))
+    clocked.call("complain", "--row", row, "--text", "first")
+    clocked.advance(minutes=20)
+    clocked.call("complain", "--row", row, "--text", "still waiting")
+    lines, total = complaint_lines_of_the_ledger(clocked)
+    assert total == 2
+    assert lines == [
+        f"- 14:00:00Z slot {row} (unknown): {FILED_BEHIND_THE_EVAL}. first (ledger:1)",
+        f"- 14:20:00Z slot {row} (unknown): 2026-10-10T14:20Z waited 60 minutes, more than twice the 15 asked for; "
+        "waiting behind: Running 'L4: eval' (ends 2026-10-10T14:05:00.000Z). still waiting (ledger:2)"]
+
+
+def test_a_complaint_the_queue_refused_leaves_its_text_out_of_the_ledger(clocked):
+    clocked.running("L4: eval", started_ago=5)
+    row = clocked.seed("L3: smoke", requested=clocked.ago(minutes=29))
+    answer, code = clocked.call("complain", "--row", row, "--text", "give me the card now")
+    assert code == 1 and answer["outcome"] == "too_early" and "note" not in answer
+    [entry] = ledger_rows()
+    assert entry["outcome"] == "too_early" and "note" not in entry
+    assert complaint_lines_of_the_ledger(clocked) == ([], 0)
+
+
 # --- no token ----------------------------------------------------------------------------
 
 def run_offline(*argv: str) -> tuple[dict, int]:
@@ -1690,10 +1834,10 @@ def test_without_a_token_a_request_prints_the_exact_row_to_create_and_exits_2(mo
 
 
 def test_without_a_token_a_long_request_prints_its_justification_with_the_row():
-    answer, code = run_offline("request", "--task", "L3", "--what", "train", "--minutes", "60", "--why", "one run",
-                               "--measured", "200 steps in 13 minutes", "--gpu", "A")
+    answer, code = run_offline("request", "--task", "L3", "--what", "restart the teacher", "--minutes", "60", "--why",
+                               "one run", "--measured", "200 steps in 13 minutes", "--gpu", "A")
     assert code == 2
-    assert answer["write"]["Request"] == "L3: train (60 min: one run)" and answer["write"]["Minutes"] == 60
+    assert answer["write"]["Request"] == "L3: restart the teacher (60 min: one run)" and answer["write"]["Minutes"] == 60
     assert answer["write"]["Progress note"] == (
         "Justification (unknown, 2026-10-10T14:00Z): cannot be split because: one run; already measured: "
         "200 steps in 13 minutes")
@@ -1710,8 +1854,8 @@ UPDATE = f"mcp__{allowed.NOTION_SERVER}__notion-update-page"
     (["start", "--row", ROW],
      {"Status": "Running", "date:Started:start": "2026-10-10T14:00:00.000Z", "date:Started:is_datetime": 1},
      ["fetch", "query-data-sources", "update-page", "query-data-sources"]),
-    (["extend", "--row", ROW, "--note", "loss fell"], {"Extended": "__YES__", "Progress note": "loss fell"},
-     ["fetch", "update-page"]),
+    (["extend", "--row", ROW, "--note", "loss fell"],
+     {"Extended": "__YES__", "Progress note": "<the Progress note as it is> | loss fell"}, ["fetch", "update-page"]),
     (["done", "--row", ROW, "--result", "7.7 tok/s"],
      {"Status": "Done", "date:Ended:start": "2026-10-10T14:00:00.000Z", "date:Ended:is_datetime": 1, "Result": "7.7 tok/s"},
      ["update-page"]),
@@ -1722,7 +1866,8 @@ UPDATE = f"mcp__{allowed.NOTION_SERVER}__notion-update-page"
      {"Status": "Cancelled", "date:Ended:start": "2026-10-10T14:00:00.000Z", "date:Ended:is_datetime": 1,
       "Result": "not needed"}, ["update-page"]),
     (["complain", "--row", ROW, "--text", "behind the eval for 40 minutes"],
-     {"Complaint": "2026-10-10T14:00Z behind the eval for 40 minutes"}, ["fetch", "update-page"]),
+     {"Complaint": "<the Complaint as it is> | 2026-10-10T14:00Z behind the eval for 40 minutes"},
+     ["fetch", "update-page"]),
 ])
 def test_without_a_token_each_verb_prints_the_properties_to_set_on_the_row(argv, props, tools):
     answer, code = run_offline(*argv)
@@ -1763,8 +1908,8 @@ def stored_as_python(world: World, row: str, names) -> dict:
 
 def test_the_row_printed_without_a_token_is_the_row_the_verb_writes_with_one():
     online = World()
-    argv = ["request", "--task", "L3", "--what", "train the adapter", "--minutes", "60", "--why", "training run",
-            "--measured", "200 steps took 13 minutes", "--gpu", "A"]
+    argv = ["request", "--task", "L3", "--what", "restart the teacher with new flags", "--minutes", "60", "--why",
+            "one restart", "--measured", "the engine starts in 297 s", "--gpu", "A"]
     printed, code = slots.run(argv, environ={}, env_files=[], now=lambda: online.now)
     assert code == 2
     written, _ = online.call(*argv)
@@ -1776,7 +1921,8 @@ def test_the_row_printed_without_a_token_is_the_row_the_verb_writes_with_one():
 
 @pytest.mark.parametrize("make,argv", [
     (lambda w: w.seed("L3: smoke"), ["start", "--row", "{row}"]),
-    (lambda w: w.running("L3: smoke", started_ago=3), ["extend", "--row", "{row}", "--note", "loss fell"]),
+    (lambda w: w.running("L3: smoke", started_ago=3, progress_note="loaded the set"),
+     ["extend", "--row", "{row}", "--note", "loss fell"]),
     (lambda w: w.running("L3: smoke", started_ago=3), ["done", "--row", "{row}", "--result", "7.7 tok/s"]),
     (lambda w: w.seed("L3: smoke"), ["done", "--row", "{row}", "--cancel", "--result", "not needed"]),
     (lambda w: w.seed("L3: smoke"), ["done", "--row", "{row}", "--cancel"]),
@@ -1790,11 +1936,25 @@ def test_the_properties_printed_without_a_token_are_the_ones_the_verb_sets_with_
     before = dict(world.stored(row))
     answer, code = world.call(*argv)
     assert code == 0, answer
-    wanted = decode_mcp(printed["write"])
+    # A "<the X as it is>" placeholder stands for what the row held before: filled in, the plan is what the verb wrote.
+    wanted = {name: value.replace(f"<the {name} as it is>", before[name]) if isinstance(value, str) else value
+              for name, value in decode_mcp(printed["write"]).items()}
     assert stored_as_python(world, row, wanted) == wanted
     after = world.stored(row)
     changed = {name for name in after if after[name] != before[name]}
     assert changed == {name for name in wanted if after[name] != before[name]}
+
+
+def test_the_ledger_verbs_of_the_slot_rows_are_the_names_alerts_reads(world, monkeypatch):
+    # The writer takes each verb from lab/machine/alerts.py, so a rename there cannot leave the slot rows unread.
+    for name in ("SLOT_REQUEST", "SLOT_START", "SLOT_EXTEND", "SLOT_DONE"):
+        monkeypatch.setattr(alerts, name, getattr(alerts, name).replace("slot ", "slot-renamed "))
+    row = world.call("request", "--task", "L3", "--what", "smoke")[0]["row"]
+    world.call("start", "--row", row)
+    world.call("extend", "--row", row, "--note", "loss fell")
+    world.call("done", "--row", row, "--result", "7.7 tok/s")
+    assert [entry["verb"] for entry in ledger_rows()] == [
+        alerts.SLOT_REQUEST, alerts.SLOT_START, alerts.SLOT_EXTEND, alerts.SLOT_DONE]
 
 
 @pytest.mark.parametrize("argv", [
@@ -1935,3 +2095,99 @@ def test_every_call_a_sitting_is_allowed_to_make_is_one_the_verb_accepts(call):
             assert allowed.allows(tier, "Bash", f"{python} -m lab {call}"), (tier, call)
     args = slots.parse_args(shlex.split(call)[1:])
     assert args.sub == shlex.split(call)[1]
+
+
+# --- the placement plan's check on a request ---------------------------------------------------------------------
+# The plan is built from the recorded facts (fixtures/lab/placement): pod A serves the teacher at a 0.90 share, so
+# LoRA jobs, benchmarks and Ax trials belong on pod B's card.
+
+def test_a_lora_request_on_the_teacher_s_card_is_refused_by_the_placement_plan_and_written_nowhere(world):
+    answer, code = world.call("request", "--task", "L3", "--what", "smoke LoRA 200 steps", "--gpu", "A")
+    assert code == 1 and answer["ok"] is False and answer["outcome"] == "placement_contradiction"
+    assert answer["reason"].startswith("the plan puts lora on GPU B (pod-b), not on pod-a: GPU B is the exclusive card")
+    assert answer["placement"]["kind"] == "lora" and answer["placement"]["plan_pods"] == ["pod-b"]
+    assert answer["next"] == 'ask for GPU B instead, or add --override "why it must run on pod-a"'
+    assert world.fake.requests == []
+    [entry] = ledger_rows()
+    assert (entry["verb"], entry["outcome"], entry["node"], entry["placement_verdict"]) == (
+        "slot request", "placement_contradiction", "pod-a", "contradicts")
+
+
+def test_an_override_queues_it_anyway_and_the_progress_note_says_why(world):
+    answer, code = world.call("request", "--task", "L3", "--what", "smoke LoRA 200 steps", "--gpu", "A",
+                              "--override", "the teacher is down for an hour")
+    assert code == 0 and answer["outcome"] == "queued" and answer["placement_verdict"] == "overridden"
+    assert answer["placement"]["override"] == answer["override"] == "the teacher is down for an hour"
+    assert world.stored(answer["row"])["Progress note"] == (
+        "Override (unknown, 2026-10-10T14:00Z): against the placement plan (lora on pod-a; the plan says pod-b): "
+        "the teacher is down for an hour")
+    [entry] = ledger_rows()
+    assert (entry["outcome"], entry["placement_verdict"], entry["override"]) == (
+        "queued", "overridden", "the teacher is down for an hour")
+
+
+def test_a_long_overridden_request_keeps_its_justification_first_so_the_referee_still_reads_it(world):
+    answer, code = world.call("request", "--task", "R20", "--what", "baseline matrix", "--gpu", "A", "--minutes", "60",
+                              "--why", "one matrix", "--measured", "one cell took 9 minutes", "--override", "pod B is down")
+    assert code == 0 and answer["justification_state"] == "awaiting_critique"
+    note = world.stored(answer["row"])["Progress note"]
+    assert note.startswith("Justification (unknown, 2026-10-10T14:00Z): cannot be split because: one matrix")
+    assert note.endswith("Override (unknown, 2026-10-10T14:00Z): against the placement plan (bench on pod-a; the plan "
+                         "says pod-b): pod B is down")
+
+
+def test_a_request_the_plan_agrees_with_says_so_and_needs_no_override(world):
+    answer, code = world.call("request", "--task", "L3", "--what", "smoke LoRA 200 steps")
+    assert code == 0 and answer["placement_verdict"] == "consistent"
+    assert answer["placement"] == {"verdict": "consistent", "kind": "lora", "kind_from": "words", "node": "pod-b",
+                                   "reason": "the plan puts lora on pod-b (GPU B)", "plan_pods": ["pod-b"]}
+    unused, _ = world.call("request", "--task", "R2", "--what", "restart the teacher", "--gpu", "A", "--override", "x")
+    assert unused["placement_verdict"] == "consistent" and "override" not in unused
+    assert world.stored(unused["row"])["Progress note"] == ""
+
+
+def test_kind_names_the_job_when_its_words_do_not(world):
+    refused, code = world.call("request", "--task", "R20", "--what", "cell 4", "--gpu", "A", "--kind", "bench")
+    assert code == 1 and refused["outcome"] == "placement_contradiction" and refused["placement"]["kind_from"] == "given"
+    plain, code = world.call("request", "--task", "R20", "--what", "cell 4", "--gpu", "A")
+    assert code == 0 and plain["placement_verdict"] == "no_line"
+
+
+def test_a_placement_plan_that_cannot_be_built_never_blocks_the_queue(world, monkeypatch, tmp_path):
+    monkeypatch.setenv("LAB_PLACEMENT_FACTS", str(tmp_path / "missing"))
+    answer, code = world.call("request", "--task", "L3", "--what", "smoke LoRA 200 steps", "--gpu", "A")
+    assert code == 0 and answer["outcome"] == "queued" and answer["placement_verdict"] == "unavailable"
+    assert answer["placement"]["reason"].startswith("no placement plan: FileNotFoundError")
+
+
+def test_the_queue_checks_the_plan_for_any_caller(world):
+    refused = world.queue().request(task="L3", what="train the adapter", gpu="A")
+    assert refused["outcome"] == "placement_contradiction" and world.fake.requests == []
+    queued = world.queue().request(task="L3", what="train the adapter", gpu="A", override="pod B is down")
+    assert queued["outcome"] == "queued" and queued["placement_verdict"] == "overridden"
+
+
+def test_without_a_token_a_contradicting_request_is_refused_before_the_token_is_looked_for():
+    answer, code = run_offline("request", "--task", "L3", "--what", "smoke LoRA", "--gpu", "A")
+    assert code == 1 and answer["outcome"] == "placement_contradiction" and "steps" not in answer
+    assert [(r["verb"], r["outcome"]) for r in ledger_rows()] == [("slot request", "placement_contradiction")]
+
+
+def test_without_a_token_an_overridden_request_prints_the_override_line_with_the_row():
+    answer, code = run_offline("request", "--task", "L3", "--what", "smoke LoRA", "--gpu", "A", "--override",
+                               "pod B is down")
+    assert code == 2 and answer["outcome"] == "no_token" and answer["placement_verdict"] == "overridden"
+    assert answer["write"]["Progress note"] == ("Override (unknown, 2026-10-10T14:00Z): against the placement plan "
+                                                "(lora on pod-a; the plan says pod-b): pod B is down")
+
+
+@pytest.mark.parametrize("argv", [
+    ["request", "--task", "L3", "--what", "x", "--kind", "train"],
+    ["request", "--task", "L3", "--what", "x", "--override", "  "],
+    ["request", "--task", "L3", "--what", "x", "--override", "y" * 201],
+])
+def test_bad_placement_arguments_exit_2_and_touch_nothing(world, argv, capsys):
+    with pytest.raises(SystemExit) as caught:
+        world.call(*argv)
+    assert caught.value.code == 2
+    assert world.fake.requests == [] and ledger_rows() == []

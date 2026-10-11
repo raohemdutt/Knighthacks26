@@ -249,6 +249,9 @@ export default function TeachPage() {
       </section>
       <section className={teach.section}>
         <h2>Progress</h2>
+        <p className={ui.muted}>
+          See a training run step by step, and why a model was or was not installed, in the <Link href="/lab">Learning lab</Link>.
+        </p>
         {board.loading && !board.data ? <Loading what="what Atlas is learning" /> : null}
         {board.error && !board.data ? <ErrorBox what="what Atlas is learning" error={board.error} onRetry={reload} /> : null}
         {board.data && tasks.length === 0 ? <Empty title="Nothing taught yet">Describe a task above and approve the export; progress shows here.</Empty> : null}

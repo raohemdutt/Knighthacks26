@@ -234,7 +234,8 @@ def test_the_argument_vector_stays_well_under_the_command_line_limit_of_cmd_exe(
     # a launcher that goes through an npm .cmd shim is held to 8191 characters by cmd.exe,
     # and still has to add its own flags and the program path
     for tier in TIERS:
-        assert sum(len(token) + 3 for token in allowed.cli_flags(tier)) <= 6500, tier
+        # 6600 since O50 added the 16 state-dir deny rules; cmd.exe allows 8191 for the whole line
+        assert sum(len(token) + 3 for token in allowed.cli_flags(tier)) <= 6600, tier
 
 
 def test_tier_names_are_case_insensitive_and_unknown_tiers_are_refused():
@@ -450,3 +451,149 @@ def test_the_docstring_names_every_lab_verb_the_rules_name_and_says_which_do_not
     assert {"ready", "ledger", "slot", "sit", "pool", "stop", "resume", "referee"} <= verbs
     assert "do not exist yet" in allowed.__doc__
     assert [verb for verb in sorted(verbs) if not re.search(rf"\b{verb}\b", allowed.__doc__)] == []
+
+
+def test_the_pass_tiers_may_run_research_check_in_both_interpreter_spellings_and_sonnet_may_not():
+    for python in allowed.PYTHONS:
+        for command in (
+            f"{python} -m lab research-check lab/refine/research/telemetry",
+            f"{python} -m lab research-check --ref lab/refine/research/telemetry/sampling.md#idle-baseline",
+        ):
+            assert [allowed.allows(tier, "Bash", command) for tier in ("fable", "opus", "sonnet")] == [True, True, False], command
+
+
+# --- a push of a ctx/ branch carries no second refspec that touches a teammate's branch ---
+
+FORCE_OTHER_BRANCH = [
+    "git push origin ctx/orchestration/mine +ctx/learning/theirs",
+    "git push -u origin ctx/orchestration/mine +ctx/learning/theirs",
+]
+
+OWN_BRANCH_PUSHES = [
+    "git push -u origin ctx/learning/domain-model",
+    "git push origin ctx/orchestration/feature",
+    "git push -u origin ctx/orchestration/feature",
+]
+
+
+@pytest.mark.parametrize("tier", TIERS)
+def test_a_force_refspec_after_a_ctx_branch_is_refused_by_a_deny_rule_and_a_plain_ctx_push_stays_allowed(tier):
+    still_allowed = [c for c in FORCE_OTHER_BRANCH if allowed.allows(tier, "Bash", c)]
+    not_denied = [c for c in FORCE_OTHER_BRANCH if not allowed.denies("Bash", c)]
+    assert (still_allowed, not_denied) == ([], [])
+    assert [c for c in OWN_BRANCH_PUSHES if not allowed.allows(tier, "Bash", c)] == []
+
+
+@pytest.mark.parametrize("tier", TIERS)
+def test_a_delete_refspec_spelled_with_refs_heads_is_refused_by_a_deny_rule(tier):
+    command = "git push origin ctx/orchestration/mine :refs/heads/ctx/learning/theirs"
+    assert not allowed.allows(tier, "Bash", command)
+    assert allowed.denies("Bash", command)
+
+
+# --- git rebase must not carry a command past the deny rules ------------------------------
+
+#: git rebase runs the command after --exec (or -x) once per commit. 'git rebase *' allows it,
+#: and a deny rule is matched against the whole command part, so a push or an rm inside the
+#: argument is not seen by the push and rm deny rules.
+REBASE_EXEC_SPELLING = [
+    'git rebase --exec "git push --force origin main" HEAD~3',
+    'git rebase --exec="rm -rf work" origin/main',
+]
+
+REBASE_X_SPELLING = [
+    'git rebase -x "rm -rf work" origin/main',
+    'git rebase origin/main -x "git push origin main"',
+]
+
+
+@pytest.mark.parametrize("tier", TIERS)
+def test_rebase_with_the_exec_spelling_is_refused_by_a_deny_rule_and_a_plain_rebase_stays_allowed(tier):
+    not_refused = [command for command in REBASE_EXEC_SPELLING if allowed.allows(tier, "Bash", command)]
+    not_denied = [command for command in REBASE_EXEC_SPELLING if not allowed.denies("Bash", command)]
+    assert (not_refused, not_denied) == ([], [])
+    assert allowed.allows(tier, "Bash", "git rebase origin/main")
+
+
+@pytest.mark.parametrize("tier", TIERS)
+def test_rebase_with_the_short_x_spelling_is_refused_by_a_deny_rule_first_or_after_other_arguments(tier):
+    not_refused = [command for command in REBASE_X_SPELLING if allowed.allows(tier, "Bash", command)]
+    not_denied = [command for command in REBASE_X_SPELLING if not allowed.denies("Bash", command)]
+    assert (not_refused, not_denied) == ([], [])
+
+
+# --- the state dir is changed only through the verbs, whichever shell command reaches it ---
+
+
+@pytest.mark.parametrize("tier", TIERS)
+def test_moving_the_stop_file_out_of_the_state_dir_is_refused_by_a_deny_rule_for_every_tier(tier):
+    command = "mv lab/state/STOP lab/state/STOP.bak"
+    assert allowed.denies("Bash", command)
+    assert not allowed.allows(tier, "Bash", command)
+    assert allowed.allows(tier, "Bash", "mv notes.md docs/notes.md")
+    assert not allowed.denies("Bash", "mv notes.md docs/notes.md")
+
+
+@pytest.mark.parametrize("tier", TIERS)
+def test_copying_the_owner_notes_or_the_ledger_out_of_the_state_dir_is_refused_by_a_deny_rule_for_every_tier(tier):
+    commands = [
+        "cp lab/state/notes/2026-10-10.md ./notes.md",
+        "cp C:/x/atlas/lab/state/ledger.jsonl backup.jsonl",
+    ]
+    assert [command for command in commands if not allowed.denies("Bash", command)] == []
+    assert [command for command in commands if allowed.allows(tier, "Bash", command)] == []
+    assert allowed.allows(tier, "Bash", "cp config/.env.example notes.md")
+    assert not allowed.denies("Bash", "cp config/.env.example notes.md")
+
+
+@pytest.mark.parametrize("tier", TIERS)
+def test_touching_a_file_in_the_state_dir_is_refused_by_a_deny_rule_for_every_tier(tier):
+    command = "touch lab/state/STOP"
+    assert allowed.denies("Bash", command)
+    assert not allowed.allows(tier, "Bash", command)
+    assert allowed.allows(tier, "Bash", "touch tests/__init__.py")
+    assert not allowed.denies("Bash", "touch tests/__init__.py")
+
+
+@pytest.mark.parametrize("tier", TIERS)
+def test_an_output_redirect_into_the_state_dir_through_an_allowed_command_is_refused_for_every_tier(tier):
+    commands = ["date >> lab/state/ledger.jsonl", "date > lab/state/STOP"]
+    assert [command for command in commands if not allowed.denies("Bash", command)] == []
+    assert [command for command in commands if allowed.allows(tier, "Bash", command)] == []
+    assert allowed.allows(tier, "Bash", "date +%s")
+    assert not allowed.denies("Bash", "date +%s")
+
+
+# --- the commit hook is never bypassed with -n, wherever git accepts the flag ---
+
+COMMIT_N_AFTER_OTHER_ARGS = [
+    "git commit -m wip -n",
+    "git commit -m wip -n --quiet",
+]
+
+COMMIT_PLAIN = [
+    "git commit -m wip",
+    "git commit -am wip",
+    'git commit -m "turn on the fan"',
+]
+
+COMMIT_N_FOLDED_INTO_A_SHORT_GROUP = [
+    "git commit -an -m wip",
+    "git commit -am wip -sn",
+]
+
+
+@pytest.mark.parametrize("tier", TIERS)
+def test_a_commit_with_a_trailing_dash_n_is_refused_by_a_deny_rule_and_a_plain_commit_stays_allowed(tier):
+    still_allowed = [c for c in COMMIT_N_AFTER_OTHER_ARGS if allowed.allows(tier, "Bash", c)]
+    not_denied = [c for c in COMMIT_N_AFTER_OTHER_ARGS if not allowed.denies("Bash", c)]
+    assert (still_allowed, not_denied) == ([], [])
+    assert [c for c in COMMIT_PLAIN if not allowed.allows(tier, "Bash", c)] == []
+
+
+@pytest.mark.parametrize("tier", TIERS)
+def test_a_commit_with_dash_n_folded_into_a_short_flag_group_is_refused_by_a_deny_rule_and_dash_am_stays_allowed(tier):
+    still_allowed = [c for c in COMMIT_N_FOLDED_INTO_A_SHORT_GROUP if allowed.allows(tier, "Bash", c)]
+    not_denied = [c for c in COMMIT_N_FOLDED_INTO_A_SHORT_GROUP if not allowed.denies("Bash", c)]
+    assert (still_allowed, not_denied) == ([], [])
+    assert allowed.allows(tier, "Bash", "git commit -am wip")

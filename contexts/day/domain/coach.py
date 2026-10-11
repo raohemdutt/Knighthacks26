@@ -22,6 +22,13 @@ The rules, in plain words (every time is event time; nothing here reads a clock 
 - A note when the block ends only for a session that happened (NOTE_MIN_MINUTES at the desk or more): a
   skipped block is in the evening review as a number, never announced.
 - What nobody can know from here: the camera sees the desk, not the screen, and it does not know who sits there.
+- How the person looked (optional, one more input): when an enrolled member switched "read my expressions" on,
+  Perception publishes how their face looked over stretches of time. Inside a block those are put in
+  EXPRESSION_BUCKET_MIN-minute buckets; with EXPRESSION_MIN_SAMPLES counted looks or more the session carries
+  the share that looked strained (angry, disgusted, fearful or sad), and, when the share after some mark is
+  EXPRESSION_RISE higher than before it, that mark: "you looked more strained after the 35-minute mark". With
+  fewer looks, or with no such events at all, nothing is said and nothing else changes. It is how a face
+  looked to a small model, a noisy signal: not an emotion, not tiredness measured, nothing about health.
 """
 
 import math
@@ -29,7 +36,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, tzinfo
 
-from contracts.day import CoachBreak, CoachEvidence, PlanMove, SessionReview
+from contracts.day import CoachBreak, CoachEvidence, PlanMove, SessionExpression, SessionReview
 
 MIN_BREAK_S = 60  # an absence shorter than this does not split a stretch
 TRIGGER_WINDOW_S = 120  # "the minute or two before" a break
@@ -53,6 +60,14 @@ LIMITS = ("The camera sees the {workplace}, not the screen: minutes at the {work
           "It does not know who is at the {workplace}.",
           "A trigger is what happened in the two minutes before a break: the most likely reason, not a proven one.",
           "A block away from the box is not measured.")
+
+STRAINED_LOOKS = ("angry", "disgust", "fearful", "sad")  # labels of perception.expression.observed
+EXPRESSION_BUCKET_MIN = 5
+EXPRESSION_MIN_SAMPLES = 40  # counted looks a block needs before anything is said about how the person looked
+EXPRESSION_MIN_BUCKET = 6  # ... and a bucket needs this many to be compared with another
+EXPRESSION_RISE = 0.25  # "more strained after": the share after the mark is this much higher than before it
+EXPRESSION_HIGH = 0.35  # ... and at least this high
+EXPRESSION_MOSTLY = 0.5  # with no such mark: strained for half the looks or more is worth a sentence
 
 Span = tuple[datetime, datetime]
 
@@ -79,6 +94,48 @@ class Advice:
     suggestions: list[str]
     block_minutes: int | None  # the block length to plan next, when the day showed shorter stretches than planned
     longest_stretch: int | None
+
+
+@dataclass(frozen=True)
+class Looks:
+    """One `perception.expression.observed` for the person at the desk: counted looks, and how many looked strained."""
+
+    start: datetime
+    end: datetime
+    samples: int
+    strained: float
+
+
+def expression_of(block: PlanMove, looks: list[Looks]) -> SessionExpression | None:
+    """How the person looked across the block, or None when too few looks were counted to say."""
+    buckets: dict[int, tuple[float, int]] = {}
+    for x in looks:
+        mid = x.start + (x.end - x.start) / 2
+        if block.start <= mid < block.end and x.samples > 0:
+            i = int((mid - block.start).total_seconds() // (EXPRESSION_BUCKET_MIN * 60))
+            strained, n = buckets.get(i, (0.0, 0))
+            buckets[i] = (strained + x.strained, n + x.samples)
+    total = sum(n for _, n in buckets.values())
+    if total < EXPRESSION_MIN_SAMPLES:
+        return None
+    share = sum(s for s, _ in buckets.values()) / total
+    full = sorted(i for i, (_, n) in buckets.items() if n >= EXPRESSION_MIN_BUCKET)
+
+    def pooled(ids: list[int]) -> float:
+        return sum(buckets[i][0] for i in ids) / sum(buckets[i][1] for i in ids)
+
+    best: tuple[float, int, float, float] | None = None  # (rise, bucket, before, after)
+    for k in range(2, len(full) - 1):  # two full buckets or more on each side of the mark
+        before, after = pooled(full[:k]), pooled(full[k:])
+        if after - before >= EXPRESSION_RISE and after >= EXPRESSION_HIGH and (best is None or after - before > best[0]):
+            best = (after - before, full[k], before, after)
+    if best is not None:
+        mark = best[1] * EXPRESSION_BUCKET_MIN
+        return SessionExpression(samples=total, strained_share=round(share, 2), rose_after_minutes=mark,
+                                 before_share=round(best[2], 2), after_share=round(best[3], 2),
+                                 text=f"You looked more strained after the {mark}-minute mark; a break around then next time.")
+    text = "You looked strained for much of this block; a shorter one may sit better." if share >= EXPRESSION_MOSTLY else ""
+    return SessionExpression(samples=total, strained_share=round(share, 2), text=text)
 
 
 def mentions(text: str, words: tuple[str, ...]) -> bool:
@@ -156,8 +213,9 @@ def trigger_of(at: datetime, signals: list[Signal], window_s: int = TRIGGER_WIND
 
 
 def review_session(block: PlanMove, at_desk: list[Span], signals: list[Signal], desk_place: str | None,
-                   words: Words = Words(), tz: tzinfo | None = None) -> SessionReview:
-    """One planned block against the desk camera. `at_desk` is DeskPresence.intervals for the block."""
+                   words: Words = Words(), tz: tzinfo | None = None, looks: list[Looks] | None = None) -> SessionReview:
+    """One planned block against the desk camera. `at_desk` is DeskPresence.intervals for the block; `looks`
+    (optional) is how the person at the desk looked, and changes nothing when it is empty or too thin."""
     base = dict(block_id=block.id, title=block.title, start=block.start, end=block.end, place=block.place,
                 place_name=block.place_name, planned_minutes=block.minutes)
     spans = stretches([(max(a, block.start), min(b, block.end)) for a, b in at_desk if a < block.end and b > block.start])
@@ -179,7 +237,8 @@ def review_session(block: PlanMove, at_desk: list[Span], signals: list[Signal], 
     longest = max(spans, key=lambda s: (s[1] - s[0], -s[0].timestamp()))
     s = SessionReview(**base, measured=True, desk_minutes=int(round(seconds / 60)),
                       late_start_minutes=_minutes(block.start, spans[0][0]), ended_early_minutes=_minutes(spans[-1][1], block.end),
-                      longest_stretch_minutes=_minutes(*longest), longest_stretch_start=longest[0], breaks=breaks)
+                      longest_stretch_minutes=_minutes(*longest), longest_stretch_start=longest[0], breaks=breaks,
+                      expression=expression_of(block, looks) if looks else None)
     s.text = session_text(s, words, tz, moved=not at_the_box)
     return s
 
@@ -219,6 +278,8 @@ def session_text(s: SessionReview, words: Words = Words(), tz: tzinfo | None = N
         first = s.longest_stretch_start is not None and (s.longest_stretch_start - s.start) < timedelta(seconds=MIN_BREAK_S)
         where = f"the first {_mins(s.longest_stretch_minutes)}" if first else f"{_mins(s.longest_stretch_minutes)}, from {hm(s.longest_stretch_start, tz)}"
         parts.append(f"What worked: your longest unbroken stretch was {where}.")
+    if s.expression and s.expression.text:
+        parts.append(s.expression.text)
     return " ".join(parts)
 
 
@@ -240,6 +301,8 @@ def note_text(s: SessionReview, next_block: PlanMove | None = None, words: Words
             parts.append(f"{count}, {why}." if why else f"{count}, for {_mins(long.minutes)}.")
         else:
             parts.append(f"{count}; the long one came {why}." if why else f"{count}; nothing I can see explains the long one.")
+    if s.expression and s.expression.text:
+        parts.append(s.expression.text)
     if next_block is not None:
         parts.append(f"Next {words.activity} block is {_mins(next_block.minutes)}.")
     return " ".join(parts)

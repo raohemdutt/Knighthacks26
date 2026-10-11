@@ -264,8 +264,9 @@ after.
 
 ## The walk list
 
-Every pass walks these tasks, which are the learning track's starting set in the pass rules (L2 to L9,
-L11 and L12), and every queued experiment on T0 that belongs to the track (its line says `(learning)`, or
+Every pass walks these tasks, the learning track's starting set in the pass rules (L2 to L9, L11 and L12)
+widened by learning ruling 4 (owner, 2026-10-10) to every learning task in Ilan's lane, L2 to L20, with L10
+added by merge 1, and every queued experiment on T0 that belongs to the track (its line says `(learning)`, or
 the first metric it names is in the metric set below), each against LT1 to LT9. The tests that bear
 hardest on each task are named so a pass starts there; the walk still covers all nine.
 
@@ -279,7 +280,18 @@ hardest on each task are named so a pass starts there; the walk still covers all
 - L9 second taught task (P1, after L7): as L7.
 - L11 dataset reader and fixture dataset: LT1, LT3.
 - L12 tool-call trace formatting: LT2, LT3.
+- L10 group fine-tune from pooled opt-in uploads (P1, after L7; added by merge 1): LT1, LT5.
+- L13 label the golden tool-call fixture with the teacher: LT2.
+- L14 label agreement spot-check: LT2.
+- L15 freeze the train and held-out split: LT3.
+- L16 first real fine-tune run on pod B: LT1, LT5, LT6, LT9.
+- L17 eval gate run with a noise estimate: LT4.
+- L18 package the adapter and dry-run the install: LT7.
+- L19 publish the adapter with its model card: LT8.
+- L20 measure the full loop wall-clock: LT6.
 - Queued learning experiments: LT4 for how they are measured, plus the tests their lever touches.
+
+L13 to L20 were added by merge 2 under learning ruling 4 (owner, 2026-10-10).
 
 L6 and L7 are shared, so a pass walks them and logs its findings but changes them only through a
 proposal to their co-owner. Read for evidence, never edited, because other people own them: L1 and the

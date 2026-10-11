@@ -139,7 +139,7 @@ def test_the_plan_is_built_from_items_habits_and_presence_and_names_every_source
     # the fixed blocks from the calendar and the chosen moves, in time order, with the editable moves beside them
     fixed = [m.id for m in plan.moves if m.fixed]
     assert MENTOR in fixed and all(a.start <= b.start for a, b in zip(plan.moves, plan.moves[1:]))
-    assert plan.dayrun_moves and plan.dayrun_moves[0].slot == "s1"
+    assert plan.dayrun_moves and plan.dayrun_moves[0].slot == "s2"  # the library with Maya, 4 real minutes from the check-in
     assert "Here's your day" in plan.text and "Because:" in plan.text and "slept 5.4 h" in plan.text
 
 
@@ -207,8 +207,8 @@ def test_drift_is_seen_and_an_infeasible_next_event_triggers_one_replan(items, p
     plan = next(e for e in out if isinstance(e, DayPlanProposed))
     statuses = [e for e in out if isinstance(e, DayStatusChanged)]
     assert statuses and statuses[-1].seen_at == "apartment.desk" and statuses[-1].seen_how == "desk camera"
-    assert statuses[-1].next_event.id == MENTOR and statuses[-1].next_event.walk_minutes == 13
-    assert statuses[-1].next_event.leave_by == at(9, 7) and statuses[-1].risk == "ok"
+    assert statuses[-1].next_event.id == MENTOR and statuses[-1].next_event.walk_minutes == 10
+    assert statuses[-1].next_event.leave_by == at(9, 10) and statuses[-1].risk == "ok"
     # breakfast at the kitchen is the plan at 8:35; the desk is where the cameras see you: a few minutes behind
     out = feed(loop, [zone(at(8, 35), "desk")])
     s = next(e for e in out if isinstance(e, DayStatusChanged))
@@ -217,13 +217,13 @@ def test_drift_is_seen_and_an_infeasible_next_event_triggers_one_replan(items, p
     out = feed(loop, [zone(at(9, 5), "door", "exit", camera="cam-door")])
     s = next(e for e in out if isinstance(e, DayStatusChanged))
     assert s.seen_at == "apartment.door" and s.risk == "leave_now"
-    # back at the desk at 9:12: the 9:20 check-in is 13 minutes away, so it is infeasible, and one re-plan is proposed
+    # back at the desk at 9:12: the 9:20 check-in is 10 minutes away, so it is infeasible, and one re-plan is proposed
     out = feed(loop, [zone(at(9, 12), "desk")])
     s = next(e for e in out if isinstance(e, DayStatusChanged))
     assert s.risk == "infeasible" and s.reason == "you will miss Knight Hacks: mentor check-in"
     replans = [e for e in out if isinstance(e, DayReplanProposed)]
     assert len(replans) == 1 and replans[0].replaces == plan.plan_id and replans[0].for_event == MENTOR
-    assert "At Desk at 09:12" in replans[0].why and "13 minute walk" in replans[0].why
+    assert "At Desk at 09:12" in replans[0].why and "10 minute walk" in replans[0].why
     card = next(e for e in out if e.type == "agent.action.proposed")
     assert card.action_id == replans[0].action_id and "Replace today's Day Run blocks" in card.reason
     # while it is pending, no second one; after it expired, drift still there, once more; then no more for that event

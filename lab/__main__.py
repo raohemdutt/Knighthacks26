@@ -40,14 +40,25 @@ from lab.machine import stop
 # One line per verb, alphabetical: "verb": "module:function".
 VERBS: dict[str, str] = {
     "alerts": "lab.machine.alerts:main",
+    "bench": "lab.bench:main",
+    "chipsheet": "lab.kernels.chipsheet.ingest:main",
+    "correctness": "lab.correctness:main",
+    "credits": "lab.credits:main",
     "digest": "lab.machine.digest:main",
     "draft": "lab.machine.draft:main",
+    "eval-gate": "lab.eval_gate:main",
     "experiment": "lab.machine.experiments:main",
+    "gpu-power": "lab.machine.gpu_power:main",
     "handoff": "lab.machine.handoff:main",
+    "label-agreement": "lab.label_agreement:main",
     "ledger": "lab.machine.ledger_cli:main",
+    "link-speed": "lab.link_speed:main",
     "metrics": "lab.machine.metrics_report:main",
     "mirror": "lab.machine.mirror:main",
+    "package": "lab.package:main",
+    "placement": "lab.placement:main",
     "pool": "lab.machine.pool:main",
+    "publish-adapter": "lab.publish_adapter:main",
     "ready": "lab.machine.ready:main",
     "referee": "lab.machine.referee:main",
     "research-check": "lab.machine.research_check:main",
@@ -57,6 +68,7 @@ VERBS: dict[str, str] = {
     "sit": "lab.machine.sit:main",
     "slot": "lab.machine.slots:main",
     "stop": "lab.machine.stop:stop_main",
+    "sweep-request": "lab.sweep_request:main",
 }
 
 HELP_WORDS = ("-h", "--help", "help")

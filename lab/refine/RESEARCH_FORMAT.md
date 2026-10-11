@@ -49,15 +49,15 @@ The tracks are `telemetry`, `learning`, `plumbing` and `kernels`. A pass adds fi
 A complete note, short enough to read at a glance (the two findings stand for the many a real note holds):
 
 ```markdown research-note example=complete
-# Decode energy on one R9700: what is measured and what is documented
+# Decode energy on one Strix Halo: what is measured and what is documented
 
 Joules per token for decode on the AMD pods. Training energy and the Jetson are out of scope.
 
 ## Baseline decode energy
 
-- **[measured]** Decode ran at 7.7 tok/s at about 200 W average and 300 W peak on one R9700 (pod A) serving RedHatAI/Qwen3.8-27B-INT4 with vLLM and its Conch Triton fallback kernel for W4A16, which is about 26 J per token (200 W / 7.7 tok/s, derived). [PR 37](https://github.com/raohemdutt/Knighthacks26/pull/37)
-  - Implication: joules per token follows decode speed at near-fixed power, so a faster W4A16 kernel lowers it almost one for one. This is the baseline every kernel change is judged against.
-  - Candidate experiment: rerun the PR 37 prompt after each kernel change, sampling power over the request window only. Expected movement: joules per token falls in proportion to the tok/s gain (7.7 to 15 tok/s at the same 200 W is about 13 J per token). Minimum sample size: 5 runs of 256 generated tokens.
+- **[measured]** Decode ran at 2.88 tok/s at about 120 W average and 129 W peak (the whole APU socket) on one Strix Halo (Radeon 8060S, gfx1151, pod A on the SJC hub) serving RedHatAI/Qwen3.8-27B-INT4 with vLLM and its Conch Triton fallback kernel for W4A16, which is about 42 J per token (120 W / 2.88 tok/s, derived). [PR 194](https://github.com/raohemdutt/Knighthacks26/pull/194)
+  - Implication: joules per token follows decode speed at near-fixed power, so a faster W4A16 kernel lowers it almost one for one. This is the baseline every kernel change is judged against; the R9700's 7.7 tok/s at about 200 W (PR 37) is the other chip's number, not this baseline.
+  - Candidate experiment: rerun the PR 194 text prompt after each kernel change, sampling power over the request window only. Expected movement: joules per token falls in proportion to the tok/s gain (2.88 to 5.8 tok/s at the same 120 W is about 21 J per token). Minimum sample size: 5 runs of 256 generated tokens.
 
 ## Sampler trust
 
@@ -101,9 +101,9 @@ The phone project's extra labels (`own side`, `secondary`, `UNTRACEABLE`) are no
 A number someone measured, with the setup that produced it: hardware, model, engine, batch or concurrency, prompt, measurement window. Our own runs count, and cite the PR, ledger line or file they are recorded in.
 
 ```markdown research-note label=measured
-- **[measured]** Decode ran at 7.7 tok/s at about 200 W average and 300 W peak on one R9700 (pod A) serving RedHatAI/Qwen3.8-27B-INT4 with vLLM and its Conch Triton fallback kernel for W4A16, which is about 26 J per token (200 W / 7.7 tok/s, derived). [PR 37](https://github.com/raohemdutt/Knighthacks26/pull/37)
-  - Implication: joules per token follows decode speed at near-fixed power, so a faster W4A16 kernel lowers it almost one for one. This is the baseline every kernel change is judged against.
-  - Candidate experiment: rerun the PR 37 prompt after each kernel change, sampling power over the request window only. Expected movement: joules per token falls in proportion to the tok/s gain (7.7 to 15 tok/s at the same 200 W is about 13 J per token). Minimum sample size: 5 runs of 256 generated tokens.
+- **[measured]** Decode ran at 2.88 tok/s at about 120 W average and 129 W peak (the whole APU socket) on one Strix Halo (Radeon 8060S, gfx1151, pod A on the SJC hub) serving RedHatAI/Qwen3.8-27B-INT4 with vLLM and its Conch Triton fallback kernel for W4A16, which is about 42 J per token (120 W / 2.88 tok/s, derived). [PR 194](https://github.com/raohemdutt/Knighthacks26/pull/194)
+  - Implication: joules per token follows decode speed at near-fixed power, so a faster W4A16 kernel lowers it almost one for one. This is the baseline every kernel change is judged against; the R9700's 7.7 tok/s at about 200 W (PR 37) is the other chip's number, not this baseline.
+  - Candidate experiment: rerun the PR 194 text prompt after each kernel change, sampling power over the request window only. Expected movement: joules per token falls in proportion to the tok/s gain (2.88 to 5.8 tok/s at the same 120 W is about 21 J per token). Minimum sample size: 5 runs of 256 generated tokens.
 ```
 
 ### practitioner
@@ -185,7 +185,7 @@ One `SOURCES.md` per track folder lists every source the track's notes cite, and
 | --- | --- | --- | --- | --- |
 | Zeus docs, Measuring Energy | https://ml.energy/zeus/measure/ | 2026-10-10 | project doc | baseline.md |
 | Zeus: Understanding and Optimizing GPU Energy Consumption of DNN Training (You, Chung, Chowdhury; NSDI 2023) | arXiv:2208.06102 (https://arxiv.org/abs/2208.06102) | 2026-10-10 | paper | not used yet |
-| PR 37, R2: GPU lab setup | https://github.com/raohemdutt/Knighthacks26/pull/37 | 2026-10-10 | pr | baseline.md |
+| PR 194, R29: teacher on the Strix Halo (gfx1151) | https://github.com/raohemdutt/Knighthacks26/pull/194 | 2026-10-10 | pr | baseline.md |
 | ROCm/vllm issue 1229, RDNA4 serving port RFC | https://github.com/ROCm/vllm/issues/1229 | 2026-10-10 | issue | not used yet |
 ```
 

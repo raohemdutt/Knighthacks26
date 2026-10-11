@@ -125,6 +125,15 @@ def test_add_refuses_bad_arguments_with_exit_code_2_and_writes_nothing(flag, mes
     assert ledger.read() == []
 
 
+def test_add_refuses_a_metric_int_beyond_float_range_with_exit_code_2_and_writes_nothing(capsys):
+    huge = "1" + "0" * 399
+    code = lab_cli.main(["ledger", "add", "bench.run", "ok", "--metric", f"teacher.decode_tok_s={huge}"])
+    captured = capsys.readouterr()
+    assert code == 2, (code, captured.out, captured.err)
+    assert "must be finite" in captured.err
+    assert ledger.read() == []
+
+
 def test_add_passes_the_ledgers_refusal_on_and_writes_nothing(capsys):
     code, answer, _ = run(capsys, "add", "bench.run", "ok", "--unit", "teacher.decode_tok_s=tok/s")
     assert code == 1
@@ -392,3 +401,35 @@ def test_the_ledger_verb_works_from_the_command_line(isolated):
     code, out, err = call("tail", "x")
     assert code == 2
     assert "argument N: 'x' is not a whole number" in err
+
+
+# --- the ledger verb leans on the dispatcher's own load, summary and help words ---------------
+
+def test_ledger_cli_dispatches_through_the_dispatchers_load(monkeypatch, capsys):
+    seen = []
+
+    def stub_load(target):
+        seen.append(target)
+        return lambda argv: {"ok": True, "outcome": "stubbed"}
+
+    monkeypatch.setattr(lab_cli, "load", stub_load)
+    assert ledger_cli.main(["tail"]) == {"ok": True, "outcome": "stubbed"}
+    assert seen == ["lab.machine.ledger_cli:tail_main"]
+
+
+def test_ledger_cli_help_summaries_come_from_the_dispatchers_summary(monkeypatch):
+    monkeypatch.setattr(lab_cli, "summary", lambda target: "STUB")
+    listing = ledger_cli.help_text().splitlines()[3:]
+    assert [line.split()[0] for line in listing] == list(ledger_cli.SUBVERBS)
+    assert all("STUB" in line for line in listing)
+
+
+def test_ledger_cli_has_no_private_copies_of_the_dispatcher_helpers(capsys):
+    assert not hasattr(ledger_cli, "_load")
+    assert not hasattr(ledger_cli, "_summary")
+    assert not hasattr(ledger_cli, "HELP_WORDS")
+    for word in ("-h", "help"):
+        assert ledger_cli.main([word]) == 0
+        out, err = capsys.readouterr()
+        assert err == ""
+        assert out.splitlines()[0].startswith("usage: python -m lab ledger <sub-verb> [args]")

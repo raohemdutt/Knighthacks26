@@ -1,283 +1,149 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { Leaderboards } from "@/components/circle/Leaderboards";
 import { League } from "@/components/circle/League";
-import { ProposeTime } from "@/components/circle/ProposeTime";
-import { SharedCalendar } from "@/components/circle/SharedCalendar";
+import { People } from "@/components/circle/People";
+import { Plans } from "@/components/circle/Plans";
+import { useRefresh } from "@/components/circle/SharedCalendar";
+import { TABS, type CircleTab } from "@/components/circle/shared";
 import { YouAreSharing } from "@/components/circle/YouAreSharing";
-import { Empty, ErrorBox, Loading, WriteError } from "@/components/States";
+import c from "@/components/circle/circle.module.css";
 import ui from "@/components/ui.module.css";
-import { ApiError, api, type Leaderboard, type PlaceShared } from "@/lib/api";
+import { api } from "@/lib/api";
 import { useAtlasEvents } from "@/lib/atlas";
-import { amount, humanize, percent, relative, time } from "@/lib/format";
 import { useFetch } from "@/lib/useFetch";
 
 /**
- * The household's named places (config/agent.yaml `places`). The gateway has no
- * endpoint that lists them, so these are suggestions; the box still has the
- * last word and answers 422 with its own list when a place is not on it.
+ * The Circle: the friends' network as one place, in four parts.
+ *
+ *   People   who is in it, where they are (if they shared), their League week, the walk to them
+ *   Plans    what is coming up, every conversation between the Atlases, and "find a time for all of us"
+ *   League   the weekly game: standings, the stake, dares, the table's recycling
+ *   Sharing  exactly what leaves this box, and what never does
+ *
+ * The part and the open conversation live in the URL (`/circle/?tab=plans&thread=<id>`), read once on
+ * load and kept in step with history.replaceState, so a link opens the right thing and a reload stays put.
+ * Every part renders when the box has not joined a Circle, and the top of the screen says how to join.
  */
-const SUGGESTED_PLACES = ["Our table", "Library", "Dorm", "Student Union", "Gym"];
-const HOURS = [1, 2, 4];
+
+const REFRESH_MS = 30_000;
+
+function readUrl(): { tab: CircleTab; thread: string | null } {
+  const q = new URLSearchParams(window.location.search);
+  const thread = q.get("thread");
+  const tab = TABS.find((t) => t.id === q.get("tab"))?.id ?? (thread ? "plans" : "people");
+  return { tab, thread: tab === "plans" ? thread : null };
+}
 
 export default function CirclePage() {
-  const presence = useFetch((s) => api.presence(s));
-  const board = useFetch((s) => api.leaderboard(s));
+  const [tab, setTab] = useState<CircleTab>("people");
+  const [thread, setThread] = useState<string | null>(null);
 
-  useAtlasEvents(["circle.place.shared"], () => presence.reload());
-  useAtlasEvents(["circle.share.synced"], () => board.reload());
+  const members = useFetch((s) => api.circleMembers(s));
+  const threads = useFetch((s) => api.circleThreads(s));
+  const league = useFetch((s) => api.league(s));
+  const packs = useFetch((s) => api.places(s));
+  const faceShare = useFetch((s) => api.faceShare(s)); // null while face sharing is off on this box (the default)
 
-  const circleOff = presence.error?.notConfigured ?? false;
+  useAtlasEvents(["circle.place.shared", "circle.message.received", "play.league."], () => members.reload());
+  useAtlasEvents(["circle.message.received", "circle.event.agreed", "agent.action.proposed", "workspace.action.completed"], () => threads.reload());
+  useAtlasEvents(["play.league.", "habits.day.closed"], () => league.reload());
+  useAtlasEvents(["circle.face_share", "perception.identity"], () => faceShare.reload());
+  const refresh = useCallback(() => {
+    members.reload(); // a shared place runs out without an event
+    threads.reload(); // and an approval card does too
+  }, [members.reload, threads.reload]);
+  useRefresh(refresh, REFRESH_MS);
+
+  useEffect(() => {
+    const sync = () => {
+      const at = readUrl();
+      setTab(at.tab);
+      setThread(at.thread);
+    };
+    sync();
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
+
+  const go = useCallback((next: CircleTab, nextThread: string | null = null) => {
+    setTab(next);
+    setThread(nextThread);
+    const q = new URLSearchParams();
+    if (next !== "people") q.set("tab", next);
+    if (nextThread) q.set("thread", nextThread);
+    const url = `${window.location.pathname}${q.toString() ? `?${q}` : ""}`;
+    // opening a conversation is a step back can undo; switching parts is not
+    if (nextThread) window.history.pushState(null, "", url);
+    else window.history.replaceState(null, "", url);
+    if (nextThread) window.scrollTo({ top: 0 });
+  }, []);
+
+  const off = members.data ? !members.data.configured : false;
+  const open = (threads.data?.threads ?? []).filter((t) => t.state !== "agreed").length;
 
   return (
     <>
       <div className={ui.pageHead}>
         <h1>Circle</h1>
-        <p className={ui.muted}>Friends who also run Atlas. Only named places, counts and scores are shared; never video.</p>
+        <p className={ui.muted}>
+          Friends who also run Atlas. You share only place names, one-word answers, counts and scores, never video.
+          {faceShare.data ? " Face sharing is on: your own face template goes only to the friends you choose, encrypted for their box." : ""}
+        </p>
       </div>
 
-      {circleOff ? (
-        <Empty title="Not connected to the Circle">
-          This box has not joined a Circle, so there are no friends&apos; places to show and nothing is being shared. Once a member and circle
-          are set on the box, friends&apos; places and the leaderboards appear here.
-        </Empty>
-      ) : (
-        <>
-          <section className={ui.section}>
-            <h2 className={ui.sectionTitle}>Where friends are</h2>
-            {presence.error ? (
-              <ErrorBox what="friends' places" error={presence.error} onRetry={presence.reload} />
-            ) : !presence.data ? (
-              <Loading what="friends' places" />
-            ) : presence.data.length === 0 ? (
-              <Empty title="No one is sharing a place right now">
-                When a friend shares a spot like the Library or your table, their name and the place show here until the share expires.
-              </Empty>
-            ) : (
-              <ul className={ui.list}>
-                {presence.data.map((p) => (
-                  <FriendPlace key={p.member_id} place={p} />
-                ))}
-              </ul>
-            )}
-          </section>
+      {off ? <NotConnected lines={members.data?.connect ?? []} /> : null}
 
-          <ShareMyPlace onShared={presence.reload} />
-          <ProposeTime />
+      <div className={`${ui.segmented} ${c.tabs}`} role="tablist" aria-label="Parts of the Circle">
+        {TABS.map((t) => (
+          <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} className={`${ui.seg} ${c.segSmall} ${tab === t.id ? ui.segOn : ""}`} onClick={() => go(t.id)}>
+            {t.label}
+            {t.id === "plans" && open > 0 ? ` (${open})` : ""}
+          </button>
+        ))}
+      </div>
+
+      {tab === "people" ? (
+        <People members={members} standings={league.data?.standings ?? []} packs={packs.data} faceShare={faceShare.data} onChanged={members.reload} />
+      ) : tab === "plans" ? (
+        <Plans threads={threads} threadId={thread} onOpen={(id) => go("plans", id)} />
+      ) : tab === "league" ? (
+        <>
+          <League />
+          <Leaderboards circleOff={off} />
         </>
+      ) : (
+        <YouAreSharing faceShare={faceShare.data} />
       )}
 
-      <League />
-
-      <SharedCalendar />
-
-      <section className={ui.section}>
-        <h2 className={ui.sectionTitle}>Leaderboards</h2>
-        {board.error ? (
-          board.error.notConfigured ? (
-            <Empty title="Leaderboards are offline">
-              {circleOff
-                ? "They need a Circle too. Recycling rates, habit streaks and Sort It scores for you and your friends appear here once this box joins one."
-                : "This box is not connected to the Circle's shared database, so there are no recycling rates, habit streaks or Sort It scores to compare yet."}
-            </Empty>
-          ) : (
-            <ErrorBox what="the leaderboards" error={boardError(board.error)} onRetry={board.reload} />
-          )
-        ) : !board.data ? (
-          <Loading what="leaderboards" />
-        ) : (
-          <Boards board={board.data} />
-        )}
-      </section>
-
-      <YouAreSharing />
-    </>
-  );
-}
-
-/**
- * The box answers 500 when it cannot reach the Circle's shared database (no network, database asleep).
- * Say that instead of "Internal Server Error"; what was shared meanwhile is queued on the box.
- */
-function boardError(error: ApiError): ApiError {
-  if (error.status < 500) return error;
-  return new ApiError(
-    error.status,
-    "This box can't reach the Circle's shared database right now. What it shares in the meantime waits on the box and goes out when it is back online.",
-  );
-}
-
-/** A member without a display name comes back as their id; show it the way "Where friends are" does. */
-function who(r: { member_id: string; display_name: string }): string {
-  return r.display_name === r.member_id ? humanize(r.member_id) : r.display_name;
-}
-
-function FriendPlace({ place: p }: { place: PlaceShared }) {
-  return (
-    <li className={`${ui.card}`}>
-      <div className={`${ui.row} ${ui.between} ${ui.wrap}`}>
-        <h3>{humanize(p.member_id)}</h3>
-        <span className={ui.tag}>{p.source === "desk" ? "seen at the desk" : "shared from their phone"}</span>
-      </div>
-      <p className={ui.reason}>{p.place}</p>
-      <p className={`${ui.muted} ${ui.small}`}>
-        Shared at {time(p.ts)} · until {time(p.expires_at)} ({relative(p.expires_at)})
-      </p>
-    </li>
-  );
-}
-
-function ShareMyPlace({ onShared }: { onShared: () => void }) {
-  const [place, setPlace] = useState(SUGGESTED_PLACES[0] ?? "");
-  const [hours, setHours] = useState(2);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<ApiError | null>(null);
-  const [shared, setShared] = useState<PlaceShared | null>(null);
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!place.trim() || busy) return;
-    setBusy(true);
-    setError(null);
-    setShared(null);
-    try {
-      setShared(await api.sharePlace(place.trim(), hours));
-      onShared();
-    } catch (err) {
-      setError(err instanceof ApiError ? err : new ApiError(0, String(err)));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <section className={ui.section}>
-      <h2 className={ui.sectionTitle}>Share where you are</h2>
-      <form className={ui.card} onSubmit={submit}>
-        <p className={`${ui.muted} ${ui.small}`}>Pick a named place. Friends see the name only, and it disappears when the time is up.</p>
-        <div className={ui.chips} role="group" aria-label="Place">
-          {SUGGESTED_PLACES.map((p) => (
-            <button key={p} type="button" className={`${ui.chip} ${place === p ? ui.chipOn : ""}`} aria-pressed={place === p} onClick={() => setPlace(p)}>
-              {p}
-            </button>
-          ))}
-        </div>
-        <input className={ui.input} value={place} onChange={(e) => setPlace(e.target.value)} placeholder="Place name" aria-label="Place name" />
-        <div className={ui.chips} role="group" aria-label="For how long">
-          {HOURS.map((h) => (
-            <button key={h} type="button" className={`${ui.chip} ${hours === h ? ui.chipOn : ""}`} aria-pressed={hours === h} onClick={() => setHours(h)}>
-              {h} {h === 1 ? "hour" : "hours"}
-            </button>
-          ))}
-        </div>
-        {error ? <WriteError error={error} /> : null}
-        {shared ? (
-          <p className={ui.nudge} role="status">
-            Sharing <strong>{shared.place}</strong> until {time(shared.expires_at)}.
-          </p>
-        ) : null}
-        <button type="submit" className={`${ui.btn} ${ui.btnPrimary}`} disabled={busy || !place.trim()}>
-          {busy ? "Sharing…" : "Share this place"}
+      {tab !== "sharing" ? (
+        <button type="button" className={c.link} onClick={() => go("sharing")}>
+          What leaves this box, and what never does ›
         </button>
-      </form>
-    </section>
+      ) : null}
+    </>
   );
 }
 
-function Boards({ board }: { board: Leaderboard }) {
-  const nothing = board.impact.length === 0 && board.habits.length === 0 && board.scores.length === 0;
-  if (nothing)
-    return (
-      <Empty title="No scores shared yet">
-        Circle {board.circle_id} is connected, but nobody has shared recycling counts, habit streaks or Sort It rounds so far.
-      </Empty>
-    );
+/** The honest not-connected state: what is missing, and the two lines that fix it. */
+function NotConnected({ lines }: { lines: string[] }) {
+  const config = ["circle:", ...(lines.length ? lines : ["circle.member_id: hemdutt", "circle.circle_id: team"]).map((l) => `  ${l.replace(/^circle\./, "")}`)].join("\n");
   return (
-    <>
-      <div className={ui.card}>
-        <h3>Recycling</h3>
-        {board.impact.length === 0 ? (
-          <p className={ui.muted}>No one has shared Waste Watch counts yet.</p>
-        ) : (
-          <table className={ui.table}>
-            <thead>
-              <tr>
-                <th scope="col">Who</th>
-                <th scope="col" className={ui.num}>Recycled</th>
-                <th scope="col" className={ui.num}>Rate</th>
-              </tr>
-            </thead>
-            <tbody>
-              {board.impact.map((r) => (
-                <tr key={r.member_id}>
-                  <td>{who(r)}</td>
-                  <td className={ui.num}>
-                    {r.recycled} of {r.items_seen}
-                  </td>
-                  <td className={ui.num}>{percent(Number(r.diversion_rate))}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      <div className={ui.card}>
-        <h3>Habit streaks</h3>
-        {board.habits.length === 0 ? (
-          <p className={ui.muted}>No one has shared a habit streak yet.</p>
-        ) : (
-          <table className={ui.table}>
-            <thead>
-              <tr>
-                <th scope="col">Who</th>
-                <th scope="col">Habit</th>
-                <th scope="col" className={ui.num}>Days</th>
-              </tr>
-            </thead>
-            <tbody>
-              {board.habits.map((r) => (
-                <tr key={`${r.member_id}-${r.habit_id}`}>
-                  <td>{who(r)}</td>
-                  <td>{humanize(r.habit_id)}</td>
-                  <td className={ui.num}>{r.streak}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      <div className={ui.card}>
-        <h3>Sort It, best rounds</h3>
-        {board.scores.length === 0 ? (
-          <p className={ui.muted}>No Sort It rounds have been shared yet.</p>
-        ) : (
-          <table className={ui.table}>
-            <thead>
-              <tr>
-                <th scope="col">Who</th>
-                <th scope="col">Item</th>
-                <th scope="col" className={ui.num}>Time</th>
-                <th scope="col" className={ui.num}>Score</th>
-              </tr>
-            </thead>
-            <tbody>
-              {board.scores.map((r) => (
-                <tr key={r.round_id}>
-                  <td>{who(r)}</td>
-                  <td>
-                    {r.item}
-                    {r.correct ? "" : " (wrong bin)"}
-                  </td>
-                  <td className={ui.num}>{amount(Number(r.seconds))} s</td>
-                  <td className={ui.num}>{amount(Number(r.score))}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </>
+    <div className={ui.card} role="status">
+      <h3>This box has not joined a Circle</h3>
+      <p>
+        So there are no friends to show, nobody to plan with, and nothing is being shared. Everything below still shows what it will hold. The League already runs
+        for this box alone.
+      </p>
+      <p className={`${ui.muted} ${ui.small}`}>
+        To join, set these two lines in <code>config/agent.yaml</code> on the box (your own id, and the circle&apos;s name) and restart it:
+      </p>
+      <pre className={c.config}>{config}</pre>
+      <p className={`${ui.muted} ${ui.small}`}>
+        Friends on other boxes use the same <code>circle_id</code> and the same shared database (<code>NEON_DATABASE_URL</code> in the box&apos;s <code>.env</code>). Without
+        the database this box still plans, but only with itself.
+      </p>
+    </div>
   );
 }

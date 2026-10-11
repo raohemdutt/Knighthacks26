@@ -1,0 +1,90 @@
+{
+  "recorded": "account A on https://dub.aupcloud.io, Sat 2026-10-10 about 11:03 UTC, while its pod was running. Transcribed from the values lab/refine/research/plumbing/measurements-2026-10-10.md recorded (M3 the server, M5 the balance and the transactions, M14 the hub clock); the hub answered 502 afterwards and could not be asked again. The account name is acct-a.",
+  "responses": {
+    "/hub/api/quota/me": {
+      "status": 200,
+      "date": "Sat, 10 Oct 2026 11:03:23 GMT",
+      "body": {
+        "username": "acct-a",
+        "balance": 59960,
+        "unlimited": false,
+        "rates": {
+          "cpu": 1,
+          "r9700": 4
+        },
+        "enabled": true
+      }
+    },
+    "/hub/api/users/acct-a": {
+      "status": 200,
+      "date": "Sat, 10 Oct 2026 11:03:23 GMT",
+      "body": {
+        "kind": "user",
+        "name": "acct-a",
+        "admin": false,
+        "roles": [
+          "user"
+        ],
+        "groups": [],
+        "server": "/user/acct-a/",
+        "pending": null,
+        "created": "2026-10-08T13:59:00.000000Z",
+        "last_activity": "2026-10-10T11:01:14.000000Z",
+        "servers": {
+          "": {
+            "name": "",
+            "full_name": "acct-a/",
+            "last_activity": "2026-10-10T10:22:21.000000Z",
+            "started": "2026-10-10T09:27:24.000000Z",
+            "pending": null,
+            "ready": true,
+            "stopped": false,
+            "url": "/user/acct-a/",
+            "user_options": {
+              "runtime_minutes": 600,
+              "resource_type": "gpu",
+              "gpu_selection": "r9700"
+            },
+            "progress_url": "/hub/api/users/acct-a/server/progress",
+            "state": {}
+          }
+        }
+      }
+    },
+    "/hub/admin/api/quota/acct-a": {
+      "status": 200,
+      "date": "Sat, 10 Oct 2026 11:03:23 GMT",
+      "body": {
+        "username": "acct-a",
+        "balance": 59960,
+        "unlimited": false,
+        "recent_transactions": [
+          {
+            "amount": -12,
+            "transaction_type": "usage",
+            "description": "Session 773: 3 min @ r9700 (4/min)",
+            "balance_before": 59972,
+            "balance_after": 59960,
+            "created_at": "2026-10-10 09:12:45"
+          },
+          {
+            "amount": -28,
+            "transaction_type": "usage",
+            "description": "Session 758: 7 min @ r9700 (4/min)",
+            "balance_before": 60000,
+            "balance_after": 59972,
+            "created_at": "2026-10-10 01:21:32"
+          },
+          {
+            "amount": 60000,
+            "transaction_type": "set",
+            "description": "Balance set to 60000",
+            "balance_before": 0,
+            "balance_after": 60000,
+            "created_at": "2026-10-08 13:59:55"
+          }
+        ]
+      }
+    }
+  }
+}

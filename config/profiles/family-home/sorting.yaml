@@ -1,0 +1,49 @@
+# The family home's sorting rules: this one file replaces config/sorting.yaml when the box runs
+# ATLAS_PROFILE=family-home (contexts/profiles: sorting.yaml is replaced whole, never merged).
+#
+# It is the "another place swaps one rules file" example for Waste Watch: same cameras, same bin
+# zones, same code; four items land in a different bin than at the UCF table, each with its own sentence.
+# The rules are an EXAMPLE of a city kerbside programme, not any real city's list: replace them with
+# the list your hauler publishes.
+bins:
+  recycling: recycling   # bin name -> zone id in zones.yaml (the same two zones as the base file)
+  trash: trash
+items:
+  bottle: recycling
+  can: recycling
+  cup: recycling            # differs from UCF: this hauler takes paper cups
+  paper: recycling
+  cardboard: recycling
+  wine glass: trash
+  food container: recycling # differs from UCF: rinsed plastic takeout tubs are accepted
+  chip bag: trash
+  napkin: trash
+  banana: trash
+  pizza box: trash          # not on the UCF list at all (there it falls to the default, also trash)
+  milk carton: recycling    # differs from UCF: not listed there, so trash; cartons are accepted here
+  juice box: recycling      # differs from UCF: same as cartons
+
+aliases:
+  can: [soda can, tin can]
+  bottle: [water bottle, plastic bottle]
+  milk carton: [carton]
+  food container: [takeout container, takeout bowl]
+
+name: Family home kerbside rules (example)
+place: home
+note: "An example kerbside list, not a real city's. Replace it with the list your hauler publishes."
+reasons:
+  bottle: "Empty plastic bottles go in recycling at home, caps on."
+  can: "Empty cans go in recycling at home; a quick rinse is enough."
+  cup: "Paper cups go in recycling at home: this kerbside programme accepts them empty, lids off."
+  paper: "Clean, dry paper goes in recycling at home."
+  cardboard: "Flattened cardboard goes in recycling at home."
+  wine glass: "Drinking glasses go in trash at home: they are not bottle glass."
+  food container: "Plastic takeout containers go in recycling at home once they are rinsed; a dirty one goes in trash."
+  chip bag: "Chip bags go in trash at home: the layers cannot be separated."
+  napkin: "Used napkins go in trash at home."
+  banana: "Food scraps go in trash at home until there is a compost bin."
+  pizza box: "Greasy pizza boxes go in trash at home: the oil ruins the cardboard."
+  milk carton: "Milk and juice cartons go in recycling at home: this programme takes cartons, rinsed."
+  juice box: "Juice boxes go in recycling at home with the other cartons."
+default_reason: "Anything not on the list goes in trash at home: when in doubt, keep it out of recycling."

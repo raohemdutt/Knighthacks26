@@ -124,7 +124,7 @@ export default function ZonesPage() {
     <div className={ui.section}>
       <div className={ui.pageHead}>
         <h1>Zones</h1>
-        <p className={`${ui.muted} ${ui.small}`}>Tell the box where things count in this room. It takes about 30 seconds.</p>
+        <p className={`${ui.muted} ${ui.small}`}>Mark where things count in this room.</p>
       </div>
 
       <div className={ui.chips} role="group" aria-label="Camera">

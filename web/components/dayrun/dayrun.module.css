@@ -1,20 +1,53 @@
 /* Day Run and Room map. Uses the tokens in app/globals.css; only the three meter colours are new. */
 
 /*
- * The three meters. Chosen for the dark card surface and checked with the dataviz
- * palette validator (lightness band, colour-blind separation, contrast): all pass.
- * Risk is also dashed, so the lines never rely on colour alone.
+ * The three meters. The Day set is chosen for the light surface (each is at least 4:1 against --bg); the Night set
+ * below is the same three hues lifted so they read on the dark chart. Risk is also dashed, so the lines never rely
+ * on colour alone. The friend's blue and the amber "warn" mark follow the same rule.
  */
 .sEnergy {
-  --c: #22ab92;
+  --c: #0f8f78;
 }
 
 .sFocus {
-  --c: #6f8ff0;
+  --c: #3f5fd0;
 }
 
 .sRisk {
-  --c: #cf7f30;
+  --c: #b45f06;
+}
+
+:global(html[data-theme="dark"]) .sEnergy {
+  --c: #4ee0a0;
+}
+
+:global(html[data-theme="dark"]) .sFocus {
+  --c: #7ea6ff;
+}
+
+:global(html[data-theme="dark"]) .sRisk {
+  --c: #ffc062;
+}
+
+:global(html[data-theme="dark"]) .riskFill {
+  background: #ffc062;
+}
+
+:global(html[data-theme="dark"]) .friendRing {
+  stroke: #7ea6ff;
+}
+
+:global(html[data-theme="dark"]) .dotFriend {
+  border-color: #7ea6ff;
+}
+
+:global(html[data-theme="dark"]) .figFriend {
+  --fig: #7ea6ff;
+}
+
+:global(html[data-theme="dark"]) .figShadow {
+  fill: #000000;
+  opacity: 0.4;
 }
 
 /* ---------- top of the screen ---------- */
@@ -24,30 +57,29 @@
   gap: 10px;
 }
 
-.presetOn {
-  border-color: var(--accent);
-  color: var(--accent);
+.presetOn.presetOn {
+  box-shadow: var(--sh-selected);
+  color: var(--accent-text);
 }
 
 .verdict {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 14px 16px;
+  padding: 18px 20px;
   border-radius: var(--radius);
-  border: 1px solid var(--line);
-  border-left-width: 6px;
   background: var(--surface);
+  box-shadow: var(--sh-raised);
   font-size: 17px;
 }
 
 .verdictWin {
-  border-left-color: var(--accent);
+  box-shadow: var(--sh-raised), inset 6px 0 0 var(--accent);
 }
 
 .verdictFail {
-  border-left-color: var(--danger);
   background: var(--danger-soft);
+  box-shadow: var(--sh-raised), inset 6px 0 0 var(--danger);
 }
 
 .verdictWord {
@@ -66,7 +98,7 @@
   font-size: 30px;
   line-height: 1;
   letter-spacing: 0.06em;
-  color: var(--accent);
+  color: var(--accent-text);
   white-space: nowrap;
 }
 
@@ -87,7 +119,7 @@
 }
 
 .riskFill {
-  background: #cf7f30;
+  background: #b45f06;
 }
 
 .riskText {
@@ -127,16 +159,16 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px;
+  padding: 14px;
   border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
   min-width: 0;
 }
 
 .moveRejected {
-  border-color: var(--danger);
   background: var(--danger-soft);
+  box-shadow: var(--sh-raised-sm), inset 0 0 0 2px var(--danger);
 }
 
 .moveTitle {
@@ -151,18 +183,37 @@
 }
 
 .tool {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
+  width: var(--tap);
+  height: var(--tap);
+  border-radius: var(--radius-sm);
+  border: 0;
   background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
   font-size: 19px;
   line-height: 1;
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
+}
+
+.tool:active:not(:disabled) {
+  box-shadow: var(--sh-inset-sm);
+  transform: scale(0.97);
+}
+
+/* the same lift every pressable thing in the app has on a pointer */
+@media (hover: hover) {
+  .tool:hover:not(:disabled),
+  .pill:hover,
+  .option:hover:not(:disabled),
+  .routeRow:hover,
+  .pinItem:hover {
+    transform: translateY(-2px);
+  }
 }
 
 .tool:disabled {
   opacity: 0.35;
   cursor: default;
+  box-shadow: none;
 }
 
 .rejected {
@@ -191,19 +242,26 @@
 }
 
 .pill {
-  min-height: 40px;
-  padding: 6px 14px;
-  border-radius: 20px;
-  border: 1px solid var(--line);
+  min-height: var(--tap);
+  padding: 6px 18px;
+  border-radius: var(--radius-pill);
+  border: 0;
   background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
   font-size: 15px;
   font-weight: 600;
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
 }
 
-.pillOn {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent);
+.pill:active {
+  box-shadow: var(--sh-inset-sm);
+  transform: scale(0.97);
+}
+
+.pillOn,
+.pillOn:active {
+  box-shadow: var(--sh-selected);
+  color: var(--accent-text);
 }
 
 .bedtime,
@@ -216,11 +274,12 @@
 }
 
 .timeInput {
-  min-height: 40px;
-  padding: 4px 10px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
+  min-height: var(--tap);
+  padding: 4px 14px;
+  border-radius: var(--radius-sm);
+  border: 0;
   background: var(--surface);
+  box-shadow: var(--sh-inset);
   color: var(--text);
   font-size: 16px;
 }
@@ -244,16 +303,24 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 12px 14px;
+  padding: 14px 16px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--line);
-  background: var(--surface-2);
+  border: 0;
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
   text-align: left;
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
+}
+
+.option:active:not(:disabled) {
+  box-shadow: var(--sh-inset-sm);
+  transform: scale(0.98);
 }
 
 .option:disabled {
   opacity: 0.6;
   cursor: default;
+  box-shadow: none;
 }
 
 .optionTitle {
@@ -325,11 +392,11 @@
 }
 
 .bandFixed {
-  fill: rgba(243, 245, 247, 0.16);
+  fill: color-mix(in srgb, var(--text) 7%, transparent);
 }
 
 .bandPlanned {
-  fill: rgba(92, 225, 198, 0.13);
+  fill: var(--accent-soft);
 }
 
 .grid {
@@ -375,7 +442,7 @@
 
 .cursorDot {
   fill: var(--c);
-  stroke: var(--surface);
+  stroke: var(--surface-solid);
   stroke-width: 2;
 }
 
@@ -383,7 +450,7 @@
   width: 100%;
   height: 36px;
   margin: 0;
-  accent-color: var(--accent);
+  accent-color: var(--accent-text);
 }
 
 .swatch {
@@ -391,17 +458,17 @@
   width: 14px;
   height: 14px;
   margin-right: 6px;
-  border-radius: 3px;
+  border-radius: 4px;
   vertical-align: -2px;
-  border: 1px solid var(--line);
+  box-shadow: var(--sh-inset-sm);
 }
 
 .swatchFixed {
-  background: rgba(243, 245, 247, 0.22);
+  background: color-mix(in srgb, var(--text) 12%, transparent);
 }
 
 .swatchPlanned {
-  background: rgba(92, 225, 198, 0.22);
+  background: var(--accent-soft);
 }
 
 .details summary,
@@ -437,7 +504,7 @@
   height: auto;
   border-radius: var(--radius-sm);
   background: var(--surface-2);
-  border: 1px solid var(--line);
+  box-shadow: var(--sh-inset);
 }
 
 .leg {
@@ -448,7 +515,7 @@
 }
 
 .legOn {
-  stroke: var(--accent);
+  stroke: var(--accent-bright);
   stroke-width: 3.5;
   stroke-linecap: round;
 }
@@ -472,7 +539,7 @@
 
 .friendRing {
   fill: none;
-  stroke: #6f8ff0;
+  stroke: #3f5fd0;
   stroke-width: 2.5;
 }
 
@@ -506,7 +573,7 @@
 }
 
 .dotFriend {
-  border: 2.5px solid #6f8ff0;
+  border: 2.5px solid #3f5fd0;
 }
 
 .lineKey {
@@ -533,16 +600,24 @@
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 10px 12px;
+  min-height: var(--tap);
+  padding: 12px 14px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--line);
-  background: var(--surface-2);
+  border: 0;
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
   text-align: left;
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
 }
 
-.routeRowOn {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+.routeRow:active {
+  box-shadow: var(--sh-inset-sm);
+  transform: scale(0.98);
+}
+
+.routeRowOn,
+.routeRowOn:active {
+  box-shadow: var(--sh-selected);
 }
 
 .routeNum {
@@ -553,7 +628,7 @@
   display: grid;
   place-items: center;
   background: var(--surface);
-  border: 1px solid var(--line);
+  box-shadow: var(--sh-raised-sm);
   font-size: 14px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -561,7 +636,6 @@
 
 .routeRowOn .routeNum {
   background: var(--accent);
-  border-color: var(--accent);
   color: var(--accent-ink);
 }
 
@@ -593,14 +667,14 @@
 }
 
 .keyList li {
-  padding: 4px 10px;
-  border-radius: 8px;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
   background: var(--surface-2);
-  border: 1px solid var(--line);
+  box-shadow: var(--sh-inset-sm);
 }
 
 .keyList .keyHere {
-  border-color: var(--text);
+  box-shadow: var(--sh-selected);
   font-weight: 650;
 }
 
@@ -630,7 +704,7 @@
 
 .checkOk .checkMark {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .checkFail .checkMark {
@@ -670,10 +744,9 @@
   gap: 4px;
 }
 
-.tagDanger {
+.tagDanger.tagDanger {
   color: var(--danger);
   background: var(--danger-soft);
-  border-color: var(--danger);
 }
 
 .linkBtn {
@@ -731,10 +804,10 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 12px;
+  padding: 14px;
   border-radius: var(--radius-sm);
   background: var(--surface-2);
-  border: 1px solid var(--line);
+  box-shadow: var(--sh-inset-sm);
 }
 
 /* ---------- Room map ---------- */
@@ -743,18 +816,18 @@
   height: auto;
   border-radius: var(--radius-sm);
   background: var(--surface-2);
-  border: 1px solid var(--line);
+  box-shadow: var(--sh-inset);
 }
 
 .zone {
-  fill: rgba(243, 245, 247, 0.08);
+  fill: color-mix(in srgb, var(--text) 5%, transparent);
   stroke: var(--muted);
   stroke-width: 1.5;
 }
 
 .zoneOn {
   fill: var(--accent-soft);
-  stroke: var(--accent);
+  stroke: var(--accent-text);
   stroke-width: 2;
 }
 
@@ -777,8 +850,9 @@
   stroke-dasharray: 3 2.5; /* dashed: the position inside the zone is not measured */
 }
 
+/* the chosen pin uses --accent-text: the only accent that reads as a line or a glyph in both themes */
 .pinOn {
-  stroke: var(--accent);
+  stroke: var(--accent-text);
   stroke-width: 2.5;
 }
 
@@ -791,7 +865,7 @@
 }
 
 .pinNumberOn {
-  fill: var(--accent);
+  fill: var(--accent-text);
 }
 
 /* The list under the map: which numbered pin is which item. */
@@ -810,18 +884,25 @@
   gap: 10px;
   width: 100%;
   min-height: 44px;
-  padding: 6px 12px;
+  padding: 6px 14px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--line);
-  background: var(--surface-2);
+  border: 0;
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
   font-size: 16px;
   font-weight: 600;
   text-align: left;
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
 }
 
-.pinItemOn {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+.pinItem:active {
+  box-shadow: var(--sh-inset-sm);
+  transform: scale(0.98);
+}
+
+.pinItemOn,
+.pinItemOn:active {
+  box-shadow: var(--sh-selected);
 }
 
 .pinNum {
@@ -838,8 +919,8 @@
 }
 
 .pinItemOn .pinNum {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--accent-text);
+  color: var(--accent-text);
 }
 
 .pinLabel {
@@ -854,7 +935,7 @@
 
 .roomRoute {
   fill: none;
-  stroke: var(--accent);
+  stroke: var(--accent-bright);
   stroke-width: 3;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -866,7 +947,7 @@
   aspect-ratio: 4 / 2.7;
   border-radius: var(--radius-sm);
   background: var(--surface-2);
-  border: 1px solid var(--line);
+  box-shadow: var(--sh-inset);
   overflow: hidden;
   touch-action: none; /* drags tilt and rotate the room */
 }
@@ -910,7 +991,7 @@
 .moveHead {
   flex: 1;
   min-width: 0;
-  min-height: 40px;
+  min-height: var(--tap);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -925,7 +1006,7 @@
   flex: none;
   font-size: 14px;
   font-weight: 600;
-  color: var(--accent);
+  color: var(--accent-text);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -981,7 +1062,7 @@
 }
 
 .plPaceHold {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 650;
 }
 
@@ -1033,7 +1114,7 @@
   width: 100%;
   height: auto;
   background: var(--surface-2);
-  border: 1px solid var(--line);
+  box-shadow: var(--sh-inset);
   border-radius: var(--radius-sm);
   user-select: none;
   -webkit-user-select: none;
@@ -1131,12 +1212,12 @@
 
 .plNode {
   fill: none;
-  stroke: var(--accent);
+  stroke: var(--accent-text);
   stroke-width: 2;
 }
 
 .plNodeText {
-  fill: var(--accent);
+  fill: var(--accent-text);
   font-size: 11px;
   font-weight: 700;
   paint-order: stroke;
@@ -1182,7 +1263,7 @@
 }
 
 .plPulseWarn {
-  stroke: #cf7f30;
+  stroke: var(--watch);
 }
 
 @keyframes plPulse {
@@ -1202,11 +1283,10 @@
   left: 8px;
   right: 8px;
   bottom: 8px;
-  padding: 8px 12px;
+  padding: 10px 14px 10px 18px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--line);
-  border-left-width: 5px;
-  background: var(--surface);
+  background: var(--surface-solid);
+  box-shadow: var(--sh-float), inset 5px 0 0 var(--line);
   font-size: 15px;
   font-weight: 650;
   line-height: 1.3;
@@ -1215,16 +1295,16 @@
 }
 
 .plFlashBad {
-  border-color: var(--danger);
+  box-shadow: var(--sh-float), inset 5px 0 0 var(--danger);
   color: var(--danger);
 }
 
 .plFlashWarn {
-  border-color: #cf7f30;
+  box-shadow: var(--sh-float), inset 5px 0 0 var(--watch);
 }
 
 .plFlashOk {
-  border-color: var(--accent);
+  box-shadow: var(--sh-float), inset 5px 0 0 var(--accent);
 }
 
 @keyframes plDrop {
@@ -1244,11 +1324,10 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 14px 16px;
+  padding: 16px 18px 16px 22px;
   overflow-y: auto;
-  background: rgba(10, 12, 15, 0.93);
-  border: 1px solid var(--line);
-  border-left-width: 6px;
+  background: var(--surface-solid);
+  box-shadow: var(--sh-raised), inset 6px 0 0 var(--line);
   border-radius: var(--radius-sm);
   font-size: 15px;
   animation: plDrop 0.3s ease-out;
@@ -1264,11 +1343,11 @@
 }
 
 .plEndWin {
-  border-left-color: var(--accent);
+  box-shadow: var(--sh-raised), inset 6px 0 0 var(--accent);
 }
 
 .plEndFail {
-  border-left-color: var(--danger);
+  box-shadow: var(--sh-raised), inset 6px 0 0 var(--danger);
 }
 
 .plEndScore {
@@ -1282,9 +1361,10 @@
   flex-direction: column;
   gap: 3px;
   min-height: 10.4em;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-radius: var(--radius-sm);
   background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
   font-size: 15px;
   line-height: 1.35;
 }
@@ -1294,7 +1374,7 @@
 }
 
 .plOk {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .plBad {
@@ -1303,7 +1383,7 @@
 }
 
 .plWarn {
-  color: #e0a063;
+  color: var(--watch);
 }
 
 .plBars {
@@ -1332,6 +1412,7 @@
   height: 12px;
   border-radius: 6px;
   background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
   overflow: hidden;
 }
 
@@ -1340,6 +1421,7 @@
   height: 100%;
   border-radius: 6px;
   background: var(--c);
+  transition: width 900ms var(--ease-out);
 }
 
 .plBarLow {
@@ -1431,11 +1513,11 @@
 }
 
 .plFeedWarn.plFeedNew {
-  color: #e0a063;
+  color: var(--watch);
 }
 
 .plFeedOk.plFeedNew {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .plRooms {
@@ -1450,14 +1532,15 @@
 }
 
 .plRooms li {
-  padding: 3px 10px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
 }
 
 .plRooms .plRoomOn {
-  border-color: var(--accent);
-  color: var(--accent);
+  box-shadow: var(--sh-selected);
+  color: var(--accent-text);
   font-weight: 650;
 }
 
@@ -1475,7 +1558,7 @@
 }
 
 .figFriend {
-  --fig: #6f8ff0;
+  --fig: #3f5fd0;
   --fig-skin: var(--text);
 }
 
@@ -1486,8 +1569,8 @@
 }
 
 .figShadow {
-  fill: #000;
-  opacity: 0.35;
+  fill: #1b2433;
+  opacity: 0.18;
 }
 
 .figBody {

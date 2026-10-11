@@ -71,7 +71,7 @@ def test_no_template_face_crop_or_name_is_anywhere_in_plain_text(tmp_path, caplo
 
     # Switch on and enrol through the API, with the camera hook publishing to the real bus.
     call("PUT", "/identity/settings", json={"identity_enabled": True})
-    member_id = call("POST", "/identity/enroll/start", json={"name": NAME})["member_id"]
+    member_id = call("POST", "/identity/enroll/start", json={"name": NAME, "consent_ack": True})["member_id"]
     owner, guest = person(7, 0.05, 0.1, 0.45, 0.95), person(8, 0.55, 0.1, 0.95, 0.95)
     crops = [b"zeb#enrol%d" % i for i in range(5)] + [b"zeb#desk1", b"zeb#desk2", b"guest#1", b"guest#2"]
     published = []
@@ -94,7 +94,8 @@ def test_no_template_face_crop_or_name_is_anywhere_in_plain_text(tmp_path, caplo
     assert rig.service.tagged() == {"cam-desk": {7: member_id}}
     call("GET", "/identity/settings")
     members = call("GET", "/identity/members")
-    assert members == [{"member_id": member_id, "name": NAME, "enrolled_at": members[0]["enrolled_at"]}]
+    assert members == [{"member_id": member_id, "name": NAME, "enrolled_at": members[0]["enrolled_at"], "source": "live",
+                        "updated_at": members[0]["enrolled_at"], "photos": 5, "expressions": False, "circle_member_id": None}]
     assert rig.service.errors == 0
 
     # What must not be found: the name, the crops, the template and every vector that was ever computed.
@@ -163,6 +164,8 @@ def test_wiping_everything_removes_the_templates_and_keeps_the_key(tmp_path):
     report = Wiper(tmp_path).wipe("all")
     assert report.identity_removed == 1 and report.refused == [] and rig.service.members() == []
     assert (tmp_path / "vault" / "master.key").exists()
+    assert report.identity_switched_off and rig.service.enabled is False  # the switches went too: the running box is off
+    rig.service.set_enabled(True)
     ana = person(7)
     for i in range(3):
         rig.look(Frame(face_in(ana, b"ana#%d" % i)), [ana])
@@ -181,7 +184,8 @@ def test_writes_need_the_token_and_reads_never_return_a_template(tmp_path):
     assert c.post("/identity/enroll/start", json={"name": "Ana", "member_id": "Not An Id"}, headers=auth).status_code == 422
     assert c.get("/identity/enroll/status").json()["state"] == "idle"
     rig.enroll("m-ana", "Ana Example", b"ana")
-    assert set(c.get("/identity/members").json()[0]) == {"member_id", "name", "enrolled_at"}
+    assert set(c.get("/identity/members").json()[0]) == {"member_id", "name", "enrolled_at", "updated_at", "photos", "source", "expressions",
+                                                      "circle_member_id"}
     assert c.delete("/identity/members/m-ana", headers=auth).json() == {"removed": "m-ana"}
     assert c.delete("/identity/members/m-ana", headers=auth).status_code == 404
     assert c.get("/identity/members").json() == []
@@ -295,7 +299,7 @@ def test_the_real_keyframe_store_writes_the_same_blurred_jpeg_with_recognition_o
 
     rig = Rig(tmp_path / "box")
     rig.service.set_enabled(True)
-    rig.service.start_enrollment("m-ana", "Ana Example")
+    rig.service.start_enrollment("m-ana", "Ana Example", consent_ack=True)
     detect = rig.service.watch("cam-desk", lambda f: [person(7)], blur, lambda e: None)
     for _ in range(12):  # enrols from the live frame, then tags the track
         rig.clock.t += 1

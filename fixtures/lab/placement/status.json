@@ -1,0 +1,64 @@
+{
+  "ok": true,
+  "command": "status",
+  "outcome": "ok",
+  "hub": "https://sjc.aupcloud.io",
+  "hub_clock_offset_s": 0.0,
+  "accounts": {
+    "C": {
+      "node": "pod-a",
+      "reachable": true,
+      "running": true,
+      "ready": true,
+      "pending": null,
+      "started": "2026-10-10T19:07:12Z",
+      "runtime_minutes": 2400,
+      "scheduled_end": "2026-10-12T11:07:12Z",
+      "minutes_run": 202.8,
+      "minutes_left": 2197.2,
+      "last_activity": "2026-10-10T22:30:00Z",
+      "idle_minutes": 0.0,
+      "resource_type": "gpu",
+      "accelerator": "strix-halo",
+      "balance": 0,
+      "unlimited": true,
+      "quota_enabled": false,
+      "rate": 3,
+      "serving": {
+        "port": 8000,
+        "models": [
+          "teacher"
+        ],
+        "health": 200
+      }
+    },
+    "D": {
+      "node": "pod-b",
+      "reachable": true,
+      "running": true,
+      "ready": true,
+      "pending": null,
+      "started": "2026-10-10T21:24:00Z",
+      "runtime_minutes": 2400,
+      "scheduled_end": "2026-10-12T13:24:00Z",
+      "minutes_run": 66.0,
+      "minutes_left": 2334.0,
+      "last_activity": "2026-10-10T22:21:00Z",
+      "idle_minutes": 9.0,
+      "resource_type": "gpu",
+      "accelerator": "strix-halo",
+      "balance": 0,
+      "unlimited": true,
+      "quota_enabled": false,
+      "rate": 3,
+      "serving": {
+        "port": 8000,
+        "models": [],
+        "health": 500
+      }
+    }
+  },
+  "refs": {
+    "accounts": "C,D"
+  }
+}

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { cameraName, humanize } from "@/lib/format";
 import { createFsrPipeline, type FsrInfo, type FsrPipeline } from "@/lib/fsr";
 import type { Point, RoomCamera, RoomPin } from "@/lib/room";
@@ -20,7 +21,11 @@ import css from "./room3d.module.css";
  *
  * Rendering: the scene can be drawn below the screen's resolution and upscaled with the
  * FSR 1 (EASU + RCAS) port in lib/fsr.ts. The control under the stage picks the mode, and
- * "Compare" splits the picture between a plain bilinear upscale and FSR.
+ * "Compare" splits the picture between a plain bilinear upscale and FSR. The picture is
+ * ACES tone mapped (the pipeline applies it in its encode pass), lit by a hemisphere light,
+ * a soft sun and a room environment map, and follows the page's theme: with
+ * `<html data-theme="dark">` the lights go cool and dim and the clear colour is re-read
+ * from the stage's background.
  *
  * Presenter and test links (they win over the remembered choice):
  *   /map/?view=3d&fsr=off | quality | performance     the render mode
@@ -37,18 +42,18 @@ const NAME_STEP = 0.15; // how much higher a zone's name stands when it would ru
 const PIN_STEP = 0.09; // how much taller a pin stands for each row of pins in front of it
 const HALO = 0.3; // how far a panel's soft shadow reaches past its edge
 
-const COLOR = { floor: 0x1c2229, edge: 0x2b333d, zone: 0x5f6b78, zoneOn: 0x5ce1c6, text: "#f3f5f7", muted: "#a6b0bb", pin: 0xf3f5f7, accent: 0x5ce1c6 };
+const COLOR = { floor: 0xdbe6f8, edge: 0xc2d0e8, zone: 0x8e9bb0, zoneOn: 0x3b82f6, text: "#1b2433", muted: "#566176", pin: 0x566176, accent: 0x2563eb };
 
-type Mode = "native" | "quality" | "performance";
-const MODES: { id: Mode; name: string; sub: string; scale: number }[] = [
+export type Mode = "native" | "quality" | "performance";
+export const MODES: { id: Mode; name: string; sub: string; scale: number }[] = [
   { id: "native", name: "Native", sub: "100%", scale: 1 },
   { id: "quality", name: "FSR Quality", sub: "67%", scale: 0.67 },
   { id: "performance", name: "FSR Performance", sub: "50%", scale: 0.5 },
 ];
-const scaleOf = (mode: Mode) => MODES.find((m) => m.id === mode)?.scale ?? 1;
-const STORE_KEY = "atlas.map.render";
-const BENCH_FRAMES = 120;
-const BENCH: { name: string; scale: number; direct?: boolean }[] = [
+export const scaleOf = (mode: Mode) => MODES.find((m) => m.id === mode)?.scale ?? 1;
+export const STORE_KEY = "atlas.map.render";
+export const BENCH_FRAMES = 120;
+export const BENCH: { name: string; scale: number; direct?: boolean }[] = [
   { name: "Straight to the canvas (no pipeline)", scale: 1, direct: true },
   { name: "Native", scale: 1 },
   { name: "FSR Ultra Quality (77%)", scale: 0.77 },
@@ -56,16 +61,16 @@ const BENCH: { name: string; scale: number; direct?: boolean }[] = [
   { name: "FSR Performance (50%)", scale: 0.5 },
 ];
 
-interface BenchRow {
+export interface BenchRow {
   name: string;
   ms: number;
   internal: [number, number];
   output: [number, number];
 }
 
-const dims = (s: [number, number]) => `${s[0]}×${s[1]}`;
+export const dims = (s: [number, number]) => `${s[0]}×${s[1]}`;
 
-function remembered(): { mode: Mode; compare: boolean } {
+export function remembered(): { mode: Mode; compare: boolean } {
   let mode: Mode = "quality";
   let compare = false;
   try {
@@ -99,7 +104,7 @@ function label(text: string, color: string, size = 0.11, outline = true): THREE.
     ctx.textBaseline = "middle";
     ctx.lineJoin = "round";
     ctx.lineWidth = 8;
-    ctx.strokeStyle = "#13171c";
+    ctx.strokeStyle = "#eaf1fc";
     if (outline) ctx.strokeText(text, pad, 34);
     ctx.fillStyle = color;
     ctx.fillText(text, pad, 34);
@@ -209,14 +214,44 @@ export default function Room3D({ cameras, pins, selected, route }: Room3DProps) 
       setFailed(err instanceof Error ? err.message : String(err));
       return;
     }
-    // Opaque, in the stage's own colour: the upscaler works on colour only, not on alpha.
-    const backdrop = new THREE.Color(COLOR.floor);
-    try {
-      backdrop.setStyle(getComputedStyle(el).backgroundColor);
-    } catch {
-      // Keep the default.
-    }
-    renderer.setClearColor(backdrop, 1);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    // Opaque, in the stage's own colour (laid over its ancestors' when it is translucent): the upscaler works on
+    // colour only, not on alpha.
+    const isDark = () => {
+      const set = document.documentElement.dataset.theme;
+      if (set === "dark") return true;
+      if (set === "light") return false;
+      return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
+    };
+    const readBackdrop = () => {
+      const backdrop = new THREE.Color(isDark() ? 0x161a22 : COLOR.floor);
+      try {
+        const layers: [THREE.Color, number][] = [];
+        let node: HTMLElement | null = el;
+        while (node) {
+          const m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/.exec(getComputedStyle(node).backgroundColor ?? "");
+          if (m) {
+            const a = m[4] === undefined ? 1 : Number(m[4]);
+            if (a > 0) layers.push([new THREE.Color(`rgb(${m[1]}, ${m[2]}, ${m[3]})`), Math.min(1, a)]);
+            if (a >= 1) break;
+          }
+          node = node.parentElement;
+        }
+        if (layers.length) {
+          backdrop.copy((layers[layers.length - 1] as [THREE.Color, number])[0]);
+          for (let i = layers.length - 2; i >= 0; i--) {
+            const [c, a] = layers[i] as [THREE.Color, number];
+            backdrop.lerp(c, a);
+          }
+        }
+      } catch {
+        // Keep the default.
+      }
+      renderer.setClearColor(backdrop, 1);
+    };
+    readBackdrop();
     el.appendChild(renderer.domElement);
     renderer.domElement.setAttribute("aria-label", "The room in 3D. Drag to rotate and tilt.");
     renderer.domElement.setAttribute("role", "img");
@@ -228,10 +263,40 @@ export default function Room3D({ cameras, pins, selected, route }: Room3DProps) 
     pipeline.setCompare(choice.current.compare, Number.isFinite(at) ? at : 0.5);
 
     const scene = new THREE.Scene();
-    scene.add(new THREE.AmbientLight(0xffffff, 1.5));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.9);
+    const hemi = new THREE.HemisphereLight(0xe6eeff, 0xa08a6e, 1.0);
+    scene.add(hemi);
+    const sun = new THREE.DirectionalLight(0xffe6c4, 1.6);
     sun.position.set(-1.5, 3, 2);
     scene.add(sun);
+    let envMap: THREE.Texture | null = null;
+    try {
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      const env = new RoomEnvironment();
+      envMap = pmrem.fromScene(env, 0.04).texture;
+      env.dispose();
+      pmrem.dispose();
+      scene.environment = envMap;
+    } catch {
+      envMap = null; // the lights carry the picture on their own
+    }
+    const applyTheme = () => {
+      if (isDark()) {
+        hemi.color.setHex(0x5b70a0);
+        hemi.groundColor.setHex(0x23283a);
+        hemi.intensity = 0.8;
+        sun.color.setHex(0x9db6f0);
+        sun.intensity = 0.7;
+        scene.environmentIntensity = 0.2;
+      } else {
+        hemi.color.setHex(0xe6eeff);
+        hemi.groundColor.setHex(0xa08a6e);
+        hemi.intensity = 1.0;
+        sun.color.setHex(0xffe6c4);
+        sun.intensity = 1.6;
+        scene.environmentIntensity = 0.45;
+      }
+    };
+    applyTheme();
 
     const camera = new THREE.PerspectiveCamera(42, 1, 0.05, 50);
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -311,6 +376,19 @@ export default function Room3D({ cameras, pins, selected, route }: Room3DProps) 
     controls.addEventListener("start", grabbed);
     const watcher = new ResizeObserver(size);
     watcher.observe(el);
+    // The theme flips at runtime: relight, and re-read the background now and once its transition has settled.
+    let themeTimer = 0;
+    const themeWatch = typeof MutationObserver === "undefined" ? null : new MutationObserver(() => {
+      applyTheme();
+      readBackdrop();
+      draw();
+      window.clearTimeout(themeTimer);
+      themeTimer = window.setTimeout(() => {
+        readBackdrop();
+        draw();
+      }, 450);
+    });
+    themeWatch?.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
     stage.current = { renderer, scene, camera, pipeline, draw, home, report };
     size();
     home();
@@ -362,7 +440,11 @@ export default function Room3D({ cameras, pins, selected, route }: Room3DProps) 
       window.clearTimeout(benchTimer);
       if (frame) cancelAnimationFrame(frame);
       watcher.disconnect();
+      themeWatch?.disconnect();
+      window.clearTimeout(themeTimer);
       controls.dispose();
+      scene.environment = null;
+      envMap?.dispose();
       dispose(scene);
       pipeline.dispose();
       renderer.dispose();
@@ -400,9 +482,9 @@ export default function Room3D({ cameras, pins, selected, route }: Room3DProps) 
       const ground = shadowPlane(PANEL_W + HALO * 2, PANEL_D + HALO * 2, [256, 208], 0, (ctx) => {
         const sx = 256 / (PANEL_W + HALO * 2);
         const sy = 208 / (PANEL_D + HALO * 2);
-        ctx.shadowColor = "rgba(0,0,0,0.6)";
+        ctx.shadowColor = "rgba(70,85,122,0.5)";
         ctx.shadowBlur = HALO * sx * 0.75;
-        ctx.fillStyle = "#000";
+        ctx.fillStyle = "#46557a";
         ctx.fillRect(HALO * sx, HALO * sy, PANEL_W * sx, PANEL_D * sy);
       });
       ground.position.set(ox + PANEL_W / 2, -0.021, PANEL_D / 2);
@@ -413,8 +495,8 @@ export default function Room3D({ cameras, pins, selected, route }: Room3DProps) 
           polygon.forEach(([x, y], n) => (n === 0 ? ctx.moveTo(x * 512, y * 384) : ctx.lineTo(x * 512, y * 384)));
           ctx.closePath();
         };
-        ctx.fillStyle = "#000";
-        ctx.shadowColor = "rgba(0,0,0,0.75)";
+        ctx.fillStyle = "#46557a";
+        ctx.shadowColor = "rgba(70,85,122,0.55)";
         ctx.shadowBlur = 20;
         for (const zone of cam.zones) {
           trace(zone.polygon);
@@ -446,7 +528,7 @@ export default function Room3D({ cameras, pins, selected, route }: Room3DProps) 
         const block = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: on ? COLOR.zoneOn : COLOR.zone, roughness: 0.8, transparent: true, opacity: on ? 0.6 : 0.5 }));
         block.renderOrder = 2;
         group.add(block);
-        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: on ? COLOR.accent : 0xa6b0bb }));
+        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: on ? COLOR.accent : 0x8e9bb0 }));
         group.add(edges);
         // The name stands at the near edge of the zone, clear of any pins in its middle. It is drawn no
         // wider than it must be, and when it would still run into a neighbour's name it stands a step
@@ -466,7 +548,7 @@ export default function Room3D({ cameras, pins, selected, route }: Room3DProps) 
         if (level > 0) {
           const line = new THREE.Line(
             new THREE.BufferGeometry().setFromPoints([place([mid, near], ZONE_H), place([mid, near], ZONE_H + 0.04 + level * NAME_STEP)]),
-            new THREE.LineBasicMaterial({ color: 0xa6b0bb }),
+            new THREE.LineBasicMaterial({ color: 0x8e9bb0 }),
           );
           group.add(line);
         }
@@ -490,11 +572,11 @@ export default function Room3D({ cameras, pins, selected, route }: Room3DProps) 
         const head = new THREE.Mesh(new THREE.SphereGeometry(on ? 0.058 : 0.05, 20, 14), new THREE.MeshStandardMaterial({ color, roughness: 0.4 }));
         head.position.copy(place(pin.at, ZONE_H + top));
         group.add(head);
-        const number = label(String(pin.n), "#13171c", 0.1, false);
+        const number = label(String(pin.n), "#ffffff", 0.1, false);
         number.position.copy(head.position);
         group.add(number);
         if (on) {
-          const text = label(humanize(pin.label), "#5ce1c6", 0.13);
+          const text = label(humanize(pin.label), "#456cb3", 0.13);
           text.position.copy(place(pin.at, ZONE_H + 0.2 + tallest * PIN_STEP + 0.19));
           text.renderOrder = 11;
           group.add(text);
@@ -526,7 +608,7 @@ export default function Room3D({ cameras, pins, selected, route }: Room3DProps) 
   if (failed) {
     return (
       <div className={`${ui.state} ${ui.stateError}`} role="alert">
-        <p className={ui.stateTitle}>The 3D view can&apos;t start on this phone</p>
+        <p className={ui.stateTitle}>3D view is not available on this device</p>
         <p className={ui.breakWords}>{failed}. The 2D view shows the same zones and pins.</p>
       </div>
     );

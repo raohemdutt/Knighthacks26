@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -22,7 +23,8 @@ def test_ask_answers_from_memory_and_streams_events(tmp_path):
             types.append(ws.receive_json()["type"])
         types = [t for t in types if t != "agent.answer.delta"]  # streamed pieces (A11) arrive in between
         assert types == ["experience.question.asked", "agent.answer.generated"]
-    assert len(list((tmp_path / "events").glob("*.jsonl"))) == 1
+    logged = "".join(f.read_text(encoding="utf-8") for f in (tmp_path / "events").glob("*.jsonl"))  # one file per UTC day:
+    assert '"agent.answer.generated"' in logged  # the fixture's earlier episodes land in yesterday's file after 00:00 UTC
 
 
 def test_a_memory_wipe_shows_an_empty_memory_at_once_without_a_restart(tmp_path):
@@ -148,8 +150,9 @@ def test_place_packs_routes_feasibility_and_friend_routes(tmp_path):
     with client(tmp_path) as c:
         assert {p["name"] for p in c.get("/api/places").json()} >= {"ucf", "apartment"}
         r = c.get("/api/play/campus-route", params={"from": "ucf.union", "to": "ucf.eng2"}).json()
-        assert r == {"path": ["ucf.union", "ucf.hec", "ucf.eng2"], "minutes": 6}
-        late = c.get("/api/play/campus-route", params={"from": "ucf.rwc", "to": "ucf.eng2",
+        # the walk follows the real footpaths (config/places/ucf.map.json): 185 m, with the line to draw
+        assert (r["path"], r["minutes"], r["meters"]) == (["ucf.union", "ucf.eng2"], 2.6, 185.0) and len(r["polyline"]) > 5
+        late = c.get("/api/play/campus-route", params={"from": "ucf.rwc", "to": "ucf.towers",
                                                        "depart": "2026-10-11T09:50:00-04:00", "due": "2026-10-11T10:00:00-04:00"}).json()
         assert late["message"] == "you miss the 10:00 by 7 minutes"
 
@@ -300,3 +303,33 @@ def test_answers_stream_word_by_word_over_the_websocket_before_the_final_answer(
         assert msgs.index(deltas[-1]) < len(msgs) - 1  # every piece arrives before the final answer
     log = "".join(p.read_text() for p in (tmp_path / "events").glob("*.jsonl"))
     assert "agent.answer.delta" not in log
+
+
+def test_small_talk_gets_a_reply_and_camera_questions_keep_their_path(tmp_path, monkeypatch):
+    with client(tmp_path) as c:
+        talk = c.app.state.atlas.qa.talk
+        hello = c.post("/api/ask", json={"text": "Hey Atlas, how's your day?"}).json()
+        assert hello["citations"] == [] and hello["answer"] != "I didn't see that." and not hello["answer"].startswith("(fake)")
+        assert "How's yours going?" in hello["answer"] and hello["model_version"] == "fake-0"
+        assert "AI" in c.post("/api/ask", json={"text": "are you gay?"}).json()["answer"]
+        assert len(talk.turns) == 2 and talk.answered == 2 and talk.about  # live state: the turns, the count, the profile's line
+        assert c.post("/api/ask", json={"text": "Anything weird?"}).json()["answer"] == "I didn't see that."  # the tool loop, as before
+        assert c.post("/api/ask", json={"text": "Where did I leave my keys?"}).json()["citations"]  # the pre-fetch, as before
+        wipe = c.post("/vault/wipe/request", json={"scope": "memory"}).json()["token"]
+        assert c.post("/vault/wipe", json={"token": wipe}).json()["done"]
+        assert not talk.turns  # a wipe clears the conversation too
+    monkeypatch.setenv("ATLAS_TALK", "0")
+    with client(tmp_path / "off") as c:
+        assert c.app.state.atlas.qa.talk is None
+        assert c.post("/api/ask", json={"text": "how's your day?"}).json()["answer"] == "I didn't see that."
+
+
+def test_ask_stream_sends_the_pieces_then_the_same_final_answer(tmp_path):
+    with client(tmp_path) as c:
+        r = c.post("/api/ask/stream", json={"text": "Where did I leave my keys?"})
+        assert r.status_code == 200
+        lines = [json.loads(ln) for ln in r.text.splitlines() if ln]
+        assert "final" in lines[-1] and all("delta" in ln for ln in lines[:-1])
+        final = lines[-1]["final"]
+        assert final["type"] == "agent.answer.generated" and final["citations"][0]["frame_ref"] == "frames:cam-desk:k1941"
+

@@ -36,7 +36,8 @@ NOW = dt.datetime(2026, 10, 10, 16, 0, tzinfo=UTC)  # Saturday 12:00 PM Eastern
 LATER = NOW + dt.timedelta(minutes=5)
 HEART = "\U0001F916"
 DOT = "\u00b7"
-SIGN = f"{HEART} Ilan's agent {DOT} Sat 12:00 PM ET:"
+SIGN = f"Ilan's agent {DOT} Sat 12:00 PM ET:"
+ROBOT_SIGN = f"{HEART} {SIGN}"  # how a post was signed before the no-emoji rule
 TOKEN = pages_fake.TOKEN
 OVERNIGHT = rulings.OVERNIGHT_PAGE
 TEAM = rulings.TEAM_COMMS_PAGE
@@ -208,14 +209,38 @@ def outside_plan_item(text: str) -> list[str]:
 
 
 def labels_of(children: list[str]) -> list[str]:
-    """Each child line's '<label>, <task>:' after its signed prefix."""
-    found = [re.match(r"\t- \S+ Ilan's agent \S+ \w{3} \d+:\d{2} [AP]M(?: ET)?: ([a-z0-9 -]+, [A-Za-z0-9]+):", row) for row in children]
+    """Each child line's '<label>, <task>:' after the flow's own signed prefix, in either form."""
+    found = [re.match(r"\t- (?:\S+ )?Ilan's agent \S+ \w{3} \d+:\d{2} [AP]M(?: ET)?: ([a-z0-9 -]+, [A-Za-z0-9]+):", row) for row in children]
     assert all(found), children
     return [match[1] for match in found]
 
 
 def signed(text: str, sign: str = SIGN) -> str:
     return f"\t- {sign} {text}"
+
+
+def unsigned(text: str) -> str:
+    return f"\t- {text}"
+
+
+# The signatures a plan-change line can carry on the page, whoever wrote it.
+HAND_PLAIN = f"Ilan's agent {DOT} Sat 9:00 AM ET:"                # the form the flow writes now
+HAND_ROBOT = f"{HEART} Ilan's agent {DOT} Sat 9:01 AM ET:"        # the form with the robot sign
+HAND_ROBOT_NO_ET = f"{HEART} Ilan's agent {DOT} Sat 9:02 AM:"     # the robot form without the ET, as AGENTS.md shows it
+HAND_RESIGNED = "Ilan2 agent, Sat 3:50 PM ET:"                      # how the telemetry and learning passes re-signed their lines
+HAND_NUMBERED = f"Ilan2's agent {DOT} Sat 4:15 PM ET:"
+HAND_OTHER = f"{HEART} Dominick's agent {DOT} Sat 9:03 AM ET:"
+HAND_COMMA = "Ilan's agent, Sat 6:48 PM ET:"                       # the plain form with a comma, as the agents sign now
+HAND_BARE = "Ilan agent, Sat 6:30 PM ET:"
+# Every form a plan-change line can carry, one per change of ALL_CHANGES; None: unsigned.
+MIXED_SIGNS = [HAND_PLAIN, HAND_ROBOT, HAND_ROBOT_NO_ET, HAND_RESIGNED, HAND_NUMBERED, HAND_OTHER, HAND_COMMA, HAND_BARE, None]
+SIGN_IDS = ["plain", "robot", "robot-no-ET", "re-signed", "numbered", "other-agent", "comma", "bare-name", "unsigned"]
+
+
+def by_hand(label: str, task: str, sign: str | None) -> str:
+    """A line as a pass writes it in its own words under the given signature (None: no signature)."""
+    text = f'{label}, {task}: changed by hand. Was: "x". Why: y. Source: z.'
+    return unsigned(text) if sign is None else signed(text, sign)
 
 
 def open_rulings():
@@ -432,6 +457,30 @@ def test_a_second_run_changes_nothing_even_at_another_time_and_after_the_first_l
     assert notion.edits == edits
 
 
+def test_a_board_snapshot_that_goes_stale_rewrites_the_last_update_once():
+    notion = pages()
+    since = "2026-10-10T04:00:00Z"                       # one window start for every call
+    # the snapshot was taken at 15:45 and an hour is the limit; the last ledger row is at 16:30, so from 16:31 on
+    # the facts stay the same and only the snapshot's age moves
+    go("--only", "overnight", "--since", since, client=notion, now=NOW + dt.timedelta(minutes=31))
+    first = ilan_section(notion.text(OVERNIGHT))
+    fresh = first[0]
+
+    stale_at = NOW + dt.timedelta(minutes=50)
+    answer, code = go("--only", "overnight", "--since", since, client=notion, now=stale_at)
+    later, _ = go("--only", "overnight", "--since", since, client=notion, now=stale_at + dt.timedelta(minutes=5))
+
+    assert (code, answer["targets"]) == (0, {"overnight_status": {"action": "updated"}})
+    assert "board snapshot from Sat 11:45 AM ET (digest" in fresh
+    section = ilan_section(notion.text(OVERNIGHT))
+    stale = section[0]
+    assert stale.startswith(f"- **Last update:** Ilan's agent {DOT} Sat 12:50 PM ET: lab digest,")
+    assert "board snapshot from Sat 11:45 AM ET, stale (digest" in stale
+    assert marker(stale) == answer["section_id"] != marker(fresh)
+    assert section[1:4] == first[1:4]                    # Working on, Done tonight and Blocked on: the same facts
+    assert later["targets"] == {"overnight_status": {"action": "unchanged"}}
+
+
 def test_a_segment_someone_removed_comes_back_even_though_the_facts_did_not_change():
     notion = pages()
     go("--only", "overnight", client=notion)
@@ -507,6 +556,83 @@ def test_a_changed_digest_replaces_the_earlier_text_in_place_instead_of_adding_t
     ]
     assert needs_line(notion.text(OVERNIGHT)).count("Lab digest:") == 1
     assert outside_ilan(notion.text(OVERNIGHT)) == outside_ilan(OVERNIGHT_TEXT)
+
+
+@pytest.mark.parametrize("robot", [False, True], ids=["plain", "robot"])
+def test_a_section_posted_in_either_form_is_the_current_one_and_a_later_run_leaves_it_alone(robot):
+    notion = pages()
+    go("--only", "overnight", client=notion)
+    first = notion.text(OVERNIGHT)
+    assert first.count(SIGN) == 2  # the Last update bullet and our segment on the Needs bullet
+    held = pages(overnight=first.replace(SIGN, ROBOT_SIGN) if robot else first)
+    before = held.text(OVERNIGHT)
+    assert (HEART in "\n".join(ilan_section(before))) == robot
+
+    answer, code = go("--only", "overnight", client=held, now=LATER)
+
+    assert (code, answer["targets"]) == (0, {"overnight_status": {"action": "unchanged"}})
+    assert held.text(OVERNIGHT) == before and held.edits == []
+
+
+@pytest.mark.parametrize("robot", [False, True], ids=["plain", "robot"])
+def test_a_changed_digest_replaces_an_earlier_section_in_either_form_by_one_in_the_plain_form(robot):
+    notion = pages()
+    go("--only", "overnight", client=notion)
+    held = pages(overnight=notion.text(OVERNIGHT).replace(SIGN, ROBOT_SIGN) if robot else notion.text(OVERNIGHT))
+    add_row(task="O99", outcome="error")
+
+    answer, _ = go("--only", "overnight", client=held, now=LATER)
+
+    assert answer["targets"]["overnight_status"] == {"action": "updated"}
+    section = ilan_section(held.text(OVERNIGHT))
+    later_sign = SIGN.replace("12:00", "12:05")
+    assert section[0].startswith(f"- **Last update:** {later_sign} lab digest, ")
+    assert section[4] == NEEDS_OLD + "; " + SEGMENT.format(id=marker(section[0])).replace(SIGN, later_sign)
+    assert section[4].count("Lab digest:") == 1
+    assert HEART not in "\n".join(section)
+    assert outside_ilan(held.text(OVERNIGHT)) == outside_ilan(OVERNIGHT_TEXT)
+
+
+@pytest.mark.parametrize("digest_robot", [False, True], ids=["digest-plain", "digest-robot"])
+@pytest.mark.parametrize("rulings_robot", [False, True], ids=["rulings-plain", "rulings-robot"])
+def test_the_two_segments_on_the_needs_line_are_each_recognised_in_either_form(rulings_robot, digest_robot):
+    notion = pages()
+    earlier = NOW - dt.timedelta(hours=1)
+    rulings.mirror_rulings(open_rulings(), notion, earlier)
+    go("--only", "overnight", client=notion)
+    page = notion.text(OVERNIGHT)
+    rulings_sign = rulings.stamp(earlier)
+    assert (page.count(rulings_sign), page.count(SIGN)) == (1, 2)
+    if rulings_robot:
+        page = page.replace(rulings_sign, f"{HEART} {rulings_sign}")
+    if digest_robot:
+        page = page.replace(SIGN, ROBOT_SIGN)
+    held = pages(overnight=page)
+
+    digest, _ = go("--only", "overnight", client=held, now=LATER)
+    again = rulings.mirror_rulings(open_rulings(), held, LATER)
+
+    assert digest["targets"]["overnight_status"] == {"action": "unchanged"}
+    assert digest["rulings"]["segment"] == "current"
+    assert again["targets"]["overnight_status"] == {"action": "unchanged"}
+    assert held.text(OVERNIGHT) == page
+    assert [edit for edit in held.edits if edit[0] == OVERNIGHT] == []
+
+
+@pytest.mark.parametrize("robot", [False, True], ids=["plain", "robot"])
+def test_our_segment_in_either_form_goes_and_the_rulings_segment_stays_as_it_was_written(robot):
+    notion = pages()
+    earlier = NOW - dt.timedelta(hours=1)
+    rulings.mirror_rulings(open_rulings(), notion, earlier)
+    go("--only", "overnight", client=notion)
+    held = pages(overnight=notion.text(OVERNIGHT).replace(SIGN, ROBOT_SIGN) if robot else notion.text(OVERNIGHT))
+    segment = rulings.build_posts(open_rulings(), earlier).segment
+
+    answer, _ = go("--only", "overnight", client=held, board=quiet_board(Path(os.environ["LAB_STATE_DIR"])), now=LATER)
+
+    assert answer["targets"]["overnight_status"] == {"action": "updated"}
+    assert needs_line(held.text(OVERNIGHT)) == NEEDS_OLD + "; " + segment
+    assert "Lab digest:" not in held.text(OVERNIGHT)
 
 
 def test_the_rulings_segment_and_the_people_text_on_the_needs_line_are_kept_whatever_their_order():
@@ -776,7 +902,7 @@ def test_a_second_run_posts_each_change_once_and_touches_nothing():
 
 
 def test_new_lines_go_after_the_items_last_child_one_tab_deeper_and_the_old_lines_stay():
-    existing = [signed("telemetry pass 1, T4: T4 on the board, Done when rewritten. Was: x.", f"{HEART} Ilan's agent {DOT} Sat 9:02 AM ET:"),
+    existing = [signed("telemetry pass 1, T4: T4 on the board, Done when rewritten. Was: x.", f"Ilan's agent {DOT} Sat 9:02 AM ET:"),
                 signed("telemetry pass 1, T3: T3 on the board, Done when rewritten. Was: y.", f"{HEART} Ilan's agent {DOT} Sat 9:03 AM ET:")]
     team = TEAM_TEXT.replace(FYI, FYI + "\n" + PLAN_ITEM + "\n" + "\n".join(existing))
     notion = pages(team=team)
@@ -821,6 +947,131 @@ def test_lines_a_pass_posted_in_its_own_words_cover_the_changes_with_the_same_la
         "telemetry pass 1, T3:", "telemetry pass 1, T2:", "telemetry pass 1, T1:", "kernels pass 3, E5:",
         "kernels pass 3, T0:", "merge 1, T3:"]
     assert plan_children(notion.text(TEAM))[:3] == own
+
+
+def test_everything_the_flow_writes_is_signed_without_the_robot_sign():
+    notion = pages()
+
+    go(client=notion)
+
+    section = ilan_section(notion.text(OVERNIGHT))
+    children = plan_children(notion.text(TEAM))
+    assert section[0].startswith(f"- **Last update:** Ilan's agent {DOT} Sat 12:00 PM ET: lab digest, ")
+    assert section[4] == NEEDS_OLD + "; " + SEGMENT.format(id=marker(section[0]))
+    assert len(children) == 9
+    assert all(row.startswith(f"\t- Ilan's agent {DOT} Sat 12:00 PM ET: ") for row in children)
+    assert HEART not in "\n".join(section + children)
+
+
+@pytest.mark.parametrize("sign", MIXED_SIGNS, ids=SIGN_IDS)
+def test_lines_a_pass_wrote_by_hand_cover_every_change_in_every_signature_form(sign):
+    own = [by_hand(label, task, sign) for label, task in ALL_CHANGES]
+    team = TEAM_TEXT.replace(FYI, FYI + "\n" + PLAN_ITEM + "\n" + "\n".join(own))
+    notion = pages(team=team)
+
+    answer, code = go("--only", "plan-changes", client=notion)
+
+    assert (code, answer["targets"]["plan_changes"]) == (0, {"action": "unchanged", "posted": 0, "already": 9, "changes": 9})
+    assert notion.text(TEAM) == team and notion.edits == []
+
+
+def test_a_page_mixing_signature_forms_has_every_change_covered_whoever_signed_each_line():
+    own = [by_hand(label, task, MIXED_SIGNS[index % len(MIXED_SIGNS)]) for index, (label, task) in enumerate(ALL_CHANGES)]
+    team = TEAM_TEXT.replace(FYI, FYI + "\n" + PLAN_ITEM + "\n" + "\n".join(own))
+    notion = pages(team=team)
+
+    answer, code = go("--only", "plan-changes", client=notion)
+
+    assert (code, answer["targets"]["plan_changes"]) == (0, {"action": "unchanged", "posted": 0, "already": 9, "changes": 9})
+    assert notion.text(TEAM) == team and notion.edits == []
+
+
+def test_a_run_over_a_page_that_mixes_forms_adds_only_what_is_missing_in_the_plain_form():
+    own = [by_hand("telemetry pass 1", "T4", HAND_PLAIN), by_hand("telemetry pass 1", "T3", HAND_ROBOT),
+           by_hand("kernels pass 3", "E3", HAND_RESIGNED)]
+    team = TEAM_TEXT.replace(FYI, FYI + "\n" + PLAN_ITEM + "\n" + "\n".join(own))
+    notion = pages(team=team)
+
+    answer, _ = go("--only", "plan-changes", client=notion)
+
+    result = answer["targets"]["plan_changes"]
+    assert (result["action"], result["posted"], result["already"]) == ("posted", 6, 3)
+    children = plan_children(notion.text(TEAM))
+    covered = {("telemetry pass 1", "T4"), ("telemetry pass 1", "T3"), ("kernels pass 3", "E3")}
+    assert children[:3] == own
+    assert labels_of(children[3:]) == [f"{a}, {b}" for a, b in ALL_CHANGES if (a, b) not in covered]
+    assert all(row.startswith(f"\t- Ilan's agent {DOT} Sat 12:00 PM ET: ") for row in children[3:])
+    assert outside_plan_item(notion.text(TEAM)) == outside_plan_item(team)
+
+
+def test_two_lines_for_one_label_and_task_cover_two_changes_whatever_their_signatures(tmp_path):
+    refine = tmp_path / "refine"
+    shutil.copytree(REFINE, refine)
+    log = refine / "kernels" / "REFINE_LOG.md"
+    log.write_text(log.read_text(encoding="utf-8").replace("2. E5 on T0, split into E5a and E5b (K2)", "2. E3 on T0, repeat count raised (K3)"),
+                   encoding="utf-8")
+    own = [by_hand("kernels pass 3", "E3", HAND_RESIGNED), by_hand("kernels pass 3", "E3", HAND_ROBOT)]
+    team = TEAM_TEXT.replace(FYI, FYI + "\n" + PLAN_ITEM + "\n" + "\n".join(own))
+    notion = pages(team=team)
+
+    answer, _ = go("--only", "plan-changes", client=notion, refine=refine)
+
+    result = answer["targets"]["plan_changes"]
+    assert (result["posted"], result["already"]) == (7, 2)
+    assert not any(entry.startswith("kernels pass 3, E3:") for entry in result["lines"])
+
+
+@pytest.mark.parametrize("sign", [HAND_PLAIN, HAND_ROBOT, HAND_ROBOT_NO_ET, HAND_RESIGNED, None],
+                         ids=["plain", "robot", "robot-no-ET", "re-signed", "unsigned"])
+def test_a_line_of_another_pass_or_another_task_covers_nothing_whoever_signed_it(sign):
+    others = [by_hand("kernels pass 2", "E3", sign), by_hand("kernels pass 3", "E4", sign), by_hand("telemetry pass 1", "T9", sign)]
+    team = TEAM_TEXT.replace(FYI, FYI + "\n" + PLAN_ITEM + "\n" + "\n".join(others))
+    notion = pages(team=team)
+
+    answer, _ = go("--only", "plan-changes", client=notion)
+
+    result = answer["targets"]["plan_changes"]
+    assert (result["posted"], result["already"]) == (9, 0)
+    assert plan_children(notion.text(TEAM))[:3] == others
+
+
+@pytest.mark.parametrize("sign", [HAND_PLAIN, HAND_ROBOT, HAND_RESIGNED, HAND_COMMA, None],
+                         ids=["plain", "robot", "re-signed", "comma", "unsigned"])
+def test_a_line_that_names_a_change_only_after_other_words_covers_nothing(sign):
+    text = "merge 1 summary: telemetry pass 1, T4: kept as it was."
+    summary = unsigned(text) if sign is None else signed(text, sign)
+    team = TEAM_TEXT.replace(FYI, FYI + "\n" + PLAN_ITEM + "\n" + summary)
+    notion = pages(team=team)
+
+    answer, _ = go("--only", "plan-changes", client=notion)
+
+    result = answer["targets"]["plan_changes"]
+    assert (result["posted"], result["already"]) == (9, 0)
+    children = plan_children(notion.text(TEAM))
+    assert children[0] == summary
+    assert labels_of(children[1:]) == [f"{a}, {b}" for a, b in ALL_CHANGES]
+
+
+@pytest.mark.parametrize("lead_in", [
+    pytest.param("Ilan:", id="person"),
+    pytest.param(f"{HEART} Ilan:", id="robot-sign-without-an-agent"),
+    pytest.param("Ilan's agent:", id="agent-without-a-time"),
+    pytest.param("Sat 9:04 AM ET:", id="time-only"),
+    pytest.param("note of Sat 9:00 AM ET:", id="time-after-other-words"),
+    pytest.param(f"see Ilan's agent {DOT} Sat 9:00 AM ET:", id="signature-after-other-words"),
+])
+def test_a_lead_in_that_is_not_a_signature_covers_nothing(lead_in):
+    line = unsigned(f"{lead_in} telemetry pass 1, T4: kept as it was.")
+    team = TEAM_TEXT.replace(FYI, FYI + "\n" + PLAN_ITEM + "\n" + line)
+    notion = pages(team=team)
+
+    answer, _ = go("--only", "plan-changes", client=notion)
+
+    result = answer["targets"]["plan_changes"]
+    assert (result["posted"], result["already"]) == (9, 0)
+    children = plan_children(notion.text(TEAM))
+    assert children[0] == line
+    assert labels_of(children[1:]) == [f"{a}, {b}" for a, b in ALL_CHANGES]
 
 
 def test_a_pass_that_posted_one_of_two_changes_to_a_task_leaves_only_the_later_change_to_post(tmp_path):
@@ -871,7 +1122,7 @@ def test_a_change_recorded_later_is_added_at_the_end_signed_with_its_own_time_an
     children = plan_children(notion.text(TEAM))
     assert answer["targets"]["plan_changes"]["posted"] == 1
     assert children[:9] == first_nine
-    assert children[9] == (f"\t- {HEART} Ilan's agent {DOT} Sat 1:00 PM ET: merge 2, L4: L4 on the board, Tier set. "
+    assert children[9] == (f"\t- Ilan's agent {DOT} Sat 1:00 PM ET: merge 2, L4: L4 on the board, Tier set. "
                            'Was: "Tier: none". Why: a gate is a hard build. Source: Notion task L4.')
     assert len(children) == 10
 
@@ -999,6 +1250,19 @@ def test_print_mode_touches_no_client_and_returns_the_texts_and_where_they_go():
     assert [item["covers"] for item in plans["lines"]] == [f"{a}, {b}:" for a, b in ALL_CHANGES]
     assert plans["lines"][5]["text"] == f"- {SIGN} {E3_LINE}"
     assert answer["rulings"]["segment"] == "unknown" and answer["rulings"]["waiting"] == 2
+
+
+def test_the_printed_texts_carry_no_robot_sign_and_the_instructions_name_both_forms():
+    answer, _ = go("--print")
+
+    assert HEART not in json.dumps(answer, ensure_ascii=False)
+    overnight, plans = answer["posts"]
+    assert overnight["lines"]["Last update"].startswith(f"- **Last update:** Ilan's agent {DOT} Sat 12:00 PM ET: lab digest, ")
+    assert overnight["needs_segment"].startswith(f"Ilan's agent {DOT} Sat 12:00 PM ET: Lab digest: ")
+    assert f"it starts with 'Ilan's agent {DOT}' (older segments have a robot sign in front of it)" in overnight["needs_how"]
+    assert all(item["text"].startswith(f"- Ilan's agent {DOT} Sat 12:00 PM ET: ") for item in plans["lines"])
+    assert "with or without a robot sign in front, or there is none at all" in plans["skip_if_page_shows"]
+    assert "any other words before the label make it a different line" in plans["skip_if_page_shows"]
 
 
 def test_print_mode_reads_and_writes_nothing_even_when_a_client_is_at_hand():

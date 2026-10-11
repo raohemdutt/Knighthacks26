@@ -21,7 +21,8 @@
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAtlasEvents } from "./atlas";
-import { SPEAK_COOLDOWN_MS, chunkForSpeech, cleanForSpeech, sentenceForEvent, type SpokenKind } from "./speechText";
+import { briefStore } from "./brief";
+import { SPEAK_COOLDOWN_MS, chunkForSpeech, cleanForSpeech, narratedAsk, sentenceForEvent, type SpokenKind } from "./speechText";
 
 // ---------- the knobs, in one place ----------
 
@@ -33,7 +34,9 @@ export const SILENCE_MS = 8000;
 /** At most this many unprompted sentences wait their turn; older ones are dropped. */
 const MAX_QUEUED_EVENTS = 3;
 const SETTINGS_KEY = "atlas.voice";
-const SPOKEN_EVENTS = ["agent.alert.raised", "habits.nudge.raised", "workspace.approval.requested", "agent.plan.created", "day.coach.noted"];
+const SPOKEN_EVENTS = ["agent.alert.raised", "habits.nudge.raised", "workspace.approval.requested", "agent.plan.created", "day.coach.noted", "day.narrated", "impact.milestone.reached"];
+/** How long a spoken approval waits for the narrator's plain ask ("I'd like to add eight blocks...") before the raw reason is used. */
+const ASK_WAIT_MS = 900;
 
 export interface VoiceSettings {
   /** Read answers aloud. */
@@ -99,6 +102,8 @@ export interface Voice {
   say: (text: string, options?: SayOptions) => void;
   /** Stop talking and forget everything queued. */
   stop: () => void;
+  /** Drop what is queued or playing with this tag (the look guide's sentences), and nothing else. */
+  cancel: (tag: string) => void;
   /** Start listening for one utterance. Stops any speech first. False when it could not start. */
   listen: (handlers: ListenHandlers) => boolean;
   /** Stop listening. `submit` hands what was heard so far to onFinal; otherwise it is thrown away. */
@@ -390,6 +395,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   );
 
   const stop = useCallback(() => cancelWhere(() => true), [cancelWhere]);
+  const cancel = useCallback((tag: string) => cancelWhere((j) => j.options.tag === tag), [cancelWhere]);
 
   const say = useCallback(
     (text: string, options: SayOptions = {}) => {
@@ -593,10 +599,22 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   // --- speaking up on its own ---
 
-  useAtlasEvents(SPOKEN_EVENTS, (e) => {
+  const speakEvent = useRef<(e: Parameters<Parameters<typeof useAtlasEvents>[1]>[0], waited?: boolean) => void>(() => undefined);
+  speakEvent.current = (e, waited = false) => {
     const s = settingsRef.current;
     if (!s.proactive || !synth()) return;
-    const sentence = sentenceForEvent(e);
+    // The day in words: with the narrator on, a moment is said once, as `day.narrated`, never as its raw source too.
+    if (e.type === "day.coach.noted" && briefStore.on()) return;
+    let sentence = sentenceForEvent(e);
+    if (e.type === "workspace.approval.requested" && briefStore.on()) {
+      const ask = narratedAsk(briefStore.askFor(typeof e.action_id === "string" ? e.action_id : ""));
+      if (ask) sentence = { kind: "approval", text: ask };
+      else if (!waited) {
+        // the narrated ask follows the request on /ws within a moment; an ask Atlas cannot put in its own words never comes
+        window.setTimeout(() => speakEvent.current(e, true), ASK_WAIT_MS);
+        return;
+      }
+    }
     if (!sentence) return;
     // On the Ask screen in hands-free mode the request is asked as a question instead (see app/page.tsx).
     if (sentence.kind === "approval" && s.handsFree && s.speak && pathRef.current === "/") return;
@@ -609,7 +627,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     const waiting = queue.current.filter((j) => j.options.tag === "event");
     if (waiting.length >= MAX_QUEUED_EVENTS) cancelWhere((j) => j === waiting[0]);
     say(sentence.text, { tag: "event", keepOnNavigate: true, raw: true });
-  });
+  };
+  useAtlasEvents(SPOKEN_EVENTS, (e) => speakEvent.current(e));
 
   const getSettings = useCallback(() => settingsRef.current, []);
 
@@ -626,8 +645,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<Voice>(
-    () => ({ ready, canSpeak, listenSupport, status, unlocked, voiceName, settings, getSettings, setSetting, say, stop, listen, stopListening }),
-    [ready, canSpeak, listenSupport, status, unlocked, voiceName, settings, getSettings, setSetting, say, stop, listen, stopListening],
+    () => ({ ready, canSpeak, listenSupport, status, unlocked, voiceName, settings, getSettings, setSetting, say, stop, cancel, listen, stopListening }),
+    [ready, canSpeak, listenSupport, status, unlocked, voiceName, settings, getSettings, setSetting, say, stop, cancel, listen, stopListening],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

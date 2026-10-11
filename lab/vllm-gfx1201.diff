@@ -1,3 +1,11 @@
+vLLM b1388b1 changes for RDNA on ROCm 7.13 (git apply ignores this text before the first diff header).
+gfx1201 (R9700, DUB): all hunks below were written for it.
+gfx1151 (Strix Halo, SJC pod C, 2026-10-10): all 9 hunks (7 files) apply cleanly and none is newly needed; b1388b1 already
+lists gfx1150/gfx1151 in HIP_SUPPORTED_ARCHS and guards the RDNA 3.5 paths in csrc/rocm. What gfx1151 does need is
+outside this patch, in lab/pod_a_teacher.sh: PYTORCH_ROCM_ARCH=gfx1151, no amdsmi Python package, and
+--mm-encoder-attn-backend TRITON_ATTN for the vision encoder (Torch SDPA's math kernel runs out of memory and the
+AOTriton kernels are wrong at ~3.5k tokens).
+
 diff --git a/pyproject.toml b/pyproject.toml
 index fad8c8c..791fa3d 100644
 --- a/pyproject.toml

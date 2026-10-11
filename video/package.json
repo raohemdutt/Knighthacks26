@@ -1,0 +1,29 @@
+{
+  "name": "atlas-video",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The 9:58 submission video (D10/D12), programmed in Remotion and rendered locally",
+  "scripts": {
+    "timeline": "cd .. && python -m contexts.demo video json video/src/timeline.json",
+    "totals": "cd .. && python -m contexts.demo totals --data-dir data --json > video/src/totals.json",
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts Atlas out/atlas.mp4 --codec h264 --crf 18",
+    "still": "remotion still src/index.ts Atlas out/frame.png --frame",
+    "check": "cd .. && python -m contexts.demo video check video/out/atlas.mp4",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@react-three/fiber": "9.3.0",
+    "@remotion/cli": "4.0.529",
+    "@remotion/three": "4.0.529",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "remotion": "4.0.529",
+    "three": "0.170.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.12",
+    "@types/three": "0.170.0",
+    "typescript": "5.9.3"
+  }
+}

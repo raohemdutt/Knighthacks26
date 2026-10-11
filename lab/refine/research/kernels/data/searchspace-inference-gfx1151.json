@@ -1,0 +1,173 @@
+{
+  "schema": "atlas.searchspace.v1",
+  "note": "lab/refine/research/kernels/settings_inference_gfx1151.md",
+  "task": "R35",
+  "consumer": "R38 (Ax with BoTorch on pod D)",
+  "target": {
+    "gfx": "gfx1151",
+    "chip": "Radeon 8060S (Strix Halo, RDNA 3.5), 64 GB shared",
+    "engine": "vllm 0.19.2 at b1388b1 plus lab/vllm-gfx1201.diff",
+    "rocm": "7.13",
+    "torch": "2.9.1+rocm7.13.0",
+    "triton": "3.5.1",
+    "model": "RedHatAI/Qwen3.8-27B-INT4",
+    "launcher": "lab/pod_a_teacher.sh serve"
+  },
+  "objectives": [
+    {"name": "decode_tok_s", "minimize": false},
+    {"name": "j_per_token", "minimize": true}
+  ],
+  "outcome_constraints": [
+    "correctness_gate_pass >= 1 (R21 gate on every arm; an arm that fails it is infeasible)"
+  ],
+  "baseline_measured": {
+    "decode_tok_s": 2.88,
+    "watts_decoding_avg": 120,
+    "idle_watts_no_server": 8,
+    "j_per_token_gross": 41.7,
+    "source": "lab/README.md, Teacher on SJC today (pod C, Strix Halo); batch 1, 16k context, thinking off"
+  },
+  "parameters": [
+    {"name": "linear_kernel", "type": "choice", "values": ["conch_bf16", "exllama_fp16"], "value_type": "str", "is_ordered": false, "sort_values": false},
+    {"name": "num_speculative_tokens", "type": "choice", "values": [0, 1, 2, 3], "value_type": "int", "is_ordered": true, "sort_values": true},
+    {"name": "gpu_max_hw_queues", "type": "choice", "values": [1, 2, 4], "value_type": "int", "is_ordered": true, "sort_values": true},
+    {"name": "cudagraph_mode", "type": "choice", "values": ["FULL_AND_PIECEWISE", "PIECEWISE", "NONE"], "value_type": "str", "is_ordered": false, "sort_values": false},
+    {"name": "mamba_ssm_cache_dtype", "type": "choice", "values": ["float32", "float16"], "value_type": "str", "is_ordered": false, "sort_values": false},
+    {"name": "vllm_rocm_use_skinny_gemm", "type": "choice", "values": [true, false], "value_type": "bool", "is_ordered": false, "sort_values": false},
+    {"name": "fla_packed_recurrent_decode", "type": "choice", "values": [true, false], "value_type": "bool", "is_ordered": false, "sort_values": false},
+    {"name": "attention_backend", "type": "choice", "values": ["ROCM_ATTN", "TRITON_ATTN"], "value_type": "str", "is_ordered": false, "sort_values": false},
+    {"name": "enable_prefix_caching", "type": "choice", "values": [true, false], "value_type": "bool", "is_ordered": false, "sort_values": false},
+    {"name": "amdgcn_use_buffer_ops", "type": "choice", "values": [false, true], "value_type": "bool", "is_ordered": false, "sort_values": false},
+    {"name": "max_model_len", "type": "fixed", "value": 16384, "value_type": "int"},
+    {"name": "gpu_memory_utilization", "type": "fixed", "value": 0.90, "value_type": "float"},
+    {"name": "mm_encoder_attn_backend", "type": "fixed", "value": "TRITON_ATTN", "value_type": "str"},
+    {"name": "max_num_seqs", "type": "fixed", "value": 256, "value_type": "int"},
+    {"name": "max_num_batched_tokens", "type": "fixed", "value": 2048, "value_type": "int"},
+    {"name": "kv_cache_dtype", "type": "fixed", "value": "auto", "value_type": "str"}
+  ],
+  "baseline": {
+    "linear_kernel": "conch_bf16",
+    "num_speculative_tokens": 0,
+    "gpu_max_hw_queues": 4,
+    "cudagraph_mode": "FULL_AND_PIECEWISE",
+    "mamba_ssm_cache_dtype": "float32",
+    "vllm_rocm_use_skinny_gemm": true,
+    "fla_packed_recurrent_decode": true,
+    "attention_backend": "ROCM_ATTN",
+    "enable_prefix_caching": true,
+    "amdgcn_use_buffer_ops": false,
+    "max_model_len": 16384,
+    "gpu_memory_utilization": 0.90,
+    "mm_encoder_attn_backend": "TRITON_ATTN",
+    "max_num_seqs": 256,
+    "max_num_batched_tokens": 2048,
+    "kv_cache_dtype": "auto"
+  },
+  "fixed_launch": {
+    "args": [
+      "--served-model-name", "teacher",
+      "--limit-mm-per-prompt", "{\"image\":1}",
+      "--max-model-len", "16384",
+      "--gpu-memory-utilization", "0.90",
+      "--mm-encoder-attn-backend", "TRITON_ATTN",
+      "--max-num-seqs", "256",
+      "--max-num-batched-tokens", "2048",
+      "--kv-cache-dtype", "auto"
+    ],
+    "env": {
+      "VLLM_ROCM_USE_AITER": "0",
+      "AMD_SERIALIZE_KERNEL": "0",
+      "HIP_LAUNCH_BLOCKING": "0",
+      "PYTORCH_TUNABLEOP_ENABLED": "0"
+    },
+    "unset_env": [
+      "VLLM_DISABLED_KERNELS",
+      "HSA_ENABLE_SDMA",
+      "HSA_ENABLE_INTERRUPT",
+      "HSA_XNACK",
+      "HSA_NO_SCRATCH_RECLAIM",
+      "HSA_SCRATCH_SINGLE_LIMIT",
+      "HSA_MAX_QUEUES",
+      "HIP_FORCE_DEV_KERNARG",
+      "GPU_SINGLE_ALLOC_PERCENT",
+      "DEBUG_HIP_FORCE_GRAPH_QUEUES",
+      "TORCH_BLAS_PREFER_HIPBLASLT",
+      "TORCH_BLAS_PREFER_CUBLASLT",
+      "PYTORCH_HIP_ALLOC_CONF",
+      "PYTORCH_CUDA_ALLOC_CONF",
+      "PYTORCH_ALLOC_CONF",
+      "TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL",
+      "TRITON_HIP_USE_BLOCK_PINGPONG",
+      "TRITON_HIP_USE_ASYNC_COPY",
+      "TRITON_HIP_GLOBAL_PREFETCH",
+      "TRITON_HIP_LOCAL_PREFETCH"
+    ],
+    "record_each_spawn": [
+      "/proc/<pid>/environ with secrets dropped",
+      "serve log: attention backend, linear kernel class, resolved attention block size, mamba_cache_mode, KV capacity, hipBLASLt override warning",
+      "power_dpm_force_performance_level, pp_power_profile_mode, power1_cap (read only)"
+    ]
+  },
+  "mapping": {
+    "linear_kernel": {
+      "conch_bf16": {"args": ["--dtype", "bfloat16"], "env": {}},
+      "exllama_fp16": {"args": ["--dtype", "float16"], "env": {"VLLM_DISABLED_KERNELS": "ConchLinearKernel"}}
+    },
+    "num_speculative_tokens": {
+      "0": {"args": [], "env": {}},
+      "1": {"args": ["--speculative-config", "{\"method\":\"mtp\",\"num_speculative_tokens\":1}"], "env": {}},
+      "2": {"args": ["--speculative-config", "{\"method\":\"mtp\",\"num_speculative_tokens\":2}"], "env": {}},
+      "3": {"args": ["--speculative-config", "{\"method\":\"mtp\",\"num_speculative_tokens\":3}"], "env": {}}
+    },
+    "gpu_max_hw_queues": {
+      "1": {"args": [], "env": {"GPU_MAX_HW_QUEUES": "1"}},
+      "2": {"args": [], "env": {"GPU_MAX_HW_QUEUES": "2"}},
+      "4": {"args": [], "env": {"GPU_MAX_HW_QUEUES": "4"}}
+    },
+    "cudagraph_mode": {
+      "FULL_AND_PIECEWISE": {"args": ["--compilation-config", "{\"cudagraph_mode\":\"FULL_AND_PIECEWISE\"}"], "env": {}},
+      "PIECEWISE": {"args": ["--compilation-config", "{\"cudagraph_mode\":\"PIECEWISE\"}"], "env": {}},
+      "NONE": {"args": ["--enforce-eager"], "env": {}}
+    },
+    "mamba_ssm_cache_dtype": {
+      "float32": {"args": ["--mamba-ssm-cache-dtype", "float32"], "env": {}},
+      "float16": {"args": ["--mamba-ssm-cache-dtype", "float16"], "env": {}}
+    },
+    "vllm_rocm_use_skinny_gemm": {
+      "true": {"args": [], "env": {"VLLM_ROCM_USE_SKINNY_GEMM": "1"}},
+      "false": {"args": [], "env": {"VLLM_ROCM_USE_SKINNY_GEMM": "0"}}
+    },
+    "fla_packed_recurrent_decode": {
+      "true": {"args": [], "env": {"VLLM_ENABLE_FLA_PACKED_RECURRENT_DECODE": "1"}},
+      "false": {"args": [], "env": {"VLLM_ENABLE_FLA_PACKED_RECURRENT_DECODE": "0"}}
+    },
+    "attention_backend": {
+      "ROCM_ATTN": {"args": ["--attention-backend", "ROCM_ATTN"], "env": {}},
+      "TRITON_ATTN": {"args": ["--attention-backend", "TRITON_ATTN"], "env": {}}
+    },
+    "enable_prefix_caching": {
+      "true": {"args": ["--enable-prefix-caching"], "env": {}},
+      "false": {"args": ["--no-enable-prefix-caching"], "env": {}}
+    },
+    "amdgcn_use_buffer_ops": {
+      "false": {"args": [], "env": {"AMDGCN_USE_BUFFER_OPS": "0", "TRITON_CACHE_DIR": "{run_dir}/triton-cache"}},
+      "true": {"args": [], "env": {"AMDGCN_USE_BUFFER_OPS": "1", "TRITON_CACHE_DIR": "{run_dir}/triton-cache"}}
+    }
+  },
+  "interactions": [
+    ["num_speculative_tokens", "fla_packed_recurrent_decode", "MTP in flight turns the packed GDN decode path off (gdn_linear_attn.py at b1388b1)"],
+    ["gpu_max_hw_queues", "cudagraph_mode", "on gfx1201 the per-spawn band penalty lived in full-graph replay and the queue limit removed it"]
+  ],
+  "predictions": {
+    "linear_kernel": {"decode_tok_s": "+50% to +200% for exllama_fp16", "j_per_token": "-30% to -65%", "confidence": "low", "p": 0.3, "waits_on": ["R33"]},
+    "num_speculative_tokens": {"decode_tok_s": "+30% to +120% at 1 or 2", "j_per_token": "-20% to -50%", "confidence": "low", "p": 0.4, "waits_on": ["R32"]},
+    "gpu_max_hw_queues": {"decode_tok_s": "0% to +70% at 1, only if spawns are bimodal", "j_per_token": "0% to -40%", "confidence": "low", "p": 0.25, "waits_on": ["R32"]},
+    "cudagraph_mode": {"decode_tok_s": "NONE -1% to -6%; PIECEWISE -3% to +3%", "j_per_token": "NONE +1% to +6%; PIECEWISE -3% to +3%", "confidence": "medium", "p": 0.5, "waits_on": []},
+    "mamba_ssm_cache_dtype": {"decode_tok_s": "+0.5% to +2% for float16", "j_per_token": "-0.5% to -2%", "confidence": "medium", "p": 0.6, "waits_on": []},
+    "vllm_rocm_use_skinny_gemm": {"decode_tok_s": "-10% to +5% with it off", "j_per_token": "-5% to +10%", "confidence": "low", "p": 0.35, "waits_on": ["R33"]},
+    "fla_packed_recurrent_decode": {"decode_tok_s": "-10% to 0% with it off", "j_per_token": "0% to +10%", "confidence": "low", "p": 0.35, "waits_on": []},
+    "attention_backend": {"decode_tok_s": "-3% to +3% at a short context", "j_per_token": "-3% to +3%", "confidence": "medium", "p": 0.5, "waits_on": []},
+    "enable_prefix_caching": {"decode_tok_s": "0% to +5% with it off", "j_per_token": "0% to -5%", "confidence": "low", "p": 0.35, "waits_on": []},
+    "amdgcn_use_buffer_ops": {"decode_tok_s": "-5% to +10% with it on", "j_per_token": "-10% to +5%", "confidence": "low", "p": 0.3, "waits_on": ["R32"]}
+  }
+}

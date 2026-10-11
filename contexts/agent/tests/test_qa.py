@@ -142,7 +142,8 @@ def test_web_tools_cite_links():
 
 def test_without_web_the_model_only_sees_memory_tools():
     q, _ = qa()
-    assert {t["function"]["name"] for t in q.tools} == {"search_memory", "last_seen", "episodes_between"}
+    assert {t["function"]["name"] for t in q.tools} == {"search_memory", "last_seen", "episodes_between", "item_history",
+                                                         "upcoming"}
 
 
 def test_get_keyframe_tool_captions_a_stored_frame():
@@ -252,3 +253,362 @@ def test_due_lists_are_answered_from_the_data_and_hedges_are_dropped():
     assert [c.url for c in a.citations] == ["https://canvas/hw4", "https://canvas/ex1"] and not rt.calls  # no model call
     assert tidy("Your keys were last seen at 7:41 PM. I didn't see that.") == "Your keys were last seen at 7:41 PM."
     assert tidy(NO_EVIDENCE) == NO_EVIDENCE
+
+
+def visit_ep(id, minutes_ago, length, caption, labels=("person",), camera="cam-desk"):
+    start = NOW - timedelta(minutes=minutes_ago)
+    return Episode(id=id, camera_id=camera, start=start, end=start + timedelta(minutes=length), labels=list(labels),
+                   captions=[caption], keyframe_refs=[f"frames:{camera}:{id}"])
+
+
+def test_a_visit_is_the_latest_stretch_of_people_and_everything_seen_during_it():
+    memory = FakeMemory(episodes=[
+        visit_ep("old", 60, 5, "Two people eat lunch at the table."),  # ended 55 min ago: an earlier visit
+        visit_ep("v1", 20, 4, "Two people stop at the table and look at the box."),
+        visit_ep("obj", 17, 1, "A phone is left on the desk.", labels=("cell phone",)),
+        visit_ep("v2", 14, 6, "One of them asks Atlas a question and points at the phone screen."),  # 2 min after v1 ended
+    ])
+    a = QA(FakeRuntime(), memory, clock=lambda: NOW)
+    ev = a.prefetch("What happened while the judges were here?")
+    assert [c.episode_id for c in ev.citations] == ["v1", "obj", "v2"]
+    assert ev.direct.startswith("The latest visit started") and "phone is left on the desk" in ev.direct
+    assert "Two people eat lunch" not in ev.direct  # the earlier visit
+
+
+def test_no_person_in_view_recently_means_no_visit():
+    memory = FakeMemory(episodes=[visit_ep("obj", 10, 1, "A cup on the desk.", labels=("cup",))])
+    a = QA(FakeRuntime(), memory, clock=lambda: NOW)
+    assert asyncio.run(a.ask("Recap their visit")).text == NO_EVIDENCE
+
+
+def test_while_we_were_asleep_is_still_the_night_not_a_visit():
+    a = QA(FakeRuntime(), MEMORY, clock=lambda: NOW)
+    assert a.prefetch("What went on while we were asleep?").direct is None
+    assert a.prefetch("Recap their visit").direct.startswith("The latest visit")
+
+
+# --- A13: fall back to the tool loop when the fixed path is unsure; more tools ---
+
+def web_qa(*replies, web=None, memory=MEMORY):
+    from contexts.agent.application.web_port import FakeWeb
+
+    rt = FakeRuntime(chat_replies=[ChatResult(content=r, model_version="v1") if isinstance(r, str) else r for r in replies])
+    web = web or FakeWeb(results=[{"title": "Knights 31, Gators 24", "url": "https://espn.test/ucf-uf", "summary": "Final, Sep 5"}],
+                         pages={"https://espn.test/ucf-uf": {"url": "https://espn.test/ucf-uf", "title": "UCF vs UF",
+                                                             "summary": "UCF beat UF 31-24 on Sep 5."}})
+    return QA(rt, memory, clock=lambda: NOW, web=web), rt, web
+
+
+def calls(*named):
+    return ChatResult(content="", model_version="v1",
+                      tool_calls=[ToolCall(id=f"c{n}", name=name, arguments=args) for n, (name, args) in enumerate(named)])
+
+
+def test_a_score_question_searches_the_web_then_reads_the_page():
+    q, rt, web = web_qa(calls(("web_search", {"query": "UCF vs UF most recent game score"})),
+                        calls(("read_page", {"url": "https://espn.test/ucf-uf", "goal": "final score"})),
+                        "UCF beat UF 31-24 on Sep 5.")
+    a = asyncio.run(q.ask("Tell me about the Knights."))
+    assert a.text == "UCF beat UF 31-24 on Sep 5."
+    assert {c.url for c in a.citations} == {"https://espn.test/ucf-uf"}
+    assert ("browse", "https://espn.test/ucf-uf", "final score") in web.calls
+    assert "sports scores" in rt.calls[-1][1][0].content  # the web hint is in the tool loop's system prompt
+
+
+def test_web_questions_get_four_tool_calls():
+    q, rt, _ = web_qa(*[calls(("web_search", {"query": f"try {n}"})) for n in range(5)], "done")
+    asyncio.run(q.ask("Tell me about the Knights."))
+    assert sum(1 for name, _ in rt.calls if name == "chat") == 5  # 4 tool rounds, then one answer from the evidence
+
+
+def test_where_is_my_wallet_still_says_so_at_once_with_web_tools_on():
+    q, rt, web = web_qa("should not be asked")
+    for text in ("Where is my wallet?", "Have you seen my wallet?", "What happened to my wallet?", "Did my wallet arrive?"):
+        assert asyncio.run(q.ask(text)).text == NO_EVIDENCE
+    assert not any(name == "chat" for name, _ in rt.calls)
+    assert web.calls == []
+
+
+def test_an_empty_fixed_path_falls_back_to_the_tool_loop_with_web_tools():
+    q, rt, web = web_qa(calls(("web_search", {"query": "UCF last win"})), "UCF last won on Sep 5.", memory=FakeMemory())
+    a = asyncio.run(q.ask("When was the last time UCF won a football game?"))
+    assert a.text == "UCF last won on Sep 5."
+    assert web.calls[0] == ("search", "UCF last win")
+
+
+def test_without_web_an_empty_fixed_path_still_answers_at_once():
+    rt = FakeRuntime(chat_replies=[ChatResult(content="should not be asked", model_version="v1")])
+    q = QA(rt, FakeMemory(), clock=lambda: NOW)
+    assert asyncio.run(q.ask("When was the last time UCF won a football game?")).text == NO_EVIDENCE
+    assert not any(name == "chat" for name, _ in rt.calls)
+
+
+def test_an_unsure_fixed_answer_is_replaced_by_the_tool_loop_and_only_the_final_one_streams():
+    q, rt, web = web_qa(NO_EVIDENCE, calls(("web_search", {"query": "table"})), "Found it on the web.")
+    pieces = []
+    a = asyncio.run(q.ask("When did someone last leave the table?", stream=pieces.append))
+    assert a.text == "Found it on the web."
+    assert pieces == ["Found it on the web."]
+
+
+def test_a_sure_fixed_answer_with_web_tools_stays_one_model_call():
+    q, rt, web = web_qa("At 1:00 AM someone packed a laptop and left.")
+    pieces = []
+    a = asyncio.run(q.ask("When did someone last leave the table?", stream=pieces.append))
+    assert a.text.startswith("At 1:00 AM")
+    assert sum(1 for name, _ in rt.calls if name == "chat") == 1
+    assert pieces == [a.text] and web.calls == []
+
+
+def test_item_history_tool_gathers_the_last_sighting_and_the_moments_it_appeared():
+    q, rt = qa(calls(("item_history", {"label": "package", "hours": 6})), "A courier left a box at the door.")
+    asyncio.run(q.ask("Anything about deliveries?"))
+    result = [m.content for m in rt.calls[-1][1] if m.role == "tool"][0]
+    assert "courier drops a box" in result
+    assert "Old episode" not in result
+
+
+def test_upcoming_tool_lists_connector_items_matching_the_query():
+    from contracts.memory import Item
+
+    items = [Item(connector="canvas", kind="assignment", external_id="a1", title="COP 4533 Milestone 1",
+                  when=NOW + timedelta(days=2), url="https://canvas.test/a1"),
+             Item(connector="calendar", kind="event", external_id="e1", title="Dinner with Maya",
+                  when=NOW + timedelta(days=1), url="https://cal.test/e1")]
+    q, rt = qa(calls(("upcoming", {"query": "milestone", "days": 7})), "Milestone 1 is due Tuesday.")
+    q.memory = FakeMemory(items=items)
+    a = asyncio.run(q.ask("Anything I should work on?"))
+    result = [m.content for m in rt.calls[-1][1] if m.role == "tool"][0]
+    assert "COP 4533 Milestone 1" in result and "Dinner" not in result
+    assert a.citations[0].url == "https://canvas.test/a1"
+
+
+def test_prepare_for_runs_the_planner_as_a_tool():
+    from contracts.agent import PlanCreated
+    from contracts.types import Citation
+
+    class Planner:
+        def wants(self, question):
+            return False
+
+        async def answer(self, question):
+            return PlanCreated(plan_id="p1", subject=question, text="Study recursion tonight, sleep by midnight.",
+                               citations=[Citation(url="https://cs.ucf.edu/exam/")], model_version="v1")
+
+    q, rt = qa(calls(("prepare_for", {"event": "COP 3502 exam"})), "Study recursion tonight.")
+    q.planner = Planner()
+    a = asyncio.run(q.ask("I have a test soon, what now?"))
+    assert a.citations[0].url == "https://cs.ucf.edu/exam/"
+    assert "Study recursion tonight, sleep by midnight." in [m.content for m in rt.calls[-1][1] if m.role == "tool"][0]
+
+
+def test_a_model_that_refuses_without_trying_gets_a_web_search_of_the_question():
+    q, rt, web = web_qa("I don't know the score. I can't browse the web or check sports news from here.",
+                        "UCF beat UF 31-24 on Sep 5.")
+    pieces = []
+    a = asyncio.run(q.ask("Tell me about the Knights.", stream=pieces.append))
+    assert web.calls[0] == ("search", "Tell me about the Knights.")
+    assert a.text == "UCF beat UF 31-24 on Sep 5." and "".join(pieces) == a.text
+    assert a.citations[0].url == "https://espn.test/ucf-uf"
+
+
+def test_a_refusal_on_the_fixed_path_counts_as_unsure():
+    q, rt, web = web_qa("As an AI I don't have access to that.", calls(("web_search", {"query": "table"})), "Found it.")
+    assert asyncio.run(q.ask("When did someone last leave the table?")).text == "Found it."
+
+
+def test_no_second_search_when_the_model_already_searched():
+    from contexts.agent.application.web_port import FakeWeb
+
+    q, rt, web = web_qa(calls(("web_search", {"query": "x"})), "I don't know.", web=FakeWeb())
+    assert asyncio.run(q.ask("Tell me about the Knights.")).text == NO_EVIDENCE  # nothing found anywhere
+    assert [c[0] for c in web.calls] == ["search"]
+
+
+def test_unsure_spots_refusals_but_not_real_answers():
+    from contexts.agent.application.qa import unsure
+
+    assert unsure(NO_EVIDENCE) and unsure("I can't browse the web.") and unsure("I'm just an AI running on this box")
+    assert not unsure("Your keys are on the desk.") and not unsure("UF won 24-13, I know it was close.")
+
+
+class RefusingTalk:
+    def __init__(self, text="I can't browse the web for sports results. I'm just an AI running on this box."):
+        self.text, self.asked = text, []
+
+    def wants(self, question):
+        return True
+
+    async def reply(self, question, stream=None):
+        from contexts.agent.application.qa import Answer
+
+        self.asked.append(question)
+        return Answer(self.text, [], "v1")
+
+
+def test_a_score_question_skips_small_talk_when_the_box_has_web():
+    q, rt, web = web_qa("UCF beat UF 31-24 on Sep 5.")
+    q.talk = RefusingTalk()
+    a = asyncio.run(q.ask("What was the score in the most recent game against UF?"))
+    assert a.text == "UCF beat UF 31-24 on Sep 5." and q.talk.asked == []
+
+
+def test_small_talk_that_gives_up_falls_back_to_the_tools_with_web():
+    from contexts.agent.application.web_port import FakeWeb
+
+    pizza = FakeWeb(results=[{"title": "Pizza Studio", "url": "https://pizza.test/", "summary": "Open until 11 PM"}])
+    q, rt, web = web_qa(calls(("web_search", {"query": "pizza near campus"})), "Pizza Studio is open until 11.", web=pizza)
+    q.talk = RefusingTalk("I don't have access to that, sorry.")
+    a = asyncio.run(q.ask("Is the pizza place near campus open late?"))
+    assert a.text == "Pizza Studio is open until 11." and q.talk.asked
+
+
+def test_without_web_small_talk_keeps_its_answer():
+    q, rt = qa()
+    q.talk = RefusingTalk()
+    assert asyncio.run(q.ask("What was the score in the most recent game against UF?")).text == q.talk.text
+
+
+def test_outside_spots_games_and_scores_not_room_questions():
+    from contexts.agent.application.qa import OUTSIDE
+
+    for text in ("What was the score in the most recent game against UF?", "Who won the UCF vs UF game?",
+                 "When is the next game?", "Did UCF win?"):
+        assert OUTSIDE.search(text), text
+    for text in ("How are you?", "What did I play on Day Run?", "Where are my keys?"):
+        assert not OUTSIDE.search(text), text
+
+
+# --- web answers are grounded and time-boxed ---
+
+def test_a_score_not_in_what_was_found_is_not_said_and_the_links_are_offered():
+    q, rt, web = web_qa("The most recent game ended 52-28 for Florida.")
+    pieces = []
+    a = asyncio.run(q.ask("What was the score in the most recent game against UF?", stream=pieces.append))
+    assert a.text == "I couldn't confirm that from what I found. These may have it: Knights 31, Gators 24."
+    assert [c.url for c in a.citations] == ["https://espn.test/ucf-uf"]
+    assert "".join(pieces) == a.text  # the unchecked answer never reached the phone
+
+
+def test_a_score_that_is_in_what_was_found_is_said():
+    q, rt, web = web_qa("UCF beat UF 31-24.")
+    assert asyncio.run(q.ask("What was the score in the most recent game against UF?")).text == "UCF beat UF 31-24."
+
+
+def test_grounded_checks_every_number():
+    from contexts.agent.application.qa import grounded
+
+    assert grounded("31-24 on Sep 5", ["Knights 31, Gators 24 (Sep 5)"])
+    assert not grounded("52-28", ["Knights 31, Gators 24"])
+    assert grounded("No score yet.", [])
+
+
+def test_only_one_page_is_read_per_question():
+    q, rt, web = web_qa(calls(("read_page", {"url": "https://espn.test/ucf-uf"}),
+                              ("read_page", {"url": "https://other.test/"})), "UCF beat UF 31-24 on Sep 5.")
+    asyncio.run(q.ask("Tell me about the Knights."))
+    assert [c for c in web.calls if c[0] == "browse"] == [("browse", "https://espn.test/ucf-uf", None)]
+    assert "one page per question" in [m.content for m in rt.calls[-1][1] if m.role == "tool"][1]
+
+
+def test_out_of_time_answers_from_what_was_found():
+    from contexts.agent.application import qa as qa_module
+
+    q, rt, web = web_qa(calls(("web_search", {"query": "try 0"})), "UCF beat UF 31-24.",
+                        calls(("web_search", {"query": "never asked"})))
+    ticks = iter([0, 0, qa_module.WEB_BUDGET_S + 1] + [qa_module.WEB_BUDGET_S + 2] * 20)
+    q.monotonic = lambda: next(ticks)
+    a = asyncio.run(q.ask("Tell me about the Knights."))
+    assert sum(1 for name, _ in rt.calls if name == "chat") == 2  # one tool round, then the answer
+    assert a.text == "UCF beat UF 31-24."
+
+
+def test_a_web_call_that_hangs_times_out_and_the_answer_still_comes():
+    from contexts.agent.application import qa as qa_module
+    from contexts.agent.application.web_port import FakeWeb
+
+    class SlowWeb(FakeWeb):
+        async def search(self, query):
+            await asyncio.sleep(10)
+            return []
+
+    old = qa_module.WEB_CALL_MIN_S, qa_module.WEB_BUDGET_S
+    qa_module.WEB_CALL_MIN_S = qa_module.WEB_BUDGET_S = 0.05
+    try:
+        q, rt, web = web_qa(calls(("web_search", {"query": "x"})), "nothing", web=SlowWeb())
+        assert asyncio.run(q.ask("Who won the game?")).text == NO_EVIDENCE
+        assert "timed out" in [m.content for m in rt.calls[-1][1] if m.role == "tool"][0]
+    finally:
+        qa_module.WEB_CALL_MIN_S, qa_module.WEB_BUDGET_S = old
+
+
+def test_the_budget_counts_model_time_so_a_slow_first_round_stops_the_loop():
+    from contexts.agent.application import qa as qa_module
+
+    q, rt, web = web_qa(calls(("web_search", {"query": "x"})), calls(("web_search", {"query": "never"})))
+    ticks = iter([0, qa_module.WEB_BUDGET_S + 1] + [qa_module.WEB_BUDGET_S + 2] * 20)
+    q.monotonic = lambda: next(ticks)
+    assert asyncio.run(q.ask("Tell me about the Knights.")).text == NO_EVIDENCE
+    assert not any(name == "chat" for name, _ in rt.calls)  # out of time before the first model round
+
+
+
+# --- Tavily search and the direct web route ---
+
+def tavily(answer="South Carolina beat Florida 38-19.", results=None):
+    from contexts.agent.application.web_port import TavilyWebTools
+
+    sent = []
+
+    async def post(url, body, headers):
+        sent.append((url, body, headers))
+        return {"answer": answer, "results": results if results is not None else [
+            {"title": "FINAL: South Carolina 38, Florida 19", "url": "https://floridagators.test/final", "content": "Final score 38-19."}]}
+
+    return TavilyWebTools("tvly-test", post=post), sent
+
+
+def test_tavily_searches_recent_news_for_recent_questions_and_cites_the_top_result():
+    web, sent = tavily()
+    out = asyncio.run(web.search("What was the score in the most recent game against UF?"))
+    url, body, headers = sent[0]
+    assert url == "https://api.tavily.com/search" and headers == {"Authorization": "Bearer tvly-test"}
+    assert (body["topic"], body["time_range"], body["include_answer"]) == ("news", "week", True)
+    assert out[0] == {"title": "Search summary", "url": "https://floridagators.test/final",
+                      "summary": "South Carolina beat Florida 38-19."}
+    assert out[1]["title"] == "FINAL: South Carolina 38, Florida 19"
+
+
+def test_tavily_searches_everything_for_timeless_questions_and_has_no_reddit_without_a_browser():
+    web, sent = tavily(answer=None)
+    asyncio.run(web.search("Who founded UCF?"))
+    assert "topic" not in sent[0][1]
+    assert asyncio.run(web.reddit("ucf", "x")) == []
+
+
+def test_a_score_question_searches_at_once_and_answers_in_one_model_call():
+    web, sent = tavily()
+    rt = FakeRuntime(chat_replies=[ChatResult(content="South Carolina beat Florida 38-19.", model_version="v1")])
+    q = QA(rt, MEMORY, clock=lambda: NOW, web=web)
+    a = asyncio.run(q.ask("What was the score in the most recent game against UF?"))
+    assert a.text == "South Carolina beat Florida 38-19."
+    assert sum(1 for name, _ in rt.calls if name == "chat") == 1  # no tool-choice round
+    assert a.citations[0].url == "https://floridagators.test/final"
+
+
+def test_tavily_falls_back_to_all_results_when_this_weeks_news_has_nothing():
+    from contexts.agent.application.web_port import TavilyWebTools
+
+    sent = []
+
+    async def post(url, body, headers):
+        sent.append(body)
+        if body.get("topic") == "news":
+            return {"answer": "The sources don't provide the score of the last UCF vs UF game.", "results": [
+                {"title": "Week 6 picks", "url": "https://picks.test/", "content": "Predictions."}]}
+        return {"answer": "UF won 24-13 on October 5, 2024.", "results": [
+            {"title": "UCF vs Florida", "url": "https://espn.test/401628380", "content": "Florida 24, UCF 13"}]}
+
+    out = asyncio.run(TavilyWebTools("k", post=post).search("What was the score of the last UCF vs UF game?"))
+    assert [b.get("topic") for b in sent] == ["news", None]
+    assert out[0]["summary"] == "UF won 24-13 on October 5, 2024." and out[1]["url"] == "https://espn.test/401628380"

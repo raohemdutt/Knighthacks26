@@ -93,7 +93,27 @@ def test_a_denied_or_expired_export_approval_ends_the_task_instead_of_waiting_fo
         await bus.publish(TaskCreated(ts=T0, task="desk-objects", instruction="Name the small things."))
         await bus.publish(ActionProposed(ts=T0, action_id="a9", kind="export_training_data", target="desk-objects", reason="teach"))
         await bus.publish(ActionCompleted(ts=T0 + timedelta(minutes=1), action_id="a9", status=status))
-        return board.snapshot()["tasks"][0]["stage"]
+        assert board.snapshot()["tasks"] == []  # hidden from the Teach screen by default (test cards)
+        return board.snapshot(include_closed=True)["tasks"][0]["stage"]
 
     assert asyncio.run(run("denied")) == "denied"
     assert asyncio.run(run("expired")) == "expired"
+
+
+def test_teaching_a_task_again_after_its_card_lapsed_waits_for_the_new_card():
+    """On the Jetson desk-objects was re-taught after its card expired, and the Teach list still said expired."""
+    from contracts.agent import ActionProposed
+    from contracts.workspace import ActionCompleted
+
+    async def run():
+        bus = EventBus(persist=False)
+        board = LearningBoard()
+        board.subscribe(bus)
+        await bus.publish(TaskCreated(ts=T0, task="desk-objects", instruction="Name the small things."))
+        await bus.publish(ActionProposed(ts=T0, action_id="a1", kind="export_training_data", target="desk-objects", reason="teach"))
+        await bus.publish(ActionCompleted(ts=T0 + timedelta(minutes=5), action_id="a1", status="expired"))
+        await bus.publish(TaskCreated(ts=T0 + timedelta(minutes=9), task="desk-objects", instruction="Name the small things."))
+        return board.snapshot()["tasks"]
+
+    [task] = asyncio.run(run())
+    assert task["stage"] == "waiting for approval"

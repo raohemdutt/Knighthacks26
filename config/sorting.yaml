@@ -1,22 +1,102 @@
 # Which bin each item belongs in (Waste Watch E1, Sort It S1/S2).
 # Swap this one file for another campus or city's rules.
+#
+# SOURCE: "UCF Recycles", UCF Facilities Operations, https://fo.ucf.edu/recycling-at-ucf/ (read 2026-10-10).
+# What that page says, in full:
+#   "UCF uses single stream recycling, which means all recyclables can be placed into the same bin."
+#   What We Recycle:       Aluminum cans (please rinse) · Cardboard (must be clean, only pizza box tops accepted) ·
+#                          Paper · Pallets · Plastics 1-7 (labeled with the recycling icon and #1-7) · Metal
+#   What We Don't Recycle: Contaminated Cardboard · Food waste · Glass · Plastic shopping bags ·
+#                          Plastic cups and utensils · Styrofoam · Soiled paper (napkins, paper towels, coffee filters)
+#   "A Note about Contamination: If food or other contaminants cannot be removed from recyclable materials,
+#    then it must be placed in the trash."
+# Every item below is marked in `basis`: "stated" (the page says it) or "assumed" (not stated by UCF: our
+# assumption, with the reasoning in its sentence). Checking the list against the page on 2026-10-10 moved NO
+# item to a different bin; the sentences were rewritten to say what UCF says instead of what we guessed.
+#
+# What the camera cannot tell, so the rule is the cautious one: a plastic bottle from a glass one (glass is
+# trash at UCF), a clean takeout tub from a food-soiled one, a paper cup from a plastic one.
 bins:
   recycling: recycling   # bin name -> zone id in zones.yaml
   trash: trash
 items:
-  bottle: recycling
-  can: recycling
-  cup: trash             # coated paper cups are trash on most campuses
-  paper: recycling
-  cardboard: recycling
-  wine glass: trash
-  food container: trash
-  chip bag: trash
-  napkin: trash
-  banana: trash
+  bottle: recycling        # stated: plastics #1-7 (a drink bottle is #1 PET)
+  can: recycling           # stated: aluminum cans
+  cup: trash               # plastic cups stated; paper cups not stated by UCF: our assumption
+  paper: recycling         # stated
+  cardboard: recycling     # stated (clean only)
+  wine glass: trash        # stated: glass
+  food container: trash    # stated when soiled (the contamination note) or Styrofoam; a clean #1-7 tub is our assumption
+  chip bag: trash          # not stated by UCF: our assumption
+  napkin: trash            # stated: soiled paper
+  banana: trash            # stated: food waste
 
 # Other detector labels that count as the same item in a Sort It round (S1). The round
 # only scores when the round's item (or one of these) enters a bin zone.
 aliases:
   can: [soda can, tin can]
   bottle: [water bottle, plastic bottle]
+
+# --- for the Impact screen (contexts/impact/application/story.py); the sorters above ignore these keys ---
+# Who these rules are for, shown on the Impact screen so anyone can see which file is active.
+name: UCF recycling rules
+place: UCF
+note: "From UCF Facilities Operations' published list (fo.ucf.edu/recycling-at-ucf, read 2026-10-10). Items marked 'our assumption' are not stated on that page."
+source:
+  title: "UCF Recycles"
+  publisher: "UCF Facilities Operations"
+  url: "https://fo.ucf.edu/recycling-at-ucf/"
+  read: "2026-10-10"
+# stated = on UCF's page; assumed = not stated by UCF: our assumption.
+basis:
+  bottle: stated
+  can: stated
+  cup: assumed
+  paper: stated
+  cardboard: stated
+  wine glass: stated
+  food container: assumed
+  chip bag: assumed
+  napkin: stated
+  banana: stated
+# One sentence per item: what the phone says when something lands in the wrong bin.
+reasons:
+  bottle: "Empty plastic bottles go in recycling at UCF: UCF recycles plastics #1 to #7, and a drink bottle is #1."
+  can: "Empty drink cans go in recycling at UCF: aluminum cans are the first thing on UCF's list (rinse them)."
+  cup: "Cups go in trash at UCF: UCF does not recycle plastic cups, and it does not list paper cups, so they stay out too."
+  paper: "Clean, dry paper goes in recycling at UCF."
+  cardboard: "Clean cardboard goes in recycling at UCF; a greasy pizza box bottom goes in trash."
+  wine glass: "Glass goes in trash at UCF: UCF does not recycle glass, though Orange County's kerbside carts do."
+  food container: "Food-soiled takeout containers go in trash at UCF: if the food cannot be removed, UCF says it must go in the trash."
+  chip bag: "Chip bags go in trash at UCF: they carry no #1 to #7 recycling mark, and plastic film is not on UCF's list."
+  napkin: "Used napkins go in trash at UCF: UCF does not recycle soiled paper."
+  banana: "Food scraps go in trash at UCF: UCF does not recycle food waste."
+default_reason: "Anything not on UCF's list goes in trash at UCF: when in doubt, keep it out of recycling."
+
+# The same item under the rules around campus: why people who learned one list get the other wrong.
+# Orange County: "Think 5", Orange County Government, https://ocfl.net/WaterGarbageRecycling/Think5.aspx, and the
+#   2026-05-06 press release "It's To-Go Time: Orange County's Curbside Recycling Program Now Accepting Paper and
+#   Clear Plastic Cups", https://newsroom.ocfl.net/media-advisories/press-releases/2026/05/its-to-go-time-orange-countys-curbside-recycling-program-now-accepting-paper-and-clear-plastic-cups/
+# City of Orlando: "What Goes Where", https://www.orlando.gov/Trash-Recycling/What-Goes-Where
+# (all read 2026-10-10)
+compare:
+  - item: "Glass bottles and jars"
+    ucf: trash
+    orange_county: recycling
+    orlando: recycling
+  - item: "Paper and clear plastic to-go cups"
+    ucf: trash
+    orange_county: recycling
+    orlando: "not listed"
+  - item: "Drink cartons"
+    ucf: "not listed"
+    orange_county: "not listed"
+    orlando: recycling
+  - item: "Foam cups and containers"
+    ucf: trash
+    orange_county: trash
+    orlando: trash
+compare_sources:
+  - "'UCF Recycles', UCF Facilities Operations, https://fo.ucf.edu/recycling-at-ucf/"
+  - "'Think 5' and the 2026-05-06 to-go cups press release, Orange County Government, Florida, https://ocfl.net/WaterGarbageRecycling/Think5.aspx"
+  - "'What Goes Where', City of Orlando, https://www.orlando.gov/Trash-Recycling/What-Goes-Where"

@@ -1,0 +1,1 @@
+AMDSMI Tool: 26.3.0+abc1234 | AMDSMI Library version: 26.3.0 | ROCm version: 7.13.0 | amdgpu version: 6.14.14 | amd_hsmp version: N/A

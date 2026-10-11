@@ -1,0 +1,537 @@
+{
+  "schema": "lab.optimize.night/1",
+  "task": "R49",
+  "note": "lab/refine/research/kernels/fast_optimization.md",
+  "_comment": "Read by the R45 driver (lab/optimize_settings.py) for R38 and R39. Keys and types are documented in the note's 'Approach' section; _comment keys are for people. Times in 'schedule' are ET clock times on the night of 2026-10-10.",
+  "decision": "Ax 1.x (ax-platform 1.3.1, BoTorch, method fast with qLogNEI), asynchronous one trial per free worker, warm-started from the baseline and four prior arms instead of Sobol points, repeats inside one spawn, trials grouped by card state; inference (R38) then training (R39) on pod D (plan B, the default), R39 on pod C at the same time only with Ilan's go (plan A: teacher share at most 0.63, placement override); expected win after about 5 evaluations when a prior is right (p about 0.69), about 17 when not, plus 6 confirmation spawns.",
+  "tool": {
+    "name": "ax-platform",
+    "api_tested": "1.3.1",
+    "api": "ax.Client",
+    "mode": "ask-tell",
+    "python_min": "3.11",
+    "_comment": "R45 pins the exact ax-platform and botorch versions in lab/requirements-optimize.txt; nothing goes into pyproject.toml."
+  },
+  "asynchronous": true,
+  "window": {
+    "start": "2026-10-10T23:00:00-04:00",
+    "result_by": "2026-10-11T08:00:00-04:00"
+  },
+  "generation_strategy": {
+    "method": "fast",
+    "initialization_budget": 0,
+    "initialization_random_seed": 49,
+    "initialize_with_center": false,
+    "use_existing_trials_for_initialization": true,
+    "allow_exceeding_initialization_budget": true,
+    "min_observed_initialization_trials": null,
+    "fallback_method": "quality",
+    "fallback_when": "after 10 completed trials, if the model's leave-one-out fit is poor and at most two parameters show an effect",
+    "_comment": "No Sobol points: the lane's initial_arms are attached first (attach_baseline, attach_trial) and count as initialization; then get_next_trials(max_trials=1) per free worker, other trials still RUNNING (pending)."
+  },
+  "workers": [
+    {
+      "name": "pod-d",
+      "account": "D",
+      "hub": "sjc",
+      "gpu_queue": "B exclusive",
+      "lanes": ["inference", "kernel", "training"],
+      "exclusive": true,
+      "enabled": true,
+      "precondition": null,
+      "runner": "local",
+      "stagger_s": 0
+    },
+    {
+      "name": "pod-c",
+      "account": "C",
+      "hub": "sjc",
+      "gpu_queue": "A teacher shared service",
+      "lanes": ["baseline_attach"],
+      "conditional_lanes": [
+        {
+          "lane": "training",
+          "plan": "A",
+          "precondition": "Ilan's go to restart the teacher with GPU_UTIL at most 0.63 (about 297 s with no teacher) and to override the placement check for R39's slot (python -m lab slot request --override); then FO6 must show at least 17.05 GiB free (13.05 GiB LoRA budget plus 4 GiB host reserve, lab/refine/research/plumbing/placement.md)"
+        }
+      ],
+      "exclusive": false,
+      "enabled": true,
+      "precondition": null,
+      "never": ["inference trials", "a second vLLM server", "restarting the teacher without Ilan's go"],
+      "runner": "local",
+      "stagger_s": 0
+    },
+    {
+      "name": "pod-e",
+      "account": "E",
+      "hub": "sjc",
+      "gpu_queue": "B exclusive",
+      "lanes": ["inference"],
+      "exclusive": true,
+      "enabled": "if_granted",
+      "precondition": "AMD grants a third account tonight and the stock build and checkpoint are installed (R30's scripts)",
+      "runner": "hub",
+      "stagger_s": 300
+    },
+    {
+      "name": "pod-f",
+      "account": "F",
+      "hub": "sjc",
+      "gpu_queue": "B exclusive",
+      "lanes": ["inference"],
+      "exclusive": true,
+      "enabled": "if_granted",
+      "precondition": "AMD grants a fourth account tonight; more than four inference workers is not planned (SCOOT saw quality drop above 4 parallel suggestions)",
+      "runner": "hub",
+      "stagger_s": 150
+    }
+  ],
+  "driver_host": {
+    "one_inference_worker": "pod-d: lab/optimize_settings.py runs locally on the pod, as R45 is built",
+    "several_inference_workers": "this machine: one Ax experiment for the lane, a hub runner per worker (python -m lab.controller run-script --account <letter> ...)",
+    "training": "the pod that trains, locally"
+  },
+  "group_by_state": {
+    "principle": "trials that need the same card state run back to back, so the card changes state as few times as possible",
+    "inference": {
+      "state": "one server configuration (all ten R35 parameters)",
+      "block": "every restart-free measurement of that configuration runs in its one spawn: batch 1 x 3 requests for the objective, batch 8 when the arm is in the current top 3, extra requests for a finalist",
+      "order": "by compile class: every second trial a worker asks for is asked with fixed_parameters = that worker's last compile class, so each class is restarted cold once and reused warm once",
+      "restarts_per_night_est": {
+        "configurations": 18,
+        "grouped": {"total": 18, "cold": 9, "warm": 9, "restart_hours": 2.0},
+        "free_order_one_spawn_per_configuration": {"total": 18, "cold": 18, "warm": 0, "restart_hours": 2.6},
+        "naive_one_spawn_per_repeat_and_batch": {"total": 108, "restart_hours": 12.3},
+        "confirmation_extra_warm": 6
+      }
+    },
+    "training": {
+      "state": "one loaded process: model, data and the process-level parameters",
+      "block": "trials that differ only in in-process parameters run back to back in that process once the trainer can change them without reloading; until then one process per trial",
+      "order": "by the process-level parameters",
+      "loads_per_night_est": {"grouped": "8 to 10", "one_process_per_trial": 15}
+    },
+    "card": {
+      "rule": "one lane at a time per card; the blocks of a lane run back to back",
+      "pod-d": ["inference", "kernel", "training"],
+      "pod-c": ["baseline_attach", "training"]
+    }
+  },
+  "lanes": {
+    "inference": {
+      "task": "R38",
+      "worker_names": ["pod-d", "pod-e", "pod-f"],
+      "search_space": "lab/refine/research/kernels/data/searchspace-inference-gfx1151.json",
+      "search_space_status": "on main since PR #235 (99db20c), schema atlas.searchspace.v1; R45 reads or converts it",
+      "parameters": [
+        "linear_kernel",
+        "num_speculative_tokens",
+        "gpu_max_hw_queues",
+        "cudagraph_mode",
+        "mamba_ssm_cache_dtype",
+        "vllm_rocm_use_skinny_gemm",
+        "fla_packed_recurrent_decode",
+        "attention_backend",
+        "enable_prefix_caching",
+        "amdgcn_use_buffer_ops"
+      ],
+      "objective": {"metric": "joules_per_token.b1", "goal": "minimize"},
+      "tracking": ["decode_tok_s.b1", "ttft_s.b1", "watts_avg.b1"],
+      "finalist_tracking": ["joules_per_token.b8", "decode_tok_s.b8", "decode_tok_s_total.b8"],
+      "correctness_gate": "R21 on the best arm before it is declared, and on any arm with num_speculative_tokens > 0 before its speed counts",
+      "restart": {
+        "cold_s": 523,
+        "warm_s": 295,
+        "sources": ["GPU Queue row R30 (2026-10-10, pod D, 523 s cold)", "GPU Queue row R18 (2026-10-10, pod D, 294 s warm)", "lab/README.md (pod C, 297 s warm)"],
+        "restart_free": ["batch", "max_tokens", "requests_per_stream", "thinking"],
+        "warm_restart": ["gpu_max_hw_queues", "amdgcn_use_buffer_ops"],
+        "cold_restart": ["linear_kernel", "num_speculative_tokens", "cudagraph_mode", "vllm_rocm_use_skinny_gemm", "fla_packed_recurrent_decode"],
+        "cold_restart_unverified": ["mamba_ssm_cache_dtype", "attention_backend", "enable_prefix_caching"],
+        "ready_timeout_factor": 1.5,
+        "ready_timeout_s": {"cold": 785, "warm": 443}
+      },
+      "grouping": {
+        "warm_class_every": 2,
+        "class_keys": [
+          "linear_kernel",
+          "num_speculative_tokens",
+          "cudagraph_mode",
+          "vllm_rocm_use_skinny_gemm",
+          "fla_packed_recurrent_decode",
+          "mamba_ssm_cache_dtype",
+          "attention_backend",
+          "enable_prefix_caching"
+        ]
+      },
+      "fidelity": {
+        "screen": {
+          "bench_args": ["--batches", "1", "--no-64", "--repeats", "1", "--max-tokens", "64", "--requests-per-stream", "3", "--warmup", "1", "--no-probe"],
+          "est_trial_s": {"cold": 726, "warm": 498, "grouped_mean": 612}
+        },
+        "finalist": {
+          "bench_args": ["--batches", "1,8", "--share-spawn", "--no-64", "--repeats", "1", "--max-tokens", "64", "--requests-per-stream", "3", "--warmup", "1", "--no-probe"],
+          "when": "the arm is among the model's top 3 when it is asked for",
+          "est_trial_s": {"cold": 937, "warm": 709}
+        },
+        "confirm": {
+          "bench_args": ["--batches", "1", "--no-64", "--repeats", "1", "--max-tokens", "128", "--requests-per-stream", "3", "--warmup", "1", "--no-probe"],
+          "est_spawn_s": 676
+        }
+      },
+      "launch_extra": {
+        "if": "FO1 shows a shorter restart and no change in decode_tok_s at batch 1 and 8",
+        "compilation_config_merge": {"cudagraph_capture_sizes": [1, 2, 4, 8, 16]},
+        "args": ["--skip-mm-profiling"],
+        "applies_to": "the baseline and every trial alike; merged into the trial's own --compilation-config JSON (cudagraph_mode NONE captures nothing)"
+      },
+      "repeat_policy": {
+        "requests_per_spawn": 3,
+        "spawns_per_trial": 1,
+        "observation": "median of the per-request decode rates (decode_tok_s.b1) and the row's joules_per_token.b1",
+        "sem": "R45's MEDIAN_SEM_FACTOR x sd / sqrt(3) of the per-request decode rates; joules_per_token.b1 takes the same relative SEM because decode power is near constant (lab/README.md: 120 W average, 129 W peak)",
+        "between_spawn_noise": "measured only by FO3 and the confirmation spawns"
+      },
+      "early_stop": {
+        "after_first_request": {
+          "rule": "stop the spawn after the first measured request when its decode tok/s is below 0.5 x the baseline's median",
+          "report": "complete_trial with that request and an SEM of 2 x the baseline's per-request sd"
+        },
+        "ready_timeout": "mark_trial_failed when the server is not ready within ready_timeout_s for its class",
+        "max_consecutive_failures": 3,
+        "ax_percentile_strategy": false
+      },
+      "initial_arms": [
+        {"name": "baseline", "parameters": {}, "attach_as": "baseline", "restart": "cold", "priors": []},
+        {"name": "hw-queues-1", "parameters": {"gpu_max_hw_queues": 1}, "attach_as": "trial", "restart": "warm", "priors": ["P3"]},
+        {"name": "exllama", "parameters": {"linear_kernel": "exllama_fp16"}, "attach_as": "trial", "restart": "cold", "priors": ["P1"]},
+        {"name": "exllama-mtp1", "parameters": {"linear_kernel": "exllama_fp16", "num_speculative_tokens": 1}, "attach_as": "trial", "restart": "cold", "priors": ["P1", "P2", "P4"]},
+        {"name": "mtp1", "parameters": {"num_speculative_tokens": 1}, "attach_as": "trial", "restart": "cold", "priors": ["P2"]}
+      ],
+      "budget": {
+        "minutes": 180,
+        "slot_minutes": 60,
+        "slots": 3,
+        "trials_per_worker_est": 17,
+        "restarts_est": 18,
+        "reserve_for_confirmation_minutes": 0,
+        "queue_justification": "each trial restarts a 27B server (295 to 523 s, rows R18 and R30), so the run cannot be split into 15-minute slots; the driver resumes from its trial files between 60-minute slots"
+      },
+      "confirmation": {
+        "spawns_per_arm": 3,
+        "arms": ["best", "baseline"],
+        "order": "best, baseline, best, baseline, best, baseline on the same pod",
+        "test": "one-sided 95 percent on joules_per_token.b1, power 0.8 for a gain of about two spawn standard deviations; low_confidence until 5 spawns per arm (lab/machine/verdict.py MIN_RUNS_PER_ARM)",
+        "minutes": 70
+      }
+    },
+    "training": {
+      "task": "R39",
+      "worker_names": ["pod-d"],
+      "plan_a_worker_names": ["pod-c"],
+      "search_space": "lab/refine/research/kernels/data/searchspace-training-gfx1151.json",
+      "search_space_status": "on main since PR #238 (86f7b8d), Ax-config style; R45 reads or converts it",
+      "parameters": [
+        "gdn_kernel",
+        "gradient_checkpointing",
+        "per_device_train_batch_size",
+        "packing",
+        "group_by_length",
+        "aotriton_experimental",
+        "torch_compile",
+        "tunableop",
+        "causal_conv1d_kernel",
+        "blas_backend"
+      ],
+      "objective": {"metric": "samples_per_s", "goal": "maximize"},
+      "tracking": ["peak_mem_gb", "first_step_s", "last_loss"],
+      "finalist_tracking": [],
+      "outcome_constraints": [
+        "peak_mem_gb at most the worker's free memory minus 3 GiB (pod C: from FO6)",
+        "last_loss within the baseline's run-to-run noise; R39 checks loss parity on the best arm"
+      ],
+      "restart": {
+        "process_s": 60,
+        "process_s_status": "assumed, not measured on gfx1151",
+        "in_process": ["per_device_train_batch_size", "gradient_checkpointing", "group_by_length", "packing"],
+        "process_restart": ["gdn_kernel", "causal_conv1d_kernel", "aotriton_experimental", "tunableop", "blas_backend", "torch_compile"],
+        "ready_timeout_factor": 1.5
+      },
+      "grouping": {
+        "warm_class_every": null,
+        "class_keys": ["gdn_kernel", "causal_conv1d_kernel", "aotriton_experimental", "tunableop", "blas_backend", "torch_compile"]
+      },
+      "fidelity": {
+        "screen": {"steps": 20, "exclude_first_steps": 5, "effective_batch": 16, "est_trial_s": 687},
+        "confirm": {"steps": 20, "exclude_first_steps": 5, "effective_batch": 16, "est_run_s": 687}
+      },
+      "repeat_policy": {
+        "processes_per_trial": 1,
+        "observation": "median samples/s over steps 6 to 20",
+        "sem": "R45's MEDIAN_SEM_FACTOR x sd / sqrt(15) of the per-step samples/s",
+        "between_run_noise": "measured only by the confirmation runs"
+      },
+      "early_stop": {
+        "after_steps": {
+          "steps": 5,
+          "rule": "stop when samples/s over steps 2 to 5 is below 0.5 x the baseline's",
+          "report": "complete_trial with the steps measured"
+        },
+        "oom": "mark_trial_failed",
+        "max_consecutive_failures": 3,
+        "ax_percentile_strategy": {"enabled_after_completed_trials": 5, "progression": "step"}
+      },
+      "contamination": {
+        "pod-c": "drop steps that overlap a teacher request (vLLM /metrics num_requests_running above 0 at the step's start or end) and report how many were dropped"
+      },
+      "initial_arms": [
+        {"name": "baseline", "parameters": {}, "attach_as": "baseline", "restart": "process", "priors": []},
+        {"name": "batch-8", "parameters": {"per_device_train_batch_size": 8}, "attach_as": "trial", "restart": "in_process", "priors": ["P7"]},
+        {"name": "no-checkpointing", "parameters": {"gradient_checkpointing": false}, "attach_as": "trial", "restart": "in_process", "priors": ["P8"]},
+        {"name": "hipblaslt", "parameters": {"blas_backend": "hipblaslt"}, "attach_as": "trial", "restart": "process", "priors": ["P5"]},
+        {"name": "fla", "parameters": {"gdn_kernel": "fla"}, "attach_as": "trial", "restart": "process", "priors": ["P6"]}
+      ],
+      "budget": {
+        "minutes": 180,
+        "slot_minutes": 60,
+        "slots": 3,
+        "trials_per_worker_est": 15,
+        "plan_b_minutes": 120,
+        "plan_b_trials_est": 10,
+        "restarts_est": 15,
+        "reserve_for_confirmation_minutes": 0,
+        "queue_justification": "each trial is a 20-step LoRA run of about 11 minutes at the old chip's rate; the driver resumes from its trial files between 60-minute slots"
+      },
+      "confirmation": {
+        "runs_per_arm": 3,
+        "arms": ["best", "baseline"],
+        "order": "best, baseline, best, baseline, best, baseline on the same pod",
+        "test": "one-sided 95 percent on samples_per_s; loss parity checked on the best arm",
+        "minutes": 70
+      }
+    },
+    "kernel": {
+      "task": "kernel lane, feeding R33, R47 and the kernels track's KE experiments",
+      "worker_names": ["pod-d"],
+      "approach": "measure cheaply, fit a cost model, score the whole space against it, measure only the top k",
+      "targets": [
+        {"name": "w4a16_decode_gemv", "where": "vLLM's W4A16 Triton path on gfx1151 at the teacher's batch-1 GEMV shapes", "shapes_from": "the stock teacher's serve log and R47's decode profile"},
+        {"name": "gated_delta_rule_chunk", "where": "flash-linear-attention chunk_gated_delta_rule forward and backward for the training lane (R36 TS7)"},
+        {"name": "causal_conv1d", "where": "the causal-conv1d kernel for the training lane (R36 TS10)"}
+      ],
+      "measure": {
+        "timer": "triton.testing.do_bench",
+        "warmup_ms": 25,
+        "rep_ms": 100,
+        "est_s_per_config": 0.3,
+        "compile": "ahead of the GPU slot on the pod's CPU, in parallel; configs that fail to compile or run out of resources count as infinitely slow"
+      },
+      "initial_random_configs": 500,
+      "held_out": 100,
+      "top_k_measure": 50,
+      "model": {
+        "kind": "gradient-boosted trees",
+        "loss": "pairwise ranking",
+        "library": "scikit-learn or xgboost on CPU, user install, never in pyproject.toml",
+        "transfer": "later shapes of the same kernel start from this model with about 100 measurements each"
+      },
+      "features": [
+        "BLOCK_M, BLOCK_N, BLOCK_K",
+        "split_k",
+        "num_warps",
+        "num_stages",
+        "waves_per_eu",
+        "vgprs, spills and lds_bytes from the compiled kernel",
+        "occupancy in waves per SIMD on gfx1151 (1536 VGPRs per SIMD in wave32, granule 24, at most 16 waves; LDS 64 KiB per workgroup, 128 KiB per WGP)",
+        "grid workgroups divided by 20 WGPs",
+        "bytes moved per call",
+        "shape M, N, K and group size"
+      ],
+      "search": {
+        "method": "enumerate the whole space against the model below 1e6 configs; evolutionary search above",
+        "top_k_measure": 50
+      },
+      "kill": {
+        "flat_space_gain_min": 0.05,
+        "spearman_min": 0.6,
+        "on_low_spearman": "measure exhaustively if the space fits the slot, else stop the lane for that kernel",
+        "correctness": "the best config must pass R21's per-shape test (V2) before its time counts"
+      },
+      "slot_minutes": 15,
+      "measurements_per_slot_est": "about 2 shapes at 1,000 measurements from scratch, or about 10 shapes at 100 with the transferred model",
+      "reuse": [
+        "triton.autotune with prune_configs_by perf_model and top_k (Triton 3.5.1 on the pods)",
+        "triton.testing.do_bench",
+        "tritonBLAS's analytical model as a seed for half-precision GEMMs, once checked on gfx1151",
+        "not tonight: TVM MetaSchedule (gfx1151 support unverified), GEAK and other LLM kernel agents (CDNA-focused, need an LLM service)"
+      ]
+    }
+  },
+  "priors": [
+    {
+      "id": "P1",
+      "lane": "inference",
+      "parameters": {"linear_kernel": "exllama_fp16"},
+      "expected": "decode_tok_s.b1 +50 to +200 percent, joules_per_token.b1 -30 to -65 percent (R35); public 4-bit decode on this chip moves 180 to 190 GB/s against our 44.6",
+      "p": 0.3,
+      "sources": [
+        "PR #235 searchspace-inference-gfx1151.json predictions (2026-10-10)",
+        "llm-tracker Strix Halo (2025-08-08): llama.cpp at 70.8 to 73.3 percent of 256 GB/s",
+        "PR #237 strix_halo_hardware.md (2026-10-10): our teacher moves about 44.6 GB/s"
+      ],
+      "evidence_os": "Linux (Fedora 43)",
+      "evidence_rocm": "HIP 6.4 to 6.5 (public); the pods run ROCm 7.13"
+    },
+    {
+      "id": "P2",
+      "lane": "inference",
+      "parameters": {"num_speculative_tokens": 1},
+      "expected": "decode_tok_s.b1 +30 to +120 percent (R35); public MTP +16.8 percent in one Strix Halo build, with diverging output; must pass R21",
+      "p": 0.4,
+      "sources": [
+        "PR #235 searchspace-inference-gfx1151.json predictions (2026-10-10)",
+        "Soothill, Strix Halo LLM upgrade (2026-08-11): MTP 23.44 to 27.38 tok/s, output diverged",
+        "zenn.dev/shuzan (2026-06-17): relayed 24.8 tok/s for Qwen3.6-27B AWQ-INT4 with DFlash on vLLM 0.20.0"
+      ],
+      "evidence_os": "Linux (Ubuntu 24.04.4)",
+      "evidence_rocm": "7.14 (Soothill), 7.13 nightly (relayed in zenn)"
+    },
+    {
+      "id": "P3",
+      "lane": "inference",
+      "parameters": {"gpu_max_hw_queues": 1},
+      "expected": "0 to +70 percent only if spawns are bimodal (R35); no public Strix Halo source sets it",
+      "p": 0.25,
+      "sources": [
+        "PR #235 searchspace-inference-gfx1151.json predictions (2026-10-10)",
+        "Foxlight-Foundation/Skulk#144 (2026-05): does not mention GPU_MAX_HW_QUEUES"
+      ],
+      "evidence_os": "Linux",
+      "evidence_rocm": "gfx1201 reports on ROCm 7.x; none on gfx1151"
+    },
+    {
+      "id": "P4",
+      "lane": "inference",
+      "parameters": {"linear_kernel": "exllama_fp16", "num_speculative_tokens": 1},
+      "expected": "the two switches together; MTP turns the packed GDN decode path off (R35 interactions)",
+      "p": null,
+      "sources": ["PR #235 searchspace-inference-gfx1151.json interactions (2026-10-10)"],
+      "evidence_os": "n/a",
+      "evidence_rocm": "n/a"
+    },
+    {
+      "id": "P5",
+      "lane": "training",
+      "parameters": {"blas_backend": "hipblaslt"},
+      "expected": "GEMM about 3 times faster at 1024 cubed (6.1 to 19.7 TFLOPS) on gfx1151; torch 2.9.1 may override it back (R36 TS4)",
+      "p": null,
+      "sources": [
+        "llm-tracker Strix Halo (2025-08-08): hgemm 6.1 TFLOPS rocBLAS, 19.7 with ROCBLAS_USE_HIPBLASLT=1",
+        "PR #238 searchspace-training-gfx1151.json (2026-10-10): shortlist rank 10, TS4"
+      ],
+      "evidence_os": "Linux (Fedora 43)",
+      "evidence_rocm": "HIP 6.4 to 6.5"
+    },
+    {
+      "id": "P6",
+      "lane": "training",
+      "parameters": {"gdn_kernel": "fla"},
+      "expected": "R36 shortlist rank 1 (TS7): the Gated DeltaNet layers dominate the step while the torch reference runs",
+      "p": null,
+      "sources": ["PR #238 searchspace-training-gfx1151.json (2026-10-10)"],
+      "evidence_os": "n/a",
+      "evidence_rocm": "n/a"
+    },
+    {
+      "id": "P7",
+      "lane": "training",
+      "parameters": {"per_device_train_batch_size": 8},
+      "expected": "R36 shortlist rank 3 (TS13): fewer, larger micro-batches at the same effective batch",
+      "p": null,
+      "sources": ["PR #238 searchspace-training-gfx1151.json (2026-10-10)"],
+      "evidence_os": "n/a",
+      "evidence_rocm": "n/a"
+    },
+    {
+      "id": "P8",
+      "lane": "training",
+      "parameters": {"gradient_checkpointing": false},
+      "expected": "R36 shortlist rank 2 (TS12): no recomputation, more memory (8.7 GiB peak with it on, on the R9700)",
+      "p": null,
+      "sources": ["PR #238 searchspace-training-gfx1151.json (2026-10-10)", "lab/refine/metrics.jsonl:14"],
+      "evidence_os": "n/a",
+      "evidence_rocm": "n/a"
+    }
+  ],
+  "expected_ranges": {
+    "gpu_read_bandwidth_gbs": {
+      "low": 200,
+      "high": 220,
+      "unit": "GB/s",
+      "theoretical": 256,
+      "checks": "R33 (SH7)",
+      "sources": ["llm-tracker Strix Halo (2025-08-08): 212.4 GB/s within the GPU", "Foxlight-Foundation/Skulk#144 (2026-05): about 215 GB/s measured"]
+    },
+    "decode_tok_s_b1_27b_int4": {
+      "low": 2.88,
+      "high": 13.7,
+      "llama_cpp_class": [11.7, 12.1],
+      "unit": "tok/s",
+      "checks": "R47; above 13.7 without speculative decoding is a measurement error",
+      "sources": ["lab/README.md (pod C, 2.88 tok/s)", "llm-tracker Strix Halo (2025-08-08)", "PR #237 (about 15.5 GB per token)"]
+    },
+    "decode_tok_s_b1_27b_int4_with_speculation_reported": {
+      "low": null,
+      "high": 24.8,
+      "unit": "tok/s",
+      "checks": "R47, as a reported top only (second-hand)",
+      "sources": ["zenn.dev/shuzan (2026-06-17), relayed community report"]
+    },
+    "vllm_small_bf16_effective_bandwidth_gbs": {
+      "low": 130,
+      "high": 140,
+      "unit": "GB/s",
+      "checks": "R47: vLLM itself can move this much on gfx1151",
+      "sources": ["Soothill (2026-08-11): Qwen3.5-0.8B at 86.3 tok/s, one client (derived 138 GB/s)"]
+    },
+    "hgemm_1024_tflops": {
+      "low": 6.1,
+      "high": 19.7,
+      "unit": "TFLOPS",
+      "checks": "R33 and R34: rocBLAS (low) against hipBLASLt (high)",
+      "sources": ["llm-tracker Strix Halo (2025-08-08)"]
+    },
+    "server_start_s": {
+      "low": 240,
+      "high": 523,
+      "unit": "s",
+      "checks": "FO1 and FO2: ours 523 cold, 295 warm; a community vLLM build on gfx1151 starts in about 240",
+      "sources": ["GPU Queue rows R30 and R18 (2026-10-10)", "Foxlight-Foundation/Skulk#144 (2026-05)"]
+    }
+  },
+  "transfer": {
+    "now": "the public data and the R35 and R36 predictions enter as the prior arms (P1 to P8), attached as the first trials; the first five inference trials also calibrate the offset between the public model and our build (FO9)",
+    "later": "a prior-mean GP (R51's model as the mean plus a learned constant offset) once R45 can pass a custom mean module and it is tested on the fake harness",
+    "offset_calibration_trials": 5,
+    "file": "lab/refine/research/kernels/data/public-strix-halo-benchmarks.csv",
+    "file_status": "pending (R51)",
+    "covers": ["kernel path and backend", "speculative decoding", "batch", "context", "hipBLASLt"],
+    "does_not_cover": ["vllm_rocm_use_skinny_gemm", "fla_packed_recurrent_decode", "attention_backend", "enable_prefix_caching", "amdgcn_use_buffer_ops", "cudagraph_mode", "mamba_ssm_cache_dtype"],
+    "own_trials_per_lane_est": 17
+  },
+  "schedule": [
+    {"plan": "A and B", "start": "23:00", "end": "23:05", "worker": "pod-c", "lane": "baseline_attach", "what": "FO6: read-only memory reading with the teacher up; plan B (the default) unless Ilan has approved plan A"},
+    {"plan": "A and B", "start": "23:00", "end": "23:30", "worker": "pod-d", "lane": "inference", "what": "FO2 and FO1: compile-class and restart-diet spawns; the first spawn is trial 0, the baseline"},
+    {"plan": "A and B", "start": "23:30", "end": "02:30", "worker": "pod-d", "lane": "inference", "what": "R38 Ax run, three 60-minute slots, resumable"},
+    {"plan": "A", "start": "23:05", "end": "02:05", "worker": "pod-c", "lane": "training", "what": "R39 Ax run beside the teacher, after the teacher restart at a share of at most 0.63; steps that overlap a teacher request are dropped"},
+    {"plan": "A", "start": "02:05", "end": "03:15", "worker": "pod-c", "lane": "training", "what": "R39 confirmation, 3 runs each of best and baseline"},
+    {"plan": "A and B", "start": "02:30", "end": "03:40", "worker": "pod-d", "lane": "inference", "what": "R38 confirmation, 3 spawns each of best and baseline"},
+    {"plan": "A", "start": "03:40", "end": "05:10", "worker": "pod-d", "lane": "kernel", "what": "R33 and R47 chip measurements, then the FO8 cost-model pilot in 15-minute slots"},
+    {"plan": "A", "start": "05:10", "end": "07:40", "worker": "pod-d", "lane": "inference", "what": "more R38 trials, or the 5-spawn verdict for T0"},
+    {"plan": "A and B", "start": "03:15", "end": "03:45", "worker": "pod-c", "lane": "baseline_attach", "what": "FO7: the live baseline's concurrency curve in attach mode (no restart)"},
+    {"plan": "B", "start": "03:40", "end": "04:40", "worker": "pod-d", "lane": "kernel", "what": "R33 and R47 chip measurements, then a shortened FO8"},
+    {"plan": "B", "start": "04:40", "end": "06:40", "worker": "pod-d", "lane": "training", "what": "R39 Ax run, two 60-minute slots"},
+    {"plan": "B", "start": "06:40", "end": "07:50", "worker": "pod-d", "lane": "training", "what": "R39 confirmation, 3 runs each of best and baseline"},
+    {"plan": "A and B", "start": "07:50", "end": "08:00", "worker": "pod-d", "lane": "inference", "what": "summaries committed; results posted by 08:00"}
+  ]
+}

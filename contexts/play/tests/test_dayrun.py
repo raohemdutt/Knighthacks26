@@ -3,6 +3,7 @@
 import itertools
 import json
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -15,7 +16,7 @@ from contexts.play.dayrun import modes
 from contexts.play.dayrun.models import Disruption, Estimate, InitialOverride, Measured, Move
 from contexts.play.dayrun.review import forecast
 from contexts.play.dayrun.service import DayRun, PlanNotWinning
-from contexts.play.domain.places import PlaceSet
+from contexts.play.domain.places import PlaceSet, parse_pack
 from contracts.memory import Item
 
 TZ = ZoneInfo("America/New_York")
@@ -69,18 +70,24 @@ def test_routes_match_a_brute_force_search_on_the_ucf_pack(places, dayrun):
                     best = min(best, sum(minutes[frozenset(step)] for step in zip(path, path[1:])))
         return best
 
+    # the same packs without the map file: routes are the shortest over the edges
+    plain = PlaceSet({n: parse_pack(Path(f"config/places/{n}.yaml").read_text(encoding="utf-8")) for n in ("ucf", "apartment")})
     for a, b in [("library", "towers"), ("rwc", "dining_63"), ("eng2", "library"), ("cb1", "hec"), ("towers", "rwc")]:
+        assert plain.route(f"ucf.{a}", f"ucf.{b}")[1] == pytest.approx(brute(a, b)), (a, b)
+        # with the footpath network (ucf.map.json) the walk is the real one, straight from a to b
+        real = pack.walk(a, b)
         path, total = places.route(f"ucf.{a}", f"ucf.{b}")
-        assert total == pytest.approx(brute(a, b)), (a, b)
+        assert path == [f"ucf.{a}", f"ucf.{b}"] and total == round(real.minutes, 1)
         trip = dayrun.walks.trip(f"ucf.{a}", f"ucf.{b}")
         assert sum(leg.minutes for leg in trip.legs) == pytest.approx(total)  # the legs add up to the route
         assert trip.legs[0].from_xy and trip.places == path
+        assert trip.meters == real.meters and trip.legs[0].path[0] == trip.legs[0].from_xy and trip.legs[0].path[-1] == trip.legs[0].to_xy
 
 
 def test_a_walk_crosses_into_the_apartment_and_rounds_up(dayrun):
     minutes, trip = dayrun.walks.walk("ucf.library", "apartment.desk")
     assert trip.places[0] == "ucf.library" and trip.places[-1] == "apartment.desk" and "apartment.door" in trip.places
-    assert minutes == 22 and trip.minutes == pytest.approx(21.6)
+    assert minutes == 13 and trip.minutes == pytest.approx(12.1)  # 912 m to Tower III, then the rooms
     assert dayrun.walks.walk("ucf.library", "ucf.library") == (0, None)
 
 
@@ -103,9 +110,9 @@ def test_board_lays_out_fixed_blocks_deadlines_and_open_slots(dayrun):
     assert b.initial.energy < 50
 
     library = next(o for o in b.slots[2].moves if o.kind == "study" and o.place == "ucf.library")
-    assert library.friends == ["Maya"] and library.walk_minutes == 9 and library.route[0] == "ucf.eng2"
+    assert library.friends == ["Maya"] and library.walk_minutes == 4 and library.route[0] == "ucf.eng2"
     lunch = next(o for o in b.slots[1].moves if o.kind == "eat" and o.place == "ucf.dining_63")
-    assert (lunch.walk_minutes, lunch.back_minutes, lunch.max_minutes) == (4, 4, 37)  # walking comes out of the slot
+    assert (lunch.walk_minutes, lunch.back_minutes, lunch.max_minutes) == (8, 8, 29)  # walking comes out of the slot
     nap = next(o for o in b.slots[1].moves if o.kind == "sleep")
     assert not nap.feasible and "12:00 Knight Hacks: judging and demos" in nap.reason
     assert any(o.kind == "event" and o.event.startswith("campus:lawn-movie") for o in b.slots[2].moves)
@@ -156,19 +163,19 @@ def test_the_board_says_where_each_starting_value_came_from(places, dayrun, tmp_
 
 
 def test_a_move_that_makes_you_late_is_rejected_with_the_minutes(dayrun):
-    # s2 is 11:15 to 12:00, judging is back at Engineering II: 4 minutes each way to the dining hall
+    # s2 is 11:15 to 12:00, judging is back at Engineering II: 8 minutes each way to '63 South (566 m)
     lunch = Move(slot="s2", kind="eat", place="ucf.dining_63", minutes=40)
     r = dayrun.simulate([lunch], scenario="demo")
     (rej,) = r.rejected
-    assert rej.index == 0 and rej.minutes == 3
-    assert rej.reason.startswith("you miss the 12:00 Knight Hacks: judging and demos by 3 minutes")
+    assert rej.index == 0 and rej.minutes == 11
+    assert rej.reason.startswith("you miss the 12:00 Knight Hacks: judging and demos by 11 minutes")
     assert r.totals.meals == 0 and not any(b.move == 0 for b in r.blocks)
 
-    ok = dayrun.simulate([lunch.model_copy(update={"minutes": 37})], scenario="demo")
+    ok = dayrun.simulate([lunch.model_copy(update={"minutes": 29})], scenario="demo")
     assert ok.rejected == [] and ok.totals.meals == 1
     meal = next(b for b in ok.blocks if b.move == 0)
-    assert (meal.start, meal.end) == (at(11, 19), at(11, 56))  # the walk is taken out of the slot
-    assert [(x.purpose, x.depart) for x in ok.routes][-1] == ("to Knight Hacks: judging and demos", at(11, 56))
+    assert (meal.start, meal.end) == (at(11, 23), at(11, 52))  # the walk is taken out of the slot
+    assert [(x.purpose, x.depart) for x in ok.routes][-1] == ("to Knight Hacks: judging and demos", at(11, 52))
 
 
 def test_unknown_slots_and_places_are_rejected_not_fatal(dayrun):
@@ -197,7 +204,7 @@ def test_the_bad_plan_fails_for_the_stated_reasons(dayrun, plans):
 
 def test_meals_already_eaten_today_count_toward_the_meal_target(dayrun, plans):
     """Testing round 2: "2 meals so far" sat directly above "Meals: 1 (2 needed)"."""
-    lunch = Move(slot="s2", kind="eat", place="ucf.dining_63", minutes=37)
+    lunch = Move(slot="s2", kind="eat", place="ucf.dining_63", minutes=29)
     fresh = dayrun.simulate([lunch], scenario="demo")  # the scripted day starts with nothing eaten
     assert (fresh.totals.meals, fresh.totals.meals_before) == (1, 0)
     meals = next(c for c in fresh.outcome.checks if c.id == "meals")
@@ -241,7 +248,7 @@ def test_studying_with_a_friend_who_is_there_gets_more_done(dayrun):
     together = dayrun.simulate([Move(slot="s3", kind="study", place="ucf.library", minutes=170, with_friend="Maya")], scenario="demo")
     elsewhere = dayrun.simulate([Move(slot="s3", kind="study", place="ucf.hec", minutes=170, with_friend="Maya")], scenario="demo")
     assert together.totals.focused_minutes > alone.totals.focused_minutes > elsewhere.totals.focused_minutes
-    assert "Maya is not at Harris Engineering Center" in elsewhere.notes[0]
+    assert "Maya is not at L3Harris Engineering Center" in elsewhere.notes[0]
 
 
 def test_meters_stay_in_range_and_runs_are_identical(dayrun, plans):
@@ -278,8 +285,8 @@ def test_commit_proposes_one_calendar_write_and_creates_nothing(dayrun, plans, t
     events = proposal.params["events"]
     assert list(proposal.params) == ["events"] and len(events) == 8 == len(result.events)
     assert all(e["title"].startswith("Day Run: ") and e["start"] < e["end"] and e["location"] for e in events)
-    assert events[3] == {"title": "Day Run: Study at John C. Hitt Library with Maya", "start": "2026-10-11T14:09:00-04:00",
-                         "end": "2026-10-11T16:59:00-04:00", "location": "John C. Hitt Library"}
+    assert events[3] == {"title": "Day Run: Study at John C. Hitt Library with Maya", "start": "2026-10-11T14:04:00-04:00",
+                         "end": "2026-10-11T16:54:00-04:00", "location": "John C. Hitt Library"}
     assert proposal.ts == at(9, 31) and result.action_id == proposal.action_id and result.stars == 3
     # nothing was created: no connector was started (the factory would raise) and no invite was written
     assert not (tmp_path / "invites").exists()
@@ -421,15 +428,15 @@ def test_hard_mode_revalidates_and_reroutes(dayrun, plans):
     stay = dayrun.hard([Move(slot="s3", kind="eat", place="ucf.dining_63", minutes=25), Move(slot="s3", kind="eat", place="ucf.union", minutes=25)],
                        scenario="demo", disruptions=[Disruption(kind="place_closed", place="ucf.union")])
     [moved] = [c.text for c in stay.changes if c.kind == "rerouted"]
-    assert moved == "Student Union is closed: re-routed to 63 South dining hall (you are already there)"
+    assert moved == "Student Union is closed: re-routed to '63 South (you are already there)"
     rerouted = [c.text for c in h.changes if c.kind == "rerouted"]  # the scripted demo: one of each
-    assert rerouted == ["Student Union is closed: re-routed to 63 South dining hall (you are already there), "
-                        "7 minutes on to the 11:45 Knight Hacks: judging and demos",
-                        "Student Union is closed: re-routed to 63 South dining hall, 13 minutes from John C. Hitt Library"]
+    assert rerouted == ["Student Union is closed: re-routed to '63 South (you are already there), "
+                        "10 minutes on to the 11:45 Knight Hacks: judging and demos",
+                        "Student Union is closed: re-routed to '63 South, 5 minutes from John C. Hitt Library"]
 
     strict = dayrun.hard([Move(slot="s2", kind="eat", place="ucf.union", minutes=33)], scenario="demo",
                          disruptions=[Disruption(kind="block_moved", block=JUDGING, to_place="ucf.rwc")])
-    assert strict.before.rejected == [] and [c.kind for c in strict.changes][:1] == ["shortened"]  # 11 minutes to the gym, not 6
+    assert strict.before.rejected == [] and [c.kind for c in strict.changes][:1] == ["shortened"]  # 10 minutes to the gym, not 3
 
 
 def test_hard_mode_is_seeded_and_a_cancelled_friend_costs_the_boost(dayrun, plans):

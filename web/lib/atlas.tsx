@@ -8,6 +8,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { ApiError, api, wsUrl, type Answer, type AnswerDelta, type ApprovalRequest, type AtlasEvent } from "./api";
+import { briefStore } from "./brief";
 
 export type LinkState = "connecting" | "live" | "offline";
 
@@ -158,7 +159,24 @@ function str(v: unknown, fallback = ""): string {
   return typeof v === "string" ? v : fallback;
 }
 
+const NARRATED_TOAST: Record<string, { title: string; tone: Toast["tone"] }> = {
+  morning: { title: "Your day", tone: "info" },
+  replan: { title: "Re-plan", tone: "warn" },
+  coach: { title: "Coach", tone: "info" },
+  evening: { title: "Your day, reviewed", tone: "info" },
+  checkin: { title: "Check-in", tone: "info" },
+};
+const RAW_DAY_TOASTS = new Set(["day.plan.proposed", "day.replan.proposed", "day.coach.noted", "day.reviewed"]);
+
 function toastFor(e: AtlasEvent): Toast | null {
+  // With the narrator on, the day's moments are toasted once, in its words (`day.narrated`), not as the raw event too.
+  if (RAW_DAY_TOASTS.has(e.type) && briefStore.on()) return null;
+  if (e.type === "day.narrated") {
+    const moment = str(e.moment);
+    if (moment === "now" && e.urgent === true) return { id: e.event_id, title: "Time to move", message: str(e.display), tone: "warn", href: "/now/" };
+    const kind = NARRATED_TOAST[moment];
+    return kind && str(e.display) ? { id: e.event_id, title: kind.title, message: str(e.display), tone: kind.tone, href: "/now/" } : null;
+  }
   switch (e.type) {
     case "agent.alert.raised":
       return { id: e.event_id, title: "Alert", message: str(e.message, "Atlas raised an alert."), tone: "alert" };
@@ -176,6 +194,8 @@ function toastFor(e: AtlasEvent): Toast | null {
       return { id: e.event_id, title: "Re-plan", message: str(e.why, "Atlas has a new plan for the rest of the day."), tone: "warn", href: "/now/" };
     case "day.coach.noted":
       return { id: e.event_id, title: "Coach", message: str(e.text, "A block just ended."), tone: "info", href: "/now/" };
+    case "impact.milestone.reached":
+      return { id: e.event_id, title: "Nice", message: str(e.text, "The table passed a milestone."), tone: "celebrate", href: "/impact/" };
     case "day.reviewed":
       return { id: e.event_id, title: "Your day, reviewed", message: str(e.change_tomorrow, "The day's review is in."), tone: "info", href: "/now/" };
     case "workspace.approval.requested":
@@ -259,6 +279,7 @@ export function AtlasProvider({ children }: { children: ReactNode }) {
         setLink("live");
         reloadApprovals(); // catch up on anything missed while disconnected
         refreshHealth();
+        void briefStore.load();
       };
       socket.onmessage = (msg) => {
         let e: AtlasEvent;
@@ -276,6 +297,7 @@ export function AtlasProvider({ children }: { children: ReactNode }) {
         }
         if (typeof e.event_id !== "string") return; // every real event has one; toasts and handlers key on it
         answerStream.event(e);
+        briefStore.apply(e); // the day in words, before any listener or toast reads it
         const toast = toastFor(e);
         if (toast) pushToast(toast);
         if (APPROVAL_EVENTS.has(e.type)) reloadApprovals();
@@ -310,6 +332,7 @@ export function AtlasProvider({ children }: { children: ReactNode }) {
 
     reloadApprovals();
     refreshHealth();
+    void briefStore.load();
     connect();
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("online", onVisible);

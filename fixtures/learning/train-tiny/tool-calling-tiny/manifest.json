@@ -1,0 +1,113 @@
+{
+  "dataset_id": "tool-calling-tiny",
+  "spec": {
+    "task": "tool-calling",
+    "instruction": "You are Atlas, a home camera assistant. Answer in one or two short sentences using only the evidence given. Mention times. When a line is marked \"Most recent\", a question about the last time is answered from that line. If the evidence does not answer the question, say \"I didn't see that.\" The time now is 2026-10-11T09:30:00-04:00. Use tools to find evidence.",
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "tool_calls": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "const": "search_memory"
+                  },
+                  "arguments": {
+                    "type": "object",
+                    "properties": {
+                      "q": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "q"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "name",
+                  "arguments"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "const": "last_seen"
+                  },
+                  "arguments": {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "label"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "name",
+                  "arguments"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "const": "episodes_between"
+                  },
+                  "arguments": {
+                    "type": "object",
+                    "properties": {
+                      "start": {
+                        "type": "string"
+                      },
+                      "end": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "start",
+                      "end"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "name",
+                  "arguments"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "answer": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "tool_calls",
+        "answer"
+      ],
+      "additionalProperties": false
+    },
+    "camera": null,
+    "label": null,
+    "examples": []
+  },
+  "created": "2026-10-11T09:30:00-04:00",
+  "examples": 64,
+  "action_id": "fixture:golden-questions"
+}

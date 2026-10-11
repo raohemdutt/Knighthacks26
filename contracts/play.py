@@ -46,6 +46,35 @@ class FacesCounted(TypedEvent):
     facing: int  # how many are facing the camera
 
 
+class FloorPoint(BaseModel):
+    """A point of the room's floor plan, in metres (config/rooms/<name>.yaml: x east, y south)."""
+
+    x: float
+    y: float
+
+
+class PlannedRoute(BaseModel):
+    player: int  # 1, 2: the order the players are drawn in
+    track: str | None = None  # "<camera>:<track id>" of the player the route starts from, when a camera sees them
+    points: list[FloorPoint] = []  # the walk to the bin, already smoothed; empty when no way exists
+    distance_m: float = 0.0
+    par_s: float = 0.0  # expected seconds at walking speed
+    reachable: bool = True
+
+
+@register
+class RoutePlanned(TypedEvent):
+    """Sort It's route in room space (the floor plan), when a round starts and whenever it is planned again."""
+
+    type: Literal["play.route.planned"] = "play.route.planned"
+    round_id: str
+    item: str
+    target_bin: ZoneId
+    room: str  # the floor plan the points are in
+    reason: Literal["round_started", "replan"] = "round_started"
+    routes: list[PlannedRoute] = []  # one per player
+
+
 # --- The League (contexts/play/league): the friends' weekly game. Only daily summaries, standings and
 # stakes travel in these; never raw signals, frames or health numbers beyond the summary itself.
 

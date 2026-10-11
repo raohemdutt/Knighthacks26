@@ -88,8 +88,10 @@ colon.
   why it holds>. <disposition>`. The disposition is `FIXED (n)` (the change that fixes it),
   `RULING (x)` (a ruling raised below), `HELD` (checked, fine) or `OPEN` (found, not fixed this
   pass, the reason in the text). Write `none` when the walk found nothing.
-- `Changes (<n> of at most <cap>):` the numbered changes below, or `none`. The cap is set in
-  `PASS_RULES.md`.
+- `Changes (<n> of at most <cap>):` the numbered changes below, or `none`. The cap is the number
+  `PASS_RULES.md` gives under "What a pass does" (`at most <N> changes`, 5 since telemetry ruling 6);
+  `lab/machine/refine_track.py` reads it from there and rejects a pass entry that holds more
+  changes than it or names another number.
 - `Rulings raised (...):` lettered candidates `(a)`, `(b)`, each followed by `Now:`, `Recommend:`,
   `Source of tension:` and a blank `Answer: ____` line, or `none`. They are candidates; the merge pass
   numbers them into `OWNER_RULINGS.md`. A pass never fills in an Answer.

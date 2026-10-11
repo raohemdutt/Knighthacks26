@@ -105,7 +105,8 @@ def test_seed_series_follow_the_rubric_directions():
     assert rows[("trainer.samples_per_s", "pod-b")]["direction"] == mr.HIGHER
     assert rows[("teacher.vram_pct", "pod-a")]["direction"] is None
     assert rows[("pod.idle_watts", "pod-a")]["direction"] is None
-    decode = [row for row in mr.report(source="metrics", metric_names=["teacher.decode_tok_s"])["rows"]]
+    decode = [row for row in mr.report(source="metrics", metric_names=["teacher.decode_tok_s"])["rows"]
+              if row["node"] == "pod-a"]
     assert [row["direction"] for row in decode] == [mr.HIGHER] * 3
 
 

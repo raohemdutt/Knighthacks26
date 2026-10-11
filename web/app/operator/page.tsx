@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { OperatorRoom } from "@/components/map/TwinStage";
 import { OperatorCamera } from "@/components/operator/Camera";
 import { EgressPanel } from "@/components/operator/Egress";
 import { VoicePanel } from "@/components/operator/Voice";
@@ -238,6 +239,7 @@ export default function OperatorPage() {
             <p className={op.big}>{cameras.loading ? "Looking for cameras…" : "No cameras on this box"}</p>
           </div>
         ) : null}
+        <OperatorRoom />
       </section>
 
       <aside className={op.side}>

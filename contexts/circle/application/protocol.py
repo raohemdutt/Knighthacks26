@@ -76,7 +76,7 @@ def busy(memory: MemoryReader, start: datetime, end: datetime) -> bool:
     """My own calendar, checked on my own box. Events without an end count as one hour."""
     for item in memory.items(start - timedelta(hours=12), end, kind="calendar_event"):
         item_end = item.when + timedelta(hours=1)
-        if item.when < end and start < item_end:
+        if item.when < end and start < item_end and not item.external_id.startswith("nearby:"):  # optional, not a commitment
             return True
     return False
 

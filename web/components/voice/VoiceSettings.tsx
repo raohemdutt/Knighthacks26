@@ -1,5 +1,6 @@
 "use client";
 
+import { GazeSwitch } from "@/components/guide/GazeSwitch";
 import ui from "@/components/ui.module.css";
 import { VOICE_RATE, useVoice, type VoiceSettings as Flags } from "@/lib/voice";
 import { VOICE_APPROVAL_RULE } from "./VoiceBar";
@@ -26,6 +27,7 @@ export function VoiceSettings() {
   const noVoice = ready && !canSpeak;
 
   return (
+    <>
     <section className={ui.section} aria-label="Voice">
       <h3>Voice</h3>
       <Switch
@@ -44,7 +46,7 @@ export function VoiceSettings() {
       />
       <Switch
         label="Speak up on its own"
-        hint={noVoice ? "This browser cannot speak." : "Says alerts, nudges, approval requests and the leaving checklist in one sentence, while this app is open."}
+        hint={noVoice ? "This browser cannot speak." : "Says alerts, nudges, approval requests, the leaving checklist and your day (the morning brief, a re-plan, the coach, when to leave, the evening wrap) while this app is open."}
         on={settings.proactive && canSpeak}
         disabled={noVoice}
         onChange={set("proactive")}
@@ -57,5 +59,7 @@ export function VoiceSettings() {
         into text. Some browser voices are made online too.
       </p>
     </section>
+    <GazeSwitch />
+    </>
   );
 }

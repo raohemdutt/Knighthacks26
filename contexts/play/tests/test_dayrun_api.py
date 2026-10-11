@@ -70,13 +70,14 @@ def test_simulate(client, plans):
                          "changes", "notes", "totals", "carry"}
     assert body["stars"] == 3 and body["outcome"]["won"] and len(body["timeline"]) == 97
     assert set(body["timeline"][0]) == {"t", "energy", "focus", "deadline_risk", "work_left", "activity", "place"}
-    assert set(body["legs"][0]) == {"from", "to", "from_name", "to_name", "minutes", "from_xy", "to_xy", "route", "depart"}
-    assert body["legs"][0]["from"] == "ucf.eng2" and body["legs"][0]["to"] == "ucf.dining_63" and body["legs"][0]["minutes"] == 4
+    assert set(body["legs"][0]) == {"from", "to", "from_name", "to_name", "minutes", "from_xy", "to_xy", "path", "meters", "route", "depart"}
+    assert body["legs"][0]["from"] == "ucf.eng2" and body["legs"][0]["to"] == "ucf.dining_63" and body["legs"][0]["minutes"] == 7.1
+    assert body["legs"][0]["meters"] == body["routes"][0]["meters"] > 500 and len(body["legs"][0]["path"]) > 10  # the real line walked
 
     bad = client.post("/api/dayrun/simulate", json={"scenario": "demo", "moves": plans["bad"]}).json()
     assert not bad["outcome"]["won"] and bad["stars"] == 0 and len(bad["outcome"]["reasons"]) == 3
-    assert bad["rejected"][0]["index"] == 1 and bad["rejected"][0]["minutes"] == 3
-    assert bad["rejected"][0]["reason"].startswith("you miss the 12:00 Knight Hacks: judging and demos by 3 minutes")
+    assert bad["rejected"][0]["index"] == 1 and bad["rejected"][0]["minutes"] == 11
+    assert bad["rejected"][0]["reason"].startswith("you miss the 12:00 Knight Hacks: judging and demos by 11 minutes")
     assert client.post("/api/dayrun/simulate", json={"moves": [{"slot": "s1", "kind": "fly"}]}).status_code == 422
 
 
@@ -102,7 +103,7 @@ def test_review(client, plans):
     r = client.get("/api/dayrun/review", params={"day": "2026-10-11", "scenario": "demo"}).json()
     assert r["measured"]["sleep_hours"] == 6.5 and 0 < r["score"] < 100
     # three meals planned, two seen; 6.5 of 8.5 hours slept. The missed meal weighs a little more.
-    assert r["biggest_gap"]["kind"] == "eat" and "Biggest gap: Eat at Student Union at 17:02: no meal was seen" in r["text"]
+    assert r["biggest_gap"]["kind"] == "eat" and "Biggest gap: Eat at Student Union at 16:56: no meal was seen" in r["text"]
     assert next(b for b in r["blocks"] if b["kind"] == "sleep")["measured_minutes"] == 390
     assert sum(1 for b in r["blocks"] if b["followed"] is None) == 2  # the two library sessions
 

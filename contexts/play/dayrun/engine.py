@@ -94,7 +94,7 @@ class _Schedule:
         self.emit(depart, arrive, "walk", trip.places[-1])
         index = len(self.routes)
         self.routes.append(RouteTaken(index=index, purpose=purpose, move=move, start=trip.places[0], end=trip.places[-1],
-                                      depart=depart, arrive=arrive, minutes=trip.minutes, places=trip.places))
+                                      depart=depart, arrive=arrive, minutes=trip.minutes, places=trip.places, meters=trip.meters))
         self.legs += [RouteLeg(**leg.model_dump(), route=index, depart=depart) for leg in trip.legs]
         self.place = trip.places[-1]
         return arrive

@@ -16,33 +16,74 @@
     "Find a time for all of us": CircleAgent.propose, which only raises an approval card. Nothing is
     sent to the Circle until the card is approved. 404 without a Circle; needs the token like other writes.
 
-Both GETs answer 200 in every state (no Circle, no Neon, Neon offline), so the screen can say
-which one it is. Neither writes anything or reaches Neon for the status: `database` is what
-the box's own timer last saw.
+- GET /api/circle/threads  the agents' conversations, latest activity first (contexts/circle/application/threads.py)
+    {"configured", "circle_id", "member_id", "source": "none"|"log"|"log+store", "offline",
+     "members": [{"member_id", "display_name", "mine"}],
+     "threads": [{"thread_id", "legs", "title", "proposer": {"member_id", "display_name", "mine"}, "mine",
+                  "starts_at", "ends_at", "location", "state": "proposed"|"waiting"|"countered"|"agreed"|"declined",
+                  "invitees": [{"member_id", "display_name", "mine", "answer": "free"|"busy"|"counter"|null}],
+                  "waiting_on": [...], "asked_at", "last_activity", "pending_action_id",
+                  "action": {"kind": "approve"|"propose"|"none", "action_id", "proposal", "text"},
+                  "last_line", "messages_count"}]}
+- GET /api/circle/threads/{thread_id}  one conversation (any of its `legs` ids finds it): the same fields plus
+    "messages": [{"id", "thread_id", "kind": "proposal"|"reply"|"agreed"|"note", "answer", "at", "line",
+                  "from_member", "display_name", "mine", "starts_at", "ends_at", "location",
+                  "source": "log"|"store"|"agreement"}]
+    `line` is plain language written from the structured fields, never more than the message carries.
+    404 without a Circle or for an unknown thread.
+- GET /api/circle/members  who is in the Circle, where they are (if shared) and whether a box of theirs was seen
+    {"configured", "circle_id", "member_id", "connect": [two config lines], "members": [{"member_id",
+     "display_name", "mine", "has_box": true|null, "box_seen", "place": {"place", "source", "shared_at", "expires_at"}|null}]}
+
+The GETs for the screen (events, sharing, threads, members) answer 200 in every state (no Circle, no Neon, Neon offline), so the screen can say
+which one it is. None writes anything. The status never reaches Neon (`database` is what the box's own
+timer last saw); threads read the store once per request to add what the log lacks, and skip it when it is down.
 """
 
+import logging
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import yaml
 from fastapi import APIRouter, Depends, HTTPException
 
 from contexts.circle.application.calendar import AgreedEvents, CalendarRemote, upcoming
+from contexts.circle.application.threads import Members, Threads, display, summary
 from contracts.circle import Proposal
+
+log = logging.getLogger("atlas.circle")
+
+STORE_WINDOW = timedelta(days=14)  # how far back the store is read to fill in what the log lacks
+CONNECT = ["circle.member_id: hemdutt", "circle.circle_id: team"]  # the two lines, with example values
 
 SUMMARY_KINDS = ("habit_summary", "impact_count", "game_score")  # CircleSharing's outbox kinds
 
 
-def _circle_config(config_dir: Path | None) -> dict:
-    """config/agent.yaml `circle`, for the settings that have no object when Neon is not configured."""
+def _agent_config(config_dir: Path | None) -> dict:
     if config_dir is None:
         return {}
     try:
-        cfg = (yaml.safe_load((config_dir / "agent.yaml").read_text()) or {}).get("circle") or {}
+        cfg = yaml.safe_load((config_dir / "agent.yaml").read_text()) or {}
     except (OSError, yaml.YAMLError):
         return {}
     return cfg if isinstance(cfg, dict) else {}
+
+
+def _circle_config(config_dir: Path | None) -> dict:
+    """config/agent.yaml `circle`, for the settings that have no object when Neon is not configured."""
+    cfg = _agent_config(config_dir).get("circle") or {}
+    return cfg if isinstance(cfg, dict) else {}
+
+
+def _zone(config_dir: Path | None) -> ZoneInfo:
+    """The box's one time zone (agent.yaml sleep.timezone): conversation lines say "tomorrow 2:00 PM" in it."""
+    sleep = _agent_config(config_dir).get("sleep")
+    try:
+        return ZoneInfo(str((sleep if isinstance(sleep, dict) else {}).get("timezone") or "UTC"))
+    except Exception:
+        return ZoneInfo("UTC")
 
 
 def circle_router(bus, *, circle=None, sharing=None, presence=None, board: CalendarRemote | None = None,
@@ -54,6 +95,58 @@ def circle_router(bus, *, circle=None, sharing=None, presence=None, board: Calen
     names = config.get("names") if isinstance(config.get("names"), dict) else {}
     agreed = AgreedEvents({str(k): str(v) for k, v in names.items() if v})
     bus.subscribe("circle.event.agreed", agreed.on_agreed, replay=True)  # state only: rebuilt from the log
+    threads, people = Threads(), Members()  # state only too: the conversations and who was heard from
+    threads.subscribe(bus)
+    people.subscribe(bus)
+    tz = _zone(config_dir)
+
+    def roster() -> list[str]:
+        return list(getattr(circle, "members", None) or agreed.names)
+
+    def conversations() -> tuple[list[dict], str, bool]:
+        """Every conversation, with what the store adds when it can be read: (threads, source, offline)."""
+        now, rows, source, offline = clock(), [], "log", False
+        store = getattr(circle, "store", None)
+        if store is not None:
+            if getattr(getattr(store, "db", None), "offline", None):  # the timer already found it down: do not wait
+                offline = True
+            else:
+                try:
+                    rows, source = store.since(circle.circle_id, now - STORE_WINDOW), "log+store"
+                except Exception as exc:  # CircleOffline, or a refused read: the log still tells the story
+                    log.warning("circle threads: the store could not be read, showing this box's log: %s", exc)
+                    offline = True
+        return threads.view(circle.circle_id, circle.member_id, agreed.names, roster(), now, tz, extra=rows), source, offline
+
+    @router.get("/api/circle/threads")
+    def thread_list() -> dict:
+        if circle is None:
+            return {"configured": False, "circle_id": None, "member_id": None, "source": "none", "offline": False,
+                    "members": [], "threads": []}
+        found, source, offline = conversations()
+        me = circle.member_id
+        members = [{"member_id": m, "display_name": display(m, agreed.names), "mine": m == me}
+                   for m in dict.fromkeys([me, *roster()])]
+        return {"configured": True, "circle_id": circle.circle_id, "member_id": me, "source": source, "offline": offline,
+                "members": members, "threads": [summary(t) for t in found]}
+
+    @router.get("/api/circle/threads/{thread_id}")
+    def thread(thread_id: str) -> dict:
+        if circle is None:
+            raise HTTPException(404, "the Circle is not configured")
+        found, source, offline = conversations()
+        hit = next((t for t in found if thread_id in t["legs"]), None)
+        if hit is None:
+            raise HTTPException(404, "no such conversation on this box")
+        return {**summary(hit), "messages": hit["messages"], "source": source, "offline": offline,
+                "circle_id": circle.circle_id, "member_id": circle.member_id}
+
+    @router.get("/api/circle/members")
+    def members() -> dict:
+        if circle is None:
+            return {"configured": False, "circle_id": None, "member_id": None, "connect": CONNECT, "members": []}
+        return {"configured": True, "circle_id": circle.circle_id, "member_id": circle.member_id, "connect": CONNECT,
+                "members": people.view(circle.circle_id, circle.member_id, agreed.names, roster(), clock())}
 
     @router.get("/api/circle/events")
     def events() -> dict:

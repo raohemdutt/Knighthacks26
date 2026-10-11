@@ -22,6 +22,9 @@ Reading rules.
   Ahead means better: the higher value, or the lower one when `higher_is_better` is false (joules per token).
 - A statistic that cannot be worked out is too_early as well: an arm with no trials or fewer than two runs, or
   two arms whose runs each repeat one value but differ, which leaves the run-to-run noise unknown.
+- The p in a note is printed to four decimals, or as under 0.0001, unless that rounding would put the printed p
+  on the other side of alpha from the real one (0.049996 is 0.05 to four places); then it gets the fewest
+  significant digits that keep it on its own side, so a note never prints p = 0.05 for an arm called ahead.
 - needed_per_arm is sized on the observed gap at the given alpha and power, so at small n it is a rough guide.
   It is None once the label is decided, and when the observed values are equal, because there is no gap to size
   on. more_a and more_b are None only when more runs of the same kind cannot help (the repeated-value case).
@@ -73,6 +76,11 @@ _T_CORRECTION_LIMIT = 2000
 _BETA_EPS = 1e-15
 _BETA_MAX_ITER = 20000
 _TINY = 1e-300
+#: A p-value in a note is printed to this many decimal places, and one under the floor as "p < 0.0001".
+_P_DECIMALS = 4
+_P_FLOOR = 0.0001
+#: Seventeen significant digits print any float exactly, so widening a p this far always keeps it on its side.
+_P_MAX_SIGNIFICANT = 17
 
 
 # --- the distributions ---------------------------------------------------------------------------------------
@@ -408,15 +416,32 @@ def _more_phrase(more_a: int, more_b: int) -> str:
     return f"{more_a} more for A, {more_b} more for B"
 
 
-def _fmt_p(p: float) -> str:
-    return "p < 0.0001" if p < 0.0001 else f"p = {round(p, 4):g}"
+def _fmt_p(p: float, alpha: float) -> str:
+    """p as a note prints it, always on the same side of alpha as the raw p that decided the label.
+
+    Four decimals, or "p < 0.0001" under the floor (which reads as under alpha only when the floor is not above
+    alpha). When that text would land on the other side of alpha, as 0.049996 rounds to 0.05, the p is printed
+    with the fewest significant digits that keep it on its own side."""
+    under = p < alpha
+    if p < _P_FLOOR:
+        if (_P_FLOOR <= alpha) == under:
+            return f"p < {_P_FLOOR:g}"
+    else:
+        text = f"{round(p, _P_DECIMALS):g}"
+        if (float(text) < alpha) == under:
+            return f"p = {text}"
+    for digits in range(1, _P_MAX_SIGNIFICANT + 1):
+        text = f"{p:.{digits}g}"
+        if (float(text) < alpha) == under:
+            return f"p = {text}"
+    raise ArithmeticError(f"p = {p!r} could not be printed on the same side of alpha = {alpha!r}")
 
 
-def _stat_text(name: str, statistic: float, df: float | None, p: float) -> str:
+def _stat_text(name: str, statistic: float, df: float | None, p: float, alpha: float) -> str:
     parts = [f"{name} = {statistic:.3f}"]
     if df is not None:
         parts.append(f"df = {df:.1f}")
-    parts.append(_fmt_p(p))
+    parts.append(_fmt_p(p, alpha))
     return ", ".join(parts)
 
 
@@ -449,10 +474,10 @@ def _read_rates(a: Counts, b: Counts, higher_is_better: bool, alpha: float, powe
     sized = trials_per_arm(rate_a, rate_b, alpha=alpha, power=power) if diff else None
     needed, more_a, more_b = _remaining(label, p, a.n, b.n, floor, sized)
     if label in (B_AHEAD, A_AHEAD):
-        note = _ahead_note(label, _pct(rate_a), _pct(rate_b), _stat_text("z", z, None, p), higher_is_better)
+        note = _ahead_note(label, _pct(rate_a), _pct(rate_b), _stat_text("z", z, None, p, alpha), higher_is_better)
     elif label == NO_DIFFERENCE:
-        note = (f"no difference shown: B {_pct(rate_b)} against A {_pct(rate_a)} ({_stat_text('z', z, None, p)}); "
-                + _sizing_tail(needed, more_a, more_b, "trials", power))
+        note = (f"no difference shown: B {_pct(rate_b)} against A {_pct(rate_a)} "
+                f"({_stat_text('z', z, None, p, alpha)}); " + _sizing_tail(needed, more_a, more_b, "trials", power))
     else:
         trial = "trial" if a.n == 1 else "trials"
         success = "success" if a.x == 1 else "successes"
@@ -473,11 +498,11 @@ def _read_runs(a: Samples, b: Samples, higher_is_better: bool, alpha: float, pow
         sized = runs_per_arm(spread, abs(diff), alpha=alpha, power=power)
     needed, more_a, more_b = _remaining(label, p, a.n, b.n, floor, sized)
     if label in (B_AHEAD, A_AHEAD):
-        note = _ahead_note(label, f"mean {a.mean:.4g}", f"mean {b.mean:.4g}", _stat_text("t", t, df, p),
+        note = _ahead_note(label, f"mean {a.mean:.4g}", f"mean {b.mean:.4g}", _stat_text("t", t, df, p, alpha),
                            higher_is_better)
     elif label == NO_DIFFERENCE:
         note = (f"no difference shown: B mean {b.mean:.4g} against A mean {a.mean:.4g} "
-                f"({_stat_text('t', t, df, p)}); " + _sizing_tail(needed, more_a, more_b, "runs", power))
+                f"({_stat_text('t', t, df, p, alpha)}); " + _sizing_tail(needed, more_a, more_b, "runs", power))
     elif more_a is None:
         note = (f"too early to call: both arms repeat one value ({a.mean:.4g} and {b.mean:.4g}), so the "
                 "run-to-run noise cannot be estimated")

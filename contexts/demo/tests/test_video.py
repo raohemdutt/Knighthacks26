@@ -1,4 +1,5 @@
 import shutil
+from pathlib import Path
 import subprocess
 
 import pytest
@@ -75,3 +76,44 @@ def test_check_reads_a_real_file(tmp_path, capsys):
     subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=64x64:d=2", str(clip)], check=True)
     assert main(["video", "check", str(clip)]) == 1
     assert "FAIL  duration 2.00 s" in capsys.readouterr().out
+
+
+def test_the_remotion_timeline_is_frame_exact_and_uses_clips_that_exist(tmp_path):
+    (tmp_path / "slot-5.mp4").write_bytes(b"")
+    t = video.timeline(clips_dir=tmp_path)
+    assert (t["fps"], t["slot_frames"], t["duration_frames"]) == (30, 1794, 17940)
+    assert [s["start_frame"] for s in t["slots"]] == [k * 1794 for k in range(10)]
+    assert t["slots"][5]["clip"] == "clips/slot-5.mp4" and t["slots"][4]["clip"] is None
+
+
+def test_the_committed_remotion_timeline_matches_the_layout():
+    """video/src/timeline.json is generated (`npm run timeline`); a layout change must regenerate it."""
+    import json
+    from pathlib import Path
+
+    committed = json.loads((Path(__file__).parents[3] / "video" / "src" / "timeline.json").read_text(encoding="utf-8"))
+    fresh = video.timeline(clips_dir=Path("no-such-dir"))
+    strip = lambda t: {**t, "slots": [{**s, "clip": None} for s in t["slots"]]}  # clips differ per machine
+    assert strip(committed) == strip(fresh)
+
+
+def test_every_slot_has_an_opening_line_that_fits_a_caption():
+    for s in video.SLOTS:
+        assert s.line and len(s.line) <= 140, s.title
+    assert all(s["line"] for s in video.timeline(clips_dir=Path("no-such-dir"))["slots"])
+
+
+def test_the_spoken_script_covers_every_slot_and_fits_each_minute():
+    """video/script.yaml is the narration; voice.json is its timing (video/scripts/voice.py). Neither may overflow a slot."""
+    import json
+
+    import yaml
+
+    root = Path(__file__).parents[3] / "video"
+    script = yaml.safe_load((root / "script.yaml").read_text(encoding="utf-8"))
+    assert sorted(int(k) for k in script["slots"]) == list(range(10))
+    timing = json.loads((root / "src" / "voice.json").read_text(encoding="utf-8"))["slots"]
+    for key in range(10):
+        slot = timing[str(key)]
+        assert slot["ends_at_s"] <= video.SLOT_S, f"slot {key} narration overflows its slot"
+        assert [l["text"] for l in slot["lines"]] == [l["text"].strip() for l in script["slots"][key]["lines"]], f"slot {key}: voice.json is stale, run video/scripts/voice.py"

@@ -23,7 +23,8 @@ from bus import EventBus
 from contexts.agent.application.loop import ODD_HOURS_DESCRIPTION, ODD_HOURS_RULE, AgentLoop
 from contexts.agent.application.planner import Planner
 from contexts.agent.application.qa import QA, SleepSchedule
-from contexts.agent.application.web_port import HubWebTools
+from contexts.agent.application.talk import Talk, TalkConfig
+from contexts.agent.application.web_port import HubWebTools, TavilyWebTools
 from contexts.agent.domain.rules import AlertHistory, RuleEvaluator, load_rules
 from contexts.capture.application.retention import prune_frames
 from contexts.capture.application.service import CaptureService
@@ -40,6 +41,7 @@ from contexts.day.application.loop import DayLoop, day_phone
 from contexts.connectors.infrastructure.mcp_client import McpConnector
 from contexts.learning.application.board import LearningBoard
 from contexts.learning.application.export import DatasetExporter
+from contexts.learning.application.lab_view import LabView
 from contexts.memory.application.embedder import embedder_from
 from contexts.memory.application.indexer import VectorIndexer
 from contexts.memory.application.projection import MemoryProjection
@@ -53,19 +55,26 @@ from contexts.habits.domain.config import Schedule as HabitsSchedule
 from contexts.habits.domain.config import load_config as load_habits
 from contexts.habits.domain.members import MemberHabits
 from contexts.habits.domain.tracker import HabitTracker
+from contexts.day.application.coach_feedback import CoachFeedback
+from contexts.impact.application.story import Factors, ImpactStory, RuleBook
 from contexts.impact.domain.waste_watch import WasteWatch
 from contexts.play.domain.game import SortIt
 from contexts.perception.application.identity import IdentityService
 from contexts.perception.application.service import PerceptionService
+from contexts.perception.infrastructure.expression import build_expression_reader
 from contexts.perception.infrastructure.identity_store import IdentityStore
+from contexts.perception.infrastructure.photo import build_photo_reader
 from contexts.perception.infrastructure.recognizer import build_recognizer
 from contexts.perception.domain.zones import ZoneEngine
 from contexts.play.dayrun.service import DayRun
+from contexts.play.dayrun.agreed import AgreedPlans
 from contexts.play.league import League, load_config as load_league
 from contexts.play.league.application.sync import LeagueSync
 from contexts.play.league.infrastructure.neon import NeonLeague
 from contexts.play.domain.pathfinding import SortingRules, ZoneMap
 from contexts.play.domain.places import PlaceSet
+from contexts.play.room.live import RoomLive
+from contexts.play.room.plan import RoomError, load_room, room_path
 from contexts.profiles import Profile, load_profile
 from contexts.vault import KeyRing, PictureLedger, Policy, Vault, Wiper
 from contexts.workspace.domain.approvals import Approvals
@@ -112,6 +121,7 @@ class Atlas:
     rules: RuleEvaluator | None = None  # GET /api/rules, the Rules screen's switches (X6)
     alerts: AlertHistory | None = None  # GET /api/alerts
     game: SortIt | None = None
+    room: RoomLive | None = None  # the room twin: floor plan, live tracks on it, Sort It routes in metres
     waste: WasteWatch | None = None
     habits: HabitTracker | None = None
     nudger: Nudger | None = None
@@ -131,12 +141,17 @@ class Atlas:
     wiper: Wiper | None = None
     pictures: PictureLedger | None = None  # V7: camera pictures cleared to leave, per approval
     learning: LearningBoard | None = None  # where each taught task is (X10)
+    lab_view: LabView | None = None  # the Learning lab screen: one story per training run, rebuilt from the log
     capture: CaptureService | None = None  # cameras -> detector -> observations, only where there is a detector (C6)
     identity: IdentityService | None = None  # opt-in owner recognition (P9); off by default
     telemetry: object | None = None  # TelemetryService when ATLAS_TELEMETRY_SOURCE is set; off by default
     profile: Profile | None = None  # GET /api/profile: the vocabulary and which config files are overridden
     league: League | None = None  # the friends' weekly game (contexts/play/league); GET /api/league
     league_sync: LeagueSync | None = None  # friends' rows in, declarations out; only with Neon
+    impact: ImpactStory | None = None  # the Impact screen's story over Waste Watch; GET /api/impact/story
+    coach_feedback: CoachFeedback | None = None  # "Was that right?" about a break; GET /api/day/coach/feedback
+    spot: object | None = None  # SpotContext: the inspection (SPOT) dashboard, contexts/spot; GET /api/spot/*
+    face_share: object | None = None  # FaceShare (contexts/circle): a friend's box recognises you; off by default
     tasks: list[asyncio.Task] = field(default_factory=list)
     _last_retention: datetime | None = None
     _offline: set[str] = field(default_factory=set)  # tick jobs whose Neon is down (logged once)
@@ -167,6 +182,7 @@ class Atlas:
                 ("circle", (lambda: asyncio.to_thread(self.circle.poll)) if self.circle else None),  # network I/O with Neon
                 ("shares", (lambda: asyncio.to_thread(self.sharing.sync, now)) if self.sharing else None),
                 ("presence", (lambda: asyncio.to_thread(self.presence_sync.sync, now)) if self.presence_sync else None),
+                ("face share", (lambda: asyncio.to_thread(self.face_share.poll)) if self.face_share else None),  # expiry, then the Circle
                 ("league", (lambda: self.league.flush(now)) if self.league else None),  # close a week the clock passed
                 ("league sync", (lambda: asyncio.to_thread(self.league_sync.sync, now)) if self.league_sync else None),
                 ("agent loop", (lambda: self.loop.tick(now)) if self.loop.due(now) else None),
@@ -215,11 +231,27 @@ class Atlas:
         await self.hub.close()
 
 
+def circle_from_env(cfg: dict, env) -> dict:
+    """Join a Circle from `.env` without editing the committed config (G6: the Jetson and a laptop in one circle):
+    ATLAS_CIRCLE_MEMBER, ATLAS_CIRCLE_ID, and ATLAS_CIRCLE_SHARE=1 to opt in to presence and summaries."""
+    out = dict(cfg)
+    if env.get("ATLAS_CIRCLE_MEMBER"):
+        out["member_id"] = env["ATLAS_CIRCLE_MEMBER"]
+    if env.get("ATLAS_CIRCLE_ID"):
+        out["circle_id"] = env["ATLAS_CIRCLE_ID"]
+    if env.get("ATLAS_CIRCLE_SHARE") == "1":
+        out["share_presence"] = out["share_summaries"] = True
+    if env.get("ATLAS_CIRCLE_FACE_SHARE") == "1":  # face share: its own switch, independent of the ones above
+        out["face_share"] = True
+    return out
+
+
 def build(settings: Settings | None = None) -> Atlas:
     s = settings or Settings()
     agent_cfg = yaml.safe_load((s.config_dir / "agent.yaml").read_text()) or {}
     profile = load_profile(s.config_dir, s.profile)  # the student by default: then nothing below changes
     agent_cfg = profile.layer("agent.yaml", agent_cfg)
+    agent_cfg["circle"] = circle_from_env(agent_cfg.get("circle") or {}, os.environ)
     bus = EventBus(s.data_dir / "events")
 
     # Runtime (R1): config/models.yaml picks the models; ATLAS_LLM_URL points at a llama-server.
@@ -249,6 +281,8 @@ def build(settings: Settings | None = None) -> Atlas:
     specs = load_specs(s.config_dir / "connectors.yaml") if s.connectors else []
     hub = ConnectorHub(specs, factory=McpConnector)
     web = HubWebTools(hub) if "browser" in hub.specs else None
+    if os.environ.get("TAVILY_API_KEY"):  # fast search over an API; the browser keeps Reddit and page reading
+        web = TavilyWebTools(os.environ["TAVILY_API_KEY"], fallback=web)
 
     qa = QA(runtime, memory, clock=lambda: datetime.now(UTC), sleep=SleepSchedule.load(s.config_dir / "agent.yaml"),
             web=web, subreddit=agent_cfg.get("subreddit", "ucf"), load_keyframe=load_keyframe)
@@ -256,6 +290,11 @@ def build(settings: Settings | None = None) -> Atlas:
     if "places" in hub.specs:  # K8: "what should I eat?" uses real nearby places
         planner.places = lambda kind: hub.call_tool("places.nearby", {"kind": kind})
     qa.planner = planner
+    # Conversation: small talk and simple questions, after the planner and the pre-fetch passed (agent.yaml `talk:`).
+    talk = Talk(runtime, qa.clock, memory=memory, config=TalkConfig.of(agent_cfg.get("talk")), tz=qa.sleep.tz, web=bool(web))
+    talk.about = profile.description
+    if talk.config.enabled:  # ATLAS_TALK=0 or `talk.enabled: false`: every open-ended question goes to the tool loop
+        qa.talk = talk
     rules = RuleEvaluator(load_rules(profile.path("rules.yaml")), builtin={ODD_HOURS_RULE: ODD_HOURS_DESCRIPTION})
     alerts = AlertHistory()
 
@@ -283,12 +322,17 @@ def build(settings: Settings | None = None) -> Atlas:
     hub.offline = lambda: policy.offline  # offline pauses every connector read and write (V5, H4)
     policy.subscribe(bus)
     # Owner recognition (P9): opt-in, templates encrypted under data/vault/identity/. Unavailable without the SFace model.
-    identity = IdentityService(IdentityStore(s.data_dir, vault), build_recognizer())
+    # Face profile: photos need OpenCV; apparent expression needs its model file too (each reports itself unavailable without).
+    identity = IdentityService(IdentityStore(s.data_dir, vault), build_recognizer(),
+                               expression_reader=build_expression_reader(), photo_reader=build_photo_reader())
+    bus.subscribe("perception.expression", identity.on_expression, replay=True)  # the series GET /identity/expressions answers from
     bus.subscribe("perception.identity", identity.on_changed, replay=True)
     wiper = Wiper(s.data_dir, memory_db=s.data_dir / "memory.sqlite", live_memory=store)  # the open store is emptied too
     bus.subscribe("vault.wipe.requested", wiper.on_wipe_requested)
     pictures = PictureLedger(s.data_dir)  # V7: rebuilds from the log; GET /vault/egress shows it beside the firewall's bytes
     pictures.subscribe(bus)
+    bus.subscribe("vault.wipe.requested", identity.on_wipe)  # live only: a wipe of everything also empties the expression series in memory
+    bus.subscribe("vault.wipe.requested", talk.on_wipe)  # live only: the turns of a conversation are not kept past a wipe
     EpisodeSummarizer(store, runtime).subscribe(bus)  # live only, in the background: one model call per closed episode (M3)
     # Semantic search (M5): off unless models.yaml sets embeddings.text. Live only, in the background, after the projection.
     memory.embedder = embedder_from(runtime, models_yaml)
@@ -302,6 +346,7 @@ def build(settings: Settings | None = None) -> Atlas:
     bus.subscribe("workspace.action.completed", approvals.on_completed, replay=True)
     # Live only: model calls, executors, phone pushes.
     bus.subscribe("experience.question.asked", bus.in_background(qa.on_question))  # model calls take seconds
+    bus.subscribe("agent.answer.generated", talk.on_answer)  # live only: "how's your day?" counts this session's answers
     bus.subscribe("connector.item.synced", bus.in_background(planner.on_item))  # exam within 48 h -> plan (A8)
     bus.subscribe("experience.approval.decided", bus.in_background(approvals.on_decided))  # executors do I/O
     if ntfy:
@@ -341,6 +386,25 @@ def build(settings: Settings | None = None) -> Atlas:
         bus.subscribe("perception.faces", game.on_faces)
         bus.subscribe("perception.zone", game.on_zone_event)
         bus.subscribe("play.round.scored", game.on_scored, replay=True)  # state only: rounds played before a restart
+
+    # The room twin (X18): config/rooms/<name>.yaml (ATLAS_ROOM, or `room:` in agent.yaml; default dorm). Tracks are
+    # put on the floor plan through each camera's homography; Sort It rounds get a route in room space.
+    room = None
+    room_file = room_path(s.config_dir, agent_cfg.get("room"))
+    if room_file is not None and sorting.exists():
+        try:
+            room = RoomLive(load_room(room_file), SortingRules.load(sorting),
+                            active_round=lambda: game.round.round_id if game and game.round else None)
+        except RoomError as err:
+            log.warning("room twin off: %s: %s", room_file, err)
+    if room is not None:
+        bus.subscribe("perception.observation", room.on_observation, replay=True)  # where things were last seen
+        bus.subscribe("perception.person.identified", room.on_identified, replay=True)
+        bus.subscribe("perception.person.lost", room.on_lost, replay=True)
+        bus.subscribe("play.round.started", room.on_round_started)  # live only: plans and publishes play.route.planned
+        bus.subscribe("play.round.scored", room.on_round_scored, replay=True)  # state only: the sitting's tally
+        if game is not None:
+            game.pick_item = room.held_item  # a round is about the thing the camera sees in the player's hand
 
     # Waste Watch (E1, E2): counts rebuild from the log, so they survive restarts.
     waste = None
@@ -428,15 +492,22 @@ def build(settings: Settings | None = None) -> Atlas:
     # Day Run (S4, S6): play tomorrow on the place packs before living it. No model calls.
     dayrun = DayRun(places, memory=memory, habits=habits, presence=presence, hub=hub,
                     config_dir=s.config_dir, data_dir=s.data_dir, profile=profile) if places else None
+    if dayrun and circle:  # a plan the Circle agreed is a fixed block of each attendee's day, from this box's own log
+        dayrun.agreed = AgreedPlans(circle_cfg["member_id"])
+        bus.subscribe("circle.event.agreed", dayrun.agreed.on_agreed, replay=True)  # state only
 
     # The Day loop (D1): the morning plan, the live status and the evening review, unasked. Plans, statuses and
     # reviews rebuild from the log; deciding and proposing cards is live only.
     day = None
     if dayrun:
-        day = DayLoop(dayrun, places, config_dir=s.config_dir, habits=habits, memory=memory, waste=waste, presence=presence, hub=hub)
+        # The narrator (D3) says those moments in words (`day.narrated`): templates always, the model (agent.yaml
+        # `day.narration`, lowest priority, live only) when the runtime is a real one.
+        day = DayLoop(dayrun, places, config_dir=s.config_dir, habits=habits, memory=memory, waste=waste, presence=presence, hub=hub,
+                      runtime=runtime, narration=agent_cfg.get("day"), description=profile.description)
         day.subscribe(bus)
-        if ntfy:
-            bus.subscribe("day.", day_phone(ntfy, s.ntfy_topic))  # the plan, a re-plan and the review on the phone
+        talk.day_facts = lambda: day.in_words(datetime.now(UTC))  # the person's day, in the narrator's words
+        if ntfy:  # the plan, a re-plan and the review on the phone, in the narrator's words when it is on
+            bus.subscribe("day.", day_phone(ntfy, s.ntfy_topic, narrated=day.narrator.mode != "off"))
 
     # The League (contexts/play/league): the friends' weekly game. The standings rebuild from the log; the
     # follow-ups (GroupMe post, Circle plan) and the stake/dare executor are live and behind approval cards.
@@ -454,9 +525,47 @@ def build(settings: Settings | None = None) -> Atlas:
         if neon and board:
             league_sync = LeagueSync(NeonLeague(neon, board), league)
 
+    # Face share (contexts/circle/application/face_share.py), OFF unless `circle.face_share: true` or
+    # ATLAS_CIRCLE_FACE_SHARE=1: a member enrolled on their own box lets named friends' boxes recognise them. The
+    # template leaves only sealed to one friend's box, after a card on each side. While off, a box that never had it
+    # on reads and writes nothing for it, and the endpoints answer 409. It wraps the circle_share executor the way
+    # the League does: only its own two card kinds (face_share, face_accept) are handled, the rest pass through.
+    face_share = None
+    if circle:
+        from contexts.circle.application.face_share import FaceShare, InMemorySealedStore
+        from contexts.circle.infrastructure.neon_sealed import NeonSealedStore
+
+        face_share = FaceShare(circle_cfg["circle_id"], circle_cfg["member_id"],
+                               NeonSealedStore(neon) if neon else InMemorySealedStore(), identity, vault, s.data_dir,
+                               enabled=bool(circle_cfg.get("face_share")), names=circle_cfg.get("names") or {},
+                               days=int(circle_cfg.get("face_share_days") or 30), tz=qa.sleep.tz, publish=bus.publish)
+        face_share.fallback = approvals.executors.get("circle_share")
+        approvals.executors["circle_share"] = face_share.executor
+        bus.subscribe("vault.wipe.requested", bus.in_background(face_share.on_wipe))  # live only: takes the shares back
+
     # Learning board (X10): the Teach screen's view of tasks, runs and deployed models; rebuilt from the log.
     learning = LearningBoard()
     learning.subscribe(bus)
+    lab_view = LabView(exports_dir=s.data_dir / "exports", models_dir=s.data_dir / "models")  # GET /api/learning/lab
+    lab_view.subscribe(bus)
+
+    # The Impact screen: what Waste Watch's counts mean (estimated ranges from config/impact.yaml), the disposal
+    # feed with each rule, the weekly goal, milestones and the Sort It practice set. Reads Waste Watch; counts nothing itself.
+    impact = None
+    if waste:
+        impact = ImpactStory(waste, RuleBook.load(sorting, s.config_dir), Factors.load(s.config_dir / "impact.yaml"),
+                             tz=habits.sched.tz if habits else qa.sleep.tz, frames_dir=s.data_dir / "frames", profile=profile.name)
+        impact.subscribe(bus)  # after Waste Watch: a milestone is checked against counts that already hold the disposal
+        if league:
+            league.impact = impact  # GET /api/league's team_waste block: the week's milestone and the practice-set size
+        if day:  # the evening review and its narration mention the day's sorting; a port, so Day never imports Impact
+            day.planner.waste_clause = impact.day_clause
+
+    # The coach's feedback loop: "Was that right?" about a break -> calibration -> a teach task as an approval card.
+    coach_feedback = None
+    if day:
+        coach_feedback = CoachFeedback(day.coach, memory=memory, learning=learning, **(agent_cfg.get("coach_feedback") or {}))
+        coach_feedback.subscribe(bus)
 
     # Cameras (C1, P1, P2, P6): config/cameras.yaml; None unless a detector engine is on this machine.
     capture = CaptureService.load(s.config_dir / "cameras.yaml", bus, models_yaml=models_yaml, data_dir=s.data_dir, policy=policy)
@@ -469,9 +578,18 @@ def build(settings: Settings | None = None) -> Atlas:
 
         telemetry = build_telemetry(os.environ["ATLAS_TELEMETRY_SOURCE"], bus)
 
-    return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, rules=rules, alerts=alerts, game=game,
+    # Inspection (contexts/spot): a robot's missions on the same box and log. The live picture and the work-order list
+    # rebuild from `spot.` events; the work-order executor only writes a local file, and only after an approval.
+    from contexts.spot.wiring import build_spot
+
+    spot = build_spot(s.data_dir, bus, runtime, approvals)
+
+    return Atlas(settings=s, bus=bus, qa=qa, approvals=approvals, hub=hub, loop=loop, zones=zones, rules=rules, alerts=alerts, game=game, room=room,
                  waste=waste, circle=circle, presence=presence, zone_engine=zone_engine, sharing=sharing,
                  memory=memory, projection=projection, habits=habits, nudger=nudger,
                  presence_sync=presence_sync, board=board, vault=vault, policy=policy, wiper=wiper, pictures=pictures,
                  places=places, dayrun=dayrun, day=day, capture=capture, identity=identity, learning=learning,
-                 telemetry=telemetry, profile=profile, league=league, league_sync=league_sync)
+                 lab_view=lab_view,
+                 telemetry=telemetry, profile=profile, league=league, league_sync=league_sync,
+                 face_share=face_share,
+                 impact=impact, coach_feedback=coach_feedback, spot=spot)

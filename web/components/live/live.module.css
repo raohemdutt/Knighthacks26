@@ -17,10 +17,23 @@
   text-align: left;
   color: var(--text);
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: var(--radius);
+  box-shadow: var(--sh-raised);
   overflow: hidden;
   cursor: pointer;
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .tile:hover {
+    transform: translateY(-2px);
+  }
+}
+
+.tile:active {
+  box-shadow: var(--sh-inset);
+  transform: scale(0.98);
 }
 
 .tileOpen {
@@ -32,7 +45,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 12px 16px;
 }
 
 .name {
@@ -41,10 +54,10 @@
 
 .status {
   font-size: 0.8rem;
-  padding: 2px 8px;
-  border-radius: 999px;
+  padding: 3px 12px;
+  border-radius: var(--radius-pill);
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .statusBad {
@@ -56,7 +69,11 @@
   position: relative;
   width: 100%;
   aspect-ratio: 16 / 9;
-  background: #000;
+  background: var(--media-bg);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin: 0 12px;
+  width: calc(100% - 24px);
 }
 
 .view img,
@@ -71,16 +88,17 @@
   object-fit: fill;
 }
 
-/* The overlay's coordinate system is 1600 x 900 (the frame's 16:9), so strokes and text are not stretched. */
+/* The overlay's coordinate system is 1600 x 900 (the frame's 16:9), so strokes and text are not stretched. The zone and
+   box colours are drawn on the camera picture, which is dark in both themes, so they are the same in both. */
 .zone {
-  fill: rgba(92, 225, 198, 0.08);
-  stroke: var(--accent);
+  fill: rgba(96, 165, 250, 0.12);
+  stroke: #93c5fd;
   stroke-width: 3;
   stroke-dasharray: 14 9;
 }
 
 .zoneLabel {
-  fill: var(--accent);
+  fill: #bfdbfe;
   font-size: 30px;
 }
 
@@ -107,7 +125,7 @@
 }
 
 .foot {
-  padding: 8px 12px 10px;
+  padding: 12px 16px 16px;
   color: var(--muted);
   font-size: 0.85rem;
 }

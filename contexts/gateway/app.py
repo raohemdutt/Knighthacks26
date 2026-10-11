@@ -5,6 +5,7 @@
 - WS  /ws                      every bus event as JSON, live (the PWA's feed); while an answer is being written,
                                also {"type": "agent.answer.delta", "question_id", "text"} pieces (not logged; A11)
 - POST /api/ask                {text} -> the answer with citations (also on /ws)
+- POST /api/ask/stream         the same as lines of JSON as the answer is written: {"delta"}..., then {"final"} (the box's voice)
 - GET  /api/approvals          pending approval cards
 - POST /api/approvals/{id}     {decision: approve|deny} (ntfy buttons call this)
 - POST /api/teach              {task, instruction, ...} -> approval card for the export
@@ -17,8 +18,15 @@
 - GET  /api/day/now            the Day loop: live status, today's plan, a pending re-plan, the review (D1)
 - GET  /api/day/plan?day=      a day's plan with its moves in Day Run's editor shape; POST {moves?, from_here?} remakes it
 - GET  /api/play/route         ?item=can&x=&y= -> A* route to the right bin (S2)
+- GET  /api/play/room-route    ?item=can[&from_track=|&x=&y=] -> the same walk on the floor plan, in metres (X18)
+- GET  /api/room, /api/room/live    the room twin: floor plan + calibration + zones on the floor; live tracks on it
 - GET  /api/play/accuracy      Sort It round 1 vs round 5 accuracy (S1)
 - GET  /api/impact             Waste Watch counts, diversion rate, before vs after nudges (E2)
+- GET  /api/impact/story       the Impact screen: the week in estimated real units, the disposal feed with each rule,
+                               the weekly goal, milestones, which rules file is active (contexts/impact/api.py)
+- GET  /api/impact/practice    the Sort It practice set: this week's mistakes, most first; POST {label} is "teach me"
+- GET  /api/day/coach/feedback recent sessions' breaks with "Was that right?", per-trigger precision, what Atlas is learning;
+                               POST /api/day/coach/corrections {day, block_id, break_index, right, answer?, note?}
 - POST /api/presence           {place, hours} share a named place with the Circle (G5, opt-in), up to 12 hours
 - DELETE /api/presence         stop sharing my place now
 - GET  /api/presence           friends' current places
@@ -26,10 +34,16 @@
 - GET  /api/circle/events      the Circle's shared calendar: agreed events, soonest first
 - POST /api/circle/proposals   {title, start, end, location?, invitees?} -> approval card for a plan with friends (G1)
 - GET  /api/circle/sharing     what leaves this box for the Circle: settings, outbox counts, Neon up or down
+- GET  /api/circle/face-share  friends whose boxes can recognise you and the other way round; POST .../{friend}/share,
+                               /revoke, /review, /forget, /trust-key. 409 while it is switched off (the default)
 - GET  /api/invites[/{name}]   calendar invites (.ics) created after approval, to open or share (K2)
 - GET  /api/places             place packs; POST one as YAML/JSON (validated) (S5)
 - GET  /api/play/campus-route  ?from=ucf.union&to=ucf.hec[&depart=&due=] or to=friend:<member> (S5)
+- GET  /api/places/route      ?from=&to=&arrive_by=|depart=  "when to leave": times, minutes, metres, the line walked
+- GET  /api/places/map/{pack} the pack's campus map (buildings, paths; © OpenStreetMap contributors) for the phone to draw
 - GET  /api/learning        taught tasks: stage, progress, scores, deployed models (X10)
+- GET  /api/learning/lab    training runs as stories for the Learning lab screen; /api/learning/lab/{run_id} is one
+- GET  /api/learning/lab/bench    the lab's benchmark and energy rows; /experiments is its timeline; POST /routing/simulate
 - GET  /api/profile         who this box serves: name, description, vocabulary, overridden config files
 - GET  /api/league          the League: this week's standings, worst and best with reasons, stake, dares, team waste line
 - GET  /api/league/me       this member's breakdown by target
@@ -41,6 +55,8 @@
 - GET  /capture/status      camera status and detector counts, where cameras run (C6)
 - GET  /health
 - GET  /runtime/models      installed model versions, the current one and what llama-server really serves (R7)
+- GET  /runtime/stats       detector FPS, on-device tok/s and caption latency, trainer and teacher speed, eval scores
+                               per deployed model; each with its record and measured time, or null and why (R5)
 
 Writes need `Authorization: Bearer $ATLAS_TOKEN` when ATLAS_TOKEN is set; the
 tailnet keeps strangers out, the token keeps a guest on the Wi-Fi from
@@ -51,6 +67,7 @@ import asyncio
 import contextlib
 import json
 import hmac
+import math
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -59,15 +76,18 @@ from uuid import uuid4
 
 import yaml
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from contexts.gateway.bootstrap import Atlas, Settings, build
 from contexts.agent.application.rule_compiler import RuleCompileError, compile_rule
 from contexts.circle.api import circle_router
+from contexts.circle.face_share_api import face_share_router
 from contexts.circle.application.sharing import CircleOffline
 from contexts.day.api import day_router
+from contexts.day.application.coach_feedback import coach_feedback_router
+from contexts.impact.api import impact_router
 from contexts.habits.api import habits_router
 from contexts.learning.application.export import teach
 from contexts.vault.api import vault_router
@@ -75,6 +95,7 @@ from contexts.memory.api import build_router as memory_router
 from contexts.perception.api import identity_router
 from contexts.perception.zones_api import zones_router
 from contexts.play.dayrun_api import dayrun_router
+from contexts.play.room.api import room_router
 from contexts.profiles.api import profile_router
 from contexts.play.league.api import league_router
 from contexts.voice.proxy import voice_router
@@ -84,7 +105,14 @@ from contracts.experience import ApprovalDecided, QuestionAsked
 from contracts.learning import TaskSpec
 from contexts.capture.api import capture_router
 from contexts.learning.api import learning_router
+from contexts.learning.application.lab_runs import attach as attach_trainer_runs
+from contexts.learning.application.lab_runs import default_runs_dir
+from contexts.learning.lab_api import lab_router
+from contexts.learning.lab_bench_api import lab_bench_router
+from contexts.learning.lab_import import lab_import_router
+from contexts.telemetry.runtime_stats import build_runtime_stats
 from runtime.api import runtime_router
+from runtime.stats_api import stats_router
 from runtime.modelstore import ModelStore
 
 ASK_TIMEOUT_S = 90
@@ -114,6 +142,7 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
     atlas = atlas or build(settings)
     sockets: set[WebSocket] = set()
     waiting: dict[str, asyncio.Future] = {}
+    streams: dict[str, asyncio.Queue] = {}  # question_id -> pieces for a /api/ask/stream caller
 
     async def fan_out(e: Event) -> None:
         if e.type == "agent.answer.generated" and (f := waiting.pop(e.question_id, None)) and not f.done():
@@ -138,9 +167,13 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         """Called from the model's worker thread with each new piece of an answer (A11): straight to the phones,
         never to the log. The final agent.answer.generated is unchanged."""
         loop = app.state.loop
-        if loop is not None and sockets:
+        if loop is None:
+            return
+        if sockets:
             data = json.dumps({"type": "agent.answer.delta", "question_id": question_id, "text": text})
             loop.call_soon_threadsafe(lambda: loop.create_task(send_all(data)))
+        if (pieces := streams.get(question_id)) is not None:
+            loop.call_soon_threadsafe(pieces.put_nowait, text)
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -168,24 +201,49 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
     if atlas.dayrun:  # /api/dayrun/* (S4, S6)
         app.include_router(dayrun_router(atlas.dayrun, publish=atlas.bus.publish, guard=authorized))
     if atlas.day:  # GET /api/day/now, GET/POST /api/day/plan, GET /api/day/patterns (D1)
-        app.include_router(day_router(atlas.day, publish=atlas.bus.publish, guard=authorized, memory=atlas.memory))
+        app.include_router(day_router(atlas.day, publish=atlas.bus.publish, guard=authorized, memory=atlas.memory,
+                                      feedback=atlas.coach_feedback))
+    if atlas.day and atlas.coach_feedback:  # GET /api/day/coach/feedback, POST /api/day/coach/corrections ("Was that right?")
+        app.include_router(coach_feedback_router(atlas.day, atlas.coach_feedback, publish=atlas.bus.publish, guard=authorized))
+    # GET /api/impact/story, GET/POST /api/impact/practice: the Impact screen (404 when Waste Watch is not set up)
+    app.include_router(impact_router(atlas.impact, publish=atlas.bus.publish, guard=authorized))
     if atlas.policy:  # GET/PUT /vault/policy, POST /vault/wipe/request, POST /vault/wipe, GET /vault/egress
         app.include_router(vault_router(atlas.policy, atlas.bus, wiper=atlas.wiper, guard=authorized, pictures=atlas.pictures))
-    if atlas.identity:  # GET/PUT /identity/settings, POST /identity/enroll/start, GET /identity/enroll/status, GET/DELETE /identity/members (P9)
-        app.include_router(identity_router(atlas.identity, atlas.bus, guard=authorized))
+    if atlas.identity:  # /identity/settings, /identity/enroll/start, status, photos, scan/*; /identity/members, present, expressions (P9)
+        # A person can be linked to a Circle member by id; the ids come from the configured Circle, nothing else crosses over.
+        app.include_router(identity_router(atlas.identity, atlas.bus, guard=authorized, circle_members=lambda: (
+            list(dict.fromkeys([atlas.circle.member_id, *(atlas.circle.members or [])])) if atlas.circle else None)))
     if atlas.capture:  # GET /capture/status (C6)
         app.include_router(capture_router(atlas.capture))
     if atlas.learning:  # GET /api/learning (X10)
         app.include_router(learning_router(atlas.learning, publish=atlas.bus.publish, guard=authorized))
+    # GET /api/learning/lab/bench, /experiments, POST /routing/simulate: the lab's recorded numbers (before {run_id})
+    app.include_router(lab_bench_router())
+    if atlas.lab_view:  # the trainer's own step files, folded into the same stories as they are written
+        attach_trainer_runs(atlas.lab_view, default_runs_dir(atlas.settings.data_dir))
+        # POST /api/learning/lab/import: a run's telemetry.jsonl (or eval scores, or manifest) pushed from the lab's side
+        app.include_router(lab_import_router(atlas.lab_view, atlas.bus.publish, guard=authorized))
+    if atlas.lab_view:  # GET /api/learning/lab, /api/learning/lab/{run_id}: the Learning lab screen
+        app.include_router(lab_router(atlas.lab_view, current_model=lambda: {
+            "version": atlas.qa.runtime.model_info().version, "source": "the runtime on this box (the model that answers)"}))
     # GET /api/circle/events, /api/circle/sharing: read-only, and they answer in every state (no Circle, no Neon)
     # POST /api/circle/proposals: an approval card for a plan with friends (G1)
     app.include_router(circle_router(atlas.bus, circle=atlas.circle, sharing=atlas.sharing, presence=atlas.presence,
                                      board=atlas.board, config_dir=atlas.settings.config_dir, guard=authorized))
+    # /api/circle/face-share: every endpoint answers 409 while face sharing is off (the default) or there is no Circle
+    app.include_router(face_share_router(atlas.face_share, atlas.bus, guard=authorized))
     # GET /api/league, /api/league/me (200 in every state); POST /api/league/stake, /api/league/challenges -> approval cards
     app.include_router(league_router(atlas.bus, league=atlas.league, guard=authorized))
+    if atlas.spot:  # /api/spot/*: the inspection (SPOT) dashboard; 200 in every state, also without a kit
+        from contexts.spot.api import spot_router
+
+        app.include_router(spot_router(atlas.spot, atlas.bus, guard=authorized))
     app.include_router(zones_router(atlas.settings.config_dir, lambda: atlas.zone_engine, guard=authorized), prefix="/api")  # set the zones from a browser
+    # GET /api/room, /api/room/live, /api/play/room-route; PUT /api/room/calibration/{camera} (the room twin, X18)
+    app.include_router(room_router(lambda: atlas.room, atlas.settings.config_dir, guard=authorized))
     app.include_router(voice_router(guard=authorized), prefix="/api")  # GET /api/voice/status, POST /api/voice/talk|stop|enabled (X16)
     app.include_router(runtime_router(ModelStore(atlas.settings.data_dir / "models"), llm_url=atlas.settings.llm_url))  # GET /runtime/models (R7)
+    app.include_router(stats_router(build_runtime_stats(atlas.bus, atlas.telemetry).snapshot))  # GET /runtime/stats (R5)
 
     @app.get("/health")
     async def health():
@@ -198,10 +256,45 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         await atlas.bus.publish(QuestionAsked(question_id=qid, text=body.text))  # may answer before returning
         try:
             return await asyncio.wait_for(answer, ASK_TIMEOUT_S)
-        except TimeoutError:
+        except (TimeoutError, asyncio.TimeoutError):  # distinct classes on Python 3.10, which the Jetson runs
             raise HTTPException(504, "the model took too long") from None
         finally:
             waiting.pop(qid, None)
+
+    @app.post("/api/ask/stream", dependencies=[Depends(authorized)])
+    async def ask_stream(body: AskBody):
+        """/api/ask for a caller that wants to start using the answer before it is finished (the box's voice speaks the
+        first sentence while the rest is still being written). Lines of JSON: {"delta": text} for each piece as it comes,
+        then one {"final": <the agent.answer.generated event>}, or {"error": why}."""
+        loop = asyncio.get_running_loop()
+        qid = uuid4().hex
+        answer = waiting[qid] = loop.create_future()
+        pieces = streams[qid] = asyncio.Queue()
+
+        async def lines():
+            try:
+                await atlas.bus.publish(QuestionAsked(question_id=qid, text=body.text))  # may answer before returning
+                deadline = loop.time() + ASK_TIMEOUT_S
+                while True:
+                    next_piece = asyncio.ensure_future(pieces.get())
+                    done, _ = await asyncio.wait({next_piece, answer}, timeout=max(0.0, deadline - loop.time()),
+                                                 return_when=asyncio.FIRST_COMPLETED)
+                    if next_piece in done:
+                        yield json.dumps({"delta": next_piece.result()}) + "\n"
+                        continue
+                    next_piece.cancel()
+                    if answer in done:
+                        while not pieces.empty():
+                            yield json.dumps({"delta": pieces.get_nowait()}) + "\n"
+                        yield json.dumps({"final": answer.result().model_dump(mode="json")}) + "\n"
+                    else:
+                        yield json.dumps({"error": "the model took too long"}) + "\n"
+                    return
+            finally:
+                waiting.pop(qid, None)
+                streams.pop(qid, None)
+
+        return StreamingResponse(lines(), media_type="application/x-ndjson")
 
     @app.get("/api/approvals")
     async def approvals():
@@ -387,8 +480,93 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
         if atlas.places is None:
             raise HTTPException(404, "no place packs loaded")
         return [{"name": p.name, "kind": p.kind, "entry": p.entry,
-                 "places": {pid: pl.model_dump(exclude_none=True) for pid, pl in p.places.items()}}
+                 "places": {pid: pl.model_dump(exclude_none=True) for pid, pl in p.places.items()},
+                 **({"map": f"/api/places/map/{p.name}"} if p.map_file else {})}
                 for p in atlas.places.packs.values()]
+
+    @app.get("/api/places/map/{pack}")
+    async def place_map(pack: str):
+        """The campus as drawn and walked: building footprints, greens, water, roads and the footpath network
+        (config/places/<pack>.map.json, built by scripts/build_campus_pack.py). Map data © OpenStreetMap contributors."""
+        found = atlas.places.packs.get(pack) if atlas.places else None
+        if found is None or found.map_file is None or not found.map_file.is_file():
+            raise HTTPException(404, f"no map for the {pack!r} pack")
+        return FileResponse(found.map_file, media_type="application/json", headers={"Cache-Control": "public, max-age=3600"})
+
+    def place_ref(text: str, what: str) -> str:
+        """A place from a pack id ("ucf.eng2"), a name or alias ("Engineering II", "HEC"), a friend ("friend:maya")
+        or "here" (where the box last saw you)."""
+        text = text.strip()
+        if text.startswith("friend:"):
+            member = text.split(":", 1)[1]
+            shared = {p.member_id.lower(): p for p in atlas.presence.friends(datetime.now(UTC))} if atlas.presence else {}
+            if member.lower() not in shared:
+                raise HTTPException(404, f"{member} isn't sharing a place right now")
+            found = atlas.places.find_shared(shared[member.lower()].place)
+            if not found:
+                raise HTTPException(404, f"{shared[member.lower()].place!r} isn't on any map")
+            return found
+        if text.lower() == "here":
+            tracker = getattr(atlas.day, "tracker", None)
+            seen = (tracker.status.seen_at if tracker and tracker.status and tracker.status.seen_at
+                    else tracker.seen[0] if tracker and tracker.seen else None)
+            if seen is None and atlas.dayrun is not None:
+                seen = atlas.dayrun.walks.ref(atlas.dayrun.cfg.start_place)
+            if seen is None:
+                raise HTTPException(404, "the box has not seen where you are yet")
+            return seen
+        pack, _, place = text.partition(".")
+        if place and pack in atlas.places.packs and (pid := atlas.places.packs[pack].find(place)):
+            return f"{pack}.{pid}"
+        found = atlas.places.find_shared(text) or atlas.places.locate(text)
+        if not found:
+            raise HTTPException(422, f"unknown {what} place {text!r} (use pack.place such as ucf.library, a place's name, or friend:<member>)")
+        return found
+
+    @app.get("/api/places/route")
+    async def place_route(src: str = Query("here", alias="from"), dst: str = Query(alias="to"),
+                          arrive_by: datetime | None = None, depart: datetime | None = None):
+        """When to leave. The walk from one place to another along the real footpaths, with the time to set off
+        for `arrive_by`, or the time you get there if you leave at `depart` (now, when neither is given)."""
+        from contexts.play.domain.walknet import leave_sentence
+
+        if atlas.places is None:
+            raise HTTPException(404, "no place packs loaded")
+        a, b = place_ref(src, "starting"), place_ref(dst, "destination")
+        try:
+            path, minutes = atlas.places.route(a, b)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        line, meters = atlas.places.trace(path)
+        whole = 0 if a == b else max(1, math.ceil(minutes - 1e-9))  # whole minutes, rounded up, as the day plan counts walks
+        tz = getattr(getattr(atlas.day, "clock", None), "tz", None) or UTC
+        if arrive_by is not None:
+            arrive = arrive_by if arrive_by.tzinfo else arrive_by.replace(tzinfo=tz)
+            leave, mode = arrive - timedelta(minutes=whole), "arrive_by"
+        else:
+            leave = (depart if depart.tzinfo else depart.replace(tzinfo=tz)) if depart is not None else datetime.now(UTC).astimezone(tz)
+            arrive, mode = leave + timedelta(minutes=whole), "depart"
+
+        def get(ref: str):
+            pack, place = ref.split(".", 1)
+            return atlas.places.packs[pack].places[place]
+
+        def clock12(t: datetime) -> str:
+            return t.strftime("%I:%M %p").lstrip("0")
+
+        to_name = get(b).name.split(" (")[0]
+        if a == b:
+            sentence = f"You are already at {to_name}"
+        elif mode == "arrive_by":
+            sentence = leave_sentence(clock12(leave), whole, to_name, meters)
+        else:
+            sentence = leave_sentence(clock12(leave), whole, to_name, meters).replace("Leave by", "Leave at", 1) + f": there by {clock12(arrive)}"
+        return {"from": a, "to": b, "from_name": get(a).name.split(" (")[0], "to_name": to_name, "mode": mode,
+                "depart": leave.isoformat(), "arrive": arrive.isoformat(), "minutes": minutes, "walk_minutes": whole,
+                "meters": meters, "path": path, "polyline": line, "sentence": sentence,
+                "from_xy": [get(a).lat, get(a).lon] if get(a).lat is not None else None,
+                "to_xy": [get(b).lat, get(b).lon] if get(b).lat is not None else None,
+                "attribution": "© OpenStreetMap contributors" if line else None}
 
     @app.post("/api/places", dependencies=[Depends(authorized)])
     async def upload_place_pack(request: Request):
@@ -433,7 +611,8 @@ def create_app(settings: Settings | None = None, atlas: Atlas | None = None) -> 
             path, minutes = atlas.places.route(src, dst)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
-        return {"path": path, "minutes": minutes}
+        line, meters = atlas.places.trace(path)
+        return {"path": path, "minutes": minutes, **({"meters": meters, "polyline": line} if line else {})}
 
     @app.websocket("/ws")
     async def events(ws: WebSocket):

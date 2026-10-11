@@ -19,18 +19,20 @@
 # What the task runs. It starts lab\scheduler\run_pool.cmd through conhost --headless, so no
 # console window appears, in your interactive session (the agent CLI needs your login). That file
 # starts python -m lab pool from this clone, appends everything it prints to
-# lab\state\logs\pool.log, and starts the pool again 60 seconds after it exits, whatever the
+# <state dir>\logs\pool.log, and starts the pool again 60 seconds after it exits, whatever the
 # reason. The task is also set to restart if that file itself ends in failure (every minute, up to
 # 999 times, the most Task Scheduler allows), never to stop for running too long (the 72 hour
 # default would end a pool that works), to run on battery, and to ignore a second start while one
 # runs.
 #
-# STOP halts the pool without touching the task. python -m lab stop creates lab\state\STOP; the
+# STOP halts the pool without touching the task. python -m lab stop creates <state dir>\STOP; the
 # pool starts no more sittings and exits once the running ones have ended; run_pool.cmd then waits
 # with the task still registered and running. python -m lab resume removes the file and
-# run_pool.cmd starts the pool again within 30 seconds. Run both from this clone: STOP and the
-# log are in its lab\state, and run_pool.cmd clears LAB_STATE_DIR so that a value left in your
-# user environment cannot move the pool away from them.
+# run_pool.cmd starts the pool again within 30 seconds. The state dir is LAB_STATE_DIR when it is
+# set and not empty, and this clone's lab\state otherwise; run_pool.cmd, the pool it starts and
+# python -m lab stop, resume and pool status all read it the same way, and run_pool.cmd leaves the
+# variable as it is. So run stop and resume from a shell with the same LAB_STATE_DIR as your user
+# environment (the one the task inherits at logon), or with none when that has none.
 #
 # Rehearse without starting anything: python -m lab pool --dry-run prints the schedule the
 # pool would start and starts nothing; python -m lab pool status says whether a pool runs.
@@ -106,5 +108,5 @@ if ($null -eq $registered) {
 }
 Write-Output "registered ${taskName}: starts python -m lab pool at logon of $user and starts it again whenever it exits"
 Write-Output "state: $($registered.State); nothing was started"
-Write-Output "log: $(Join-Path $repoRoot 'lab\state\logs\pool.log')"
+Write-Output "log: $(Join-Path $repoRoot 'lab\state\logs\pool.log'), or logs\pool.log under LAB_STATE_DIR when your user environment sets it"
 Write-Output "halt it without touching the task: python -m lab stop; let it run again: python -m lab resume"

@@ -9,8 +9,10 @@ The budget. At most BUDGET_UNITS (16) units run at once: a Sonnet sitting costs 
 sitting 2 and a Fable sitting 8 (COST). Every sitting counts, not only the pool's own: one
 started by hand (python -m lab sit), or by an earlier pool process that died, holds its units
 from its start row in the ledger until its end row, or until its cap plus LIVE_GRACE_MINUTES
-has passed, and its item is not started a second time meanwhile. --units lowers the budget, to
-leave room for agents the ledger does not see; nothing raises it.
+has passed, and its item is not started a second time meanwhile. A cap has no upper bound, so
+these sit rows are read from the whole ledger (read_live_sittings), never only the last
+LEDGER_LOOKBACK_HOURS. --units lowers the budget, to leave room for agents the ledger does not
+see; nothing raises it.
 
 No fixed cycle. Each sitting runs in a seat: a thread that runs python -m lab sit as a child
 process and waits for its one-line answer. When a seat's sitting ends, the pool records it and
@@ -46,8 +48,8 @@ What it starts. Every candidate is one sit item for one tier:
   pass either, until it has finished (PASS_RULES.md, "Work happens in rounds").
 - the referee duty (Fable, sit --referee): only once python -m lab referee is registered, then
   when a fresh board snapshot newer than the last referee sitting shows GPU queue trouble (a
-  running slot past its cap, a complaint, a queued row that waited twice its minutes), at most
-  every REFEREE_TROUBLE_MINUTES, or REFEREE_EVERY_MINUTES after the last one ended.
+  running slot past its cap, a complaint, a queued row the complain verb would take a complaint
+  from), at most every REFEREE_TROUBLE_MINUTES, or REFEREE_EVERY_MINUTES after the last one ended.
 Board-derived items (tasks, passes, the merge) wait while the snapshot is older than
 --board-max-age minutes (digest.BOARD_STALE_MINUTES): a stale snapshot hides locks taken since.
 
@@ -60,7 +62,14 @@ take them: a Fable sitting therefore starts only when 8 units are free, and smal
 starves it. An item that costs more than the budget is never offered.
 
 After a sitting ends. The ledger rows the pool writes are its memory, so a restarted pool knows
-what its predecessor did (the "pool end" rows of the last LEDGER_LOOKBACK_HOURS):
+what its predecessor did (the "pool end" rows of the last LEDGER_LOOKBACK_HOURS). A predecessor
+that died before it wrote a seat's end row left an orphan: a pool start row with no pool end row.
+When it begins, and on each fill while an orphan of its predecessors is unresolved, the pool
+matches each orphan to its sitting (seat_sitting, among the sit rows started while that pool
+lived) and, once the sitting's sit end row exists, records its outcome as if the seat had ended
+(ok, neutral for stopped or interrupted, failed otherwise) and writes the pool end row its
+predecessor never wrote (source orphan, ended_at the sit end row's time). build_view, status and
+--dry-run never do this, as they write nothing.
 - ok: the item is not offered again until what it changes has moved: a task until a snapshot
   taken after the sitting ended, a pass until the track's counter passes the one it started from
   (its pull request merged), the merge until the merge log has a new entry. A pass or merge
@@ -70,10 +79,17 @@ what its predecessor did (the "pool end" rows of the last LEDGER_LOOKBACK_HOURS)
   Locked or In progress, since that is most likely the failed sitting's own claim, which the
   open-ticket skill continues. After MAX_RESTARTS restarts in a row fail, the item is benched for
   BENCH_HOURS after its last failure. BREAKER_FAILURES failed sittings in a row, whatever the
-  item, pause the pool for PAUSE_MINUTES.
+  item, pause the pool for PAUSE_MINUTES and are the pool's problem (an outage), not the items':
+  the trip starts the streak over and clears every item's failures, so an outage that trips the
+  breaker round after round benches nothing. The history applies the trip, so a restarted pool
+  replaying its end rows arrives at the same counts the live one had.
 - stopped or interrupted: offered again like a failure, without counting one.
 - refused (python -m lab sit started nothing: no CLI, no workspace, no digest, a ledger that
   cannot be written): the pool pauses for PAUSE_MINUTES; the item counts no failure.
+  A child that answered no sitting (it died without its answer line, or sit raised and the
+  dispatcher answered error) is judged by the ledger instead: a sit start row of the seat's
+  sitting (seat_sitting) means it ran, so it failed, and its end row names that sitting; no
+  start row means nothing ran, so it was refused.
 
 STOP. While lab/state/STOP exists the pool starts nothing; the sittings that run hand off and
 end on their own (sit gives them a grace and then kills them), and the pool exits once the last
@@ -85,14 +101,17 @@ status is how the owner watches a pool drain (main is marked exempt and guards t
 Ledger rows, actor ACTOR, stamped with the pool's clock, one per decision: pool begin, pool
 start (a seat starts: tier, task, item, seat, units_held, source, why, the progress it must
 move), pool end (outcome ended; the sitting's own outcome in sitting_outcome, how the pool judged
-it in result, refs.run_id the sitting id), pool bench, pool pause, pool hold (the head of the
+it in result, refs.run_id the sitting id; source orphan and ended_at when a later pool recorded
+it for a predecessor that died, see above), pool bench, pool pause, pool hold (the head of the
 order waits for units; written when the held item changes), pool stop (STOP seen), pool drain
 (Ctrl+C) and pool exit. Nothing a model wrote enters a row; an error text is sit's own message,
 cut at ERROR_CHARS.
 
 State. The running pool holds <state dir>/pool.lock for its whole life, so a second pool is
 refused and status can tell a live pool from a dead one, and rewrites <state dir>/pool.json
-(its seats, units, what is held, benched, paused) after every step. status reads both and the
+(its seats, units, what is held, benched, paused, and the problems of its latest view: a failed
+git fetch, an unresolvable --refine-ref, an unreadable track file or board) after every step, and
+logs a warning whenever those problems change between fills. status reads both and the
 ledger; --dry-run computes the same view a pool would and prints the order, starting nothing
 and writing nothing (it may fetch --refine-ref).
 """
@@ -118,7 +137,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
-from lab.machine import digest, ledger, refine_merge, sit, stop
+from lab.machine import digest, ledger, refine_merge, sit, slots, stop
 from lab.machine import refine_formats as rf
 from lab.machine.lock import FileLock, LockTimeout
 
@@ -147,7 +166,8 @@ PROGRESS_WAIT_HOURS = 6.0      # an ok pass or merge whose pull request has not 
 REFEREE_EVERY_MINUTES = 120.0  # the longest the referee duty waits without queue trouble
 REFEREE_TROUBLE_MINUTES = 30.0 # the shortest gap between referee sittings called by queue trouble
 LIVE_GRACE_MINUTES = 10.0      # past its cap, a sitting with no end row counts as gone after this
-LEDGER_LOOKBACK_HOURS = 24.0   # how far back the ledger is read for sittings and the pool's history
+SEAT_MATCH_MINUTES = 1.0       # a seat owns sit rows of its tier and item started no earlier than this before it
+LEDGER_LOOKBACK_HOURS = 24.0   # how far back the ledger is read for the pool's own history; never for live sittings
 LOCK_WAIT_SECONDS = 2.0        # how long a starting pool waits for pool.lock
 FETCH_MINUTES = 5.0            # how often --refine-ref is fetched
 DEFAULT_REF = "origin/main"
@@ -171,11 +191,15 @@ RESULT_REFUSED = "refused"     # python -m lab sit started nothing
 # the pool's own ledger verbs
 V_BEGIN, V_START, V_END, V_BENCH = "pool begin", "pool start", "pool end", "pool bench"
 V_PAUSE, V_HOLD, V_STOP, V_DRAIN, V_EXIT = "pool pause", "pool hold", "pool stop", "pool drain", "pool exit"
+#: The source of a pool end row a pool wrote for a seat of a predecessor that died before it did.
+ORPHAN_SOURCE = "orphan"
 
+#: The track alternation of the title recognisers, built from the one track list refine_merge owns.
+_TRACK_ALTERNATION = "|".join(re.escape(track) for track in refine_merge.TRACKS)
 _PASS_TITLE = re.compile(
-    r"^(?:first refinement pass|refinement pass [0-9]+), (?P<track>telemetry|learning|plumbing|kernels) track\b",
+    rf"^(?:first refinement pass|refinement pass [0-9]+), (?P<track>{_TRACK_ALTERNATION}) track\b",
     re.IGNORECASE)
-_LOOP_TITLE = re.compile(r"^(?P<track>telemetry|learning|plumbing|kernels) loop, passes\b", re.IGNORECASE)
+_LOOP_TITLE = re.compile(rf"^(?P<track>{_TRACK_ALTERNATION}) loop, passes\b", re.IGNORECASE)
 _MERGE_TITLE = re.compile(r"^(?:first merge pass|merge pass [0-9]+)\b", re.IGNORECASE)
 _PRIORITY = re.compile(r"P(?P<rank>[0-9])", re.IGNORECASE)
 _ID = re.compile(r"^(?P<letters>[A-Za-z]+)(?P<number>[0-9]+)(?P<rest>.*)$")
@@ -287,22 +311,24 @@ class BoardIndex:
 
 def queue_trouble(board: digest.Board, now: dt.datetime) -> list[str]:
     """What on the GPU queue needs the referee: running slots past their cap, complaints on open
-    rows, and queued rows that waited twice their minutes without a complaint."""
+    rows, and queued rows with a complaint due. Each row is judged by the queue verbs' own rules
+    (lab/machine/slots.py): the cap is slots.cap_minutes, a Running row is past it by
+    slots.is_overrun, and a Queued row without a complaint is due one when slots.complaint_due says
+    the complain verb would take it, not answer too_early."""
     found: list[str] = []
-    for row in board.queue:
-        if row.status not in digest.OPEN_QUEUE_STATUSES:
-            continue
+    open_rows = digest.open_queue(board)
+    seen = [slot for _, slot in open_rows]
+    for row, slot in open_rows:
         name = row.task or clip(row.request, 40) or "a row"
         if row.complaint:
             found.append(f"a complaint on {name}")
-        if row.status == "Running" and row.started is not None and row.minutes is not None:
-            cap = row.minutes + (digest.EXTENSION_MINUTES if row.extended else 0)
-            elapsed = digest.minutes_between(row.started, now)
-            if elapsed > cap:
-                found.append(f"{name} running {elapsed} min against a cap of {cap:g}")
-        if (row.status == "Queued" and row.requested is not None and row.minutes is not None
-                and not row.complaint and digest.minutes_between(row.requested, now) >= 2 * row.minutes):
-            found.append(f"{name} queued {digest.minutes_between(row.requested, now)} min, a complaint is due")
+        if slots.is_overrun(slot, now):
+            found.append(f"{name} running {slots.tidy(slots.minutes_between(now, slot.started)):g} min "
+                         f"against a cap of {slots.cap_minutes(slot):g}")
+        if slot.status == slots.QUEUED and not row.complaint and slots.complaint_due(slot, seen, now)[0]:
+            since = slot.requested_at
+            waited = f" {slots.tidy(slots.minutes_between(now, since)):g} min" if since else ""
+            found.append(f"{name} queued{waited}, a complaint is due")
     return found
 
 
@@ -539,6 +565,15 @@ def live_sittings(rows: Iterable[Mapping[str, Any]], now: dt.datetime) -> list[S
     return live
 
 
+def read_live_sittings(state_dir: Path, now: dt.datetime) -> list[SittingInfo]:
+    """live_sittings over every sit row in the ledger. A sitting holds its units until its end
+    row or its cap plus LIVE_GRACE_MINUTES, and a cap has no upper bound, so no lookback is
+    applied: LEDGER_LOOKBACK_HOURS would drop a sitting whose cap runs past it while it still
+    runs. ledger.read scans the whole file either way. Raises OSError when the ledger cannot be
+    read, for the caller to report."""
+    return live_sittings(ledger.read(state_dir=state_dir, verb=sit.VERB), now)
+
+
 @dataclass
 class Seat:
     """One sitting the pool runs: what it is for and since when."""
@@ -577,17 +612,157 @@ class Seat:
                    str(data.get("source") or ""), str(data.get("why") or ""))
 
 
+def seat_owns(seat_tier: str, seat_label: str, seat_started: dt.datetime, tier: str, item: str,
+              started: dt.datetime) -> bool:
+    """Whether a sitting of tier and item that started at started can be a seat's own: the same
+    tier and item, started no earlier than SEAT_MATCH_MINUTES before the seat (sit stamps its
+    start row in its own process, after the pool stamped the seat)."""
+    return (tier == seat_tier and item == seat_label
+            and started >= seat_started - dt.timedelta(minutes=SEAT_MATCH_MINUTES))
+
+
 def foreign_sittings(live: Sequence[SittingInfo], seats: Iterable[Seat]) -> list[SittingInfo]:
     """The live sittings that are not the pool's own seats. A seat owns the earliest live
-    sitting of its tier and item that started no earlier than a minute before the seat."""
+    sitting that seat_owns."""
     left = list(live)
     for seat in sorted(seats, key=lambda s: s.started):
         for index, info in enumerate(left):
-            if (info.tier == seat.tier and info.item == seat.label
-                    and info.started >= seat.started - dt.timedelta(minutes=1)):
+            if seat_owns(seat.tier, seat.label, seat.started, info.tier, info.item, info.started):
                 del left[index]
                 break
     return left
+
+
+def _row_run_id(row: Mapping[str, Any]) -> str | None:
+    """A ledger row's refs.run_id, None when it has none."""
+    refs = row.get("refs")
+    run_id = refs.get("run_id") if isinstance(refs, Mapping) else None
+    return run_id if isinstance(run_id, str) else None
+
+
+def seat_sitting(rows: Iterable[Mapping[str, Any]], tier: str, label: str,
+                 seat_started: dt.datetime) -> Mapping[str, Any] | None:
+    """The sit start row of the sitting a seat of tier and label, started at seat_started, ran:
+    the earliest start row that seat_owns and that no pool end row names in refs.run_id, so a
+    sitting an earlier seat of the same item already recorded is never taken for this one. rows
+    are the ledger's sit rows and the pool's end rows; None when the seat's sitting wrote no start
+    row (nothing ran)."""
+    rows = list(rows)
+    claimed = {run_id for row in rows if row.get("verb") == V_END and row.get("actor") == ACTOR
+               for run_id in [_row_run_id(row)] if run_id is not None}
+    found: Mapping[str, Any] | None = None
+    found_started: dt.datetime | None = None
+    for row in rows:
+        if row.get("verb") != sit.VERB or row.get("outcome") != sit.STARTED:
+            continue
+        run_id = _row_run_id(row)
+        started = parse_iso(row.get("ts"))
+        if run_id is None or run_id in claimed or started is None:
+            continue
+        if not seat_owns(tier, label, seat_started, str(row.get("tier") or ""), str(row.get("item") or ""), started):
+            continue
+        if found_started is None or started < found_started:
+            found, found_started = row, started
+    return found
+
+
+def ended_result(outcome: str) -> str:
+    """How the pool judges a sitting that ran by its outcome: ok, neutral (stopped or interrupted),
+    failed otherwise (error, budget, timeout)."""
+    if outcome == sit.OK:
+        return RESULT_OK
+    if outcome in (sit.STOPPED, sit.INTERRUPTED):
+        return RESULT_NEUTRAL
+    return RESULT_FAILED
+
+
+@dataclass(frozen=True)
+class Orphan:
+    """A seat an earlier pool started and never wrote the end row of (it died first): the seat its
+    pool start row describes, and until, the begin of the pool that came after it, before which the
+    seat's sitting started."""
+
+    seat: Seat
+    until: dt.datetime
+
+    @property
+    def key(self) -> tuple[str, str, str | None]:
+        return self.seat.seat, self.seat.label, iso(self.seat.started)
+
+
+def _seat_from_start_row(row: Mapping[str, Any]) -> Seat | None:
+    """The seat a pool start row describes; None (logged) when the row names no known tier, no item or
+    no time."""
+    started = parse_iso(row.get("ts"))
+    tier = str(row.get("tier") or "")
+    label = row.get("item")
+    if started is None or tier not in COST or not isinstance(label, str) or not label:
+        log.warning("lab pool: a pool start row names no known tier, item or time and is not checked for an "
+                    "orphaned sitting: tier %r, item %r, ts %r", row.get("tier"), label, row.get("ts"))
+        return None
+    progress = row.get("progress")
+    return Seat(str(row.get("seat") or "?"), tier, item_from_label(label), started, str(row.get("source") or ""),
+                str(row.get("why") or ""), dict(progress) if isinstance(progress, Mapping) else {})
+
+
+def orphan_seats(rows: Iterable[Mapping[str, Any]]) -> list[Orphan]:
+    """The seats of earlier pools whose pool start row has no pool end row, oldest first. rows are
+    the pool's own begin, start and end rows in ledger order. A pool's seat names are its own, so an
+    end row closes the start row of its seat in the same pool's life (the rows since its begin row),
+    and an end row with source ORPHAN_SOURCE the start row of its seat, item and started_at. A seat
+    of the pool whose begin row is the last one (the pool that reads) is never an orphan."""
+    begins: list[dt.datetime] = []
+    open_seats: dict[tuple[int, str], Mapping[str, Any]] = {}
+    for row in rows:
+        if row.get("actor") != ACTOR:
+            continue
+        verb = row.get("verb")
+        seat_id = str(row.get("seat") or "?")
+        if verb == V_BEGIN:
+            began = parse_iso(row.get("ts"))
+            if began is not None:
+                begins.append(began)
+        elif verb == V_START:
+            open_seats[(len(begins), seat_id)] = row
+        elif verb == V_END and row.get("source") == ORPHAN_SOURCE:
+            started = parse_iso(row.get("started_at"))
+            for key, start in list(open_seats.items()):
+                if key[1] == seat_id and start.get("item") == row.get("item") and parse_iso(start.get("ts")) == started:
+                    del open_seats[key]
+                    break
+        elif verb == V_END:
+            open_seats.pop((len(begins), seat_id), None)
+    orphans: list[Orphan] = []
+    for (life, _), row in open_seats.items():
+        if life >= len(begins):
+            continue  # a seat of the pool that reads: its own seats are not orphans
+        seat = _seat_from_start_row(row)
+        if seat is not None:
+            orphans.append(Orphan(seat, begins[life]))
+    orphans.sort(key=lambda orphan: (orphan.seat.started, orphan.seat.seat))
+    return orphans
+
+
+def orphan_sitting(rows: Sequence[Mapping[str, Any]], orphan: Orphan
+                   ) -> tuple[Mapping[str, Any] | None, Mapping[str, Any] | None]:
+    """(the sit start row of an orphan's sitting, its sit end row): seat_sitting among the sit start
+    rows written before orphan.until, as the seat's pool lived until then; either is None while the
+    ledger has none. rows are the ledger's sit rows and the pool's end rows."""
+    def before_until(row: Mapping[str, Any]) -> bool:
+        if row.get("verb") != sit.VERB or row.get("outcome") != sit.STARTED:
+            return True
+        started = parse_iso(row.get("ts"))
+        return started is not None and started < orphan.until
+
+    start = seat_sitting([row for row in rows if before_until(row)], orphan.seat.tier, orphan.seat.label,
+                         orphan.seat.started)
+    run_id = _row_run_id(start) if start is not None else None
+    if run_id is None:
+        return None, None
+    for row in rows:
+        if row.get("verb") == sit.VERB and row.get("outcome") != sit.STARTED and _row_run_id(row) == run_id:
+            return start, row
+    return start, None
 
 
 @dataclass
@@ -615,8 +790,17 @@ class Record:
         return self.last_result in (RESULT_FAILED, RESULT_NEUTRAL)
 
 
+@dataclass(frozen=True)
+class Ending:
+    """What one recorded end did: the item's record after it, and whether it tripped the breaker."""
+
+    record: Record
+    tripped: bool = False
+
+
 class History:
-    """Every item's record, and the failures in a row across items."""
+    """Every item's record, and the failures in a row across items. The breaker lives here, so
+    the live pool and a replay of its end rows (from_rows) apply it the same way."""
 
     def __init__(self) -> None:
         self.items: dict[str, Record] = {}
@@ -634,7 +818,10 @@ class History:
         record.last_start = when
 
     def ended(self, label: str, tier: str, result: str, when: dt.datetime, progress: Mapping[str, Any],
-              started: dt.datetime | None = None) -> Record:
+              started: dt.datetime | None = None) -> Ending:
+        """Record one end. When BREAKER_FAILURES failed in a row, whatever the items, the breaker
+        trips: the streak starts over and every item's failures are cleared, since such a run is
+        the pool's problem and not the items'; the caller pauses the pool on a trip."""
         record = self._record(label)
         record.tier = tier
         if started is not None:
@@ -649,16 +836,27 @@ class History:
             record.failures += 1
             record.last_failure = when
             self.streak += 1
-        return record
+            if self.streak >= BREAKER_FAILURES:
+                self._trip()
+                return Ending(record, tripped=True)
+        return Ending(record)
+
+    def _trip(self) -> None:
+        """The breaker: start the streak over and clear every item's failures."""
+        self.streak = 0
+        for each in self.items.values():
+            each.failures = 0
+            each.last_failure = None
 
     @classmethod
     def from_rows(cls, rows: Iterable[Mapping[str, Any]]) -> History:
-        """Replay the pool's end rows, oldest first."""
+        """Replay the pool's end rows, oldest first. An end row a pool wrote for a predecessor's
+        orphaned seat counts from its ended_at, when the sitting ended, not from when it was written."""
         history = cls()
         for row in rows:
             if row.get("verb") != V_END:
                 continue
-            when = parse_iso(row.get("ts"))
+            when = parse_iso(row.get("ended_at")) or parse_iso(row.get("ts"))
             label, tier, result = row.get("item"), row.get("tier"), row.get("result")
             if when is None or not isinstance(label, str) or result not in (
                     RESULT_OK, RESULT_FAILED, RESULT_NEUTRAL, RESULT_REFUSED):
@@ -670,7 +868,9 @@ class History:
 
 def classify(answer: Mapping[str, Any]) -> str:
     """How the pool judges a sit answer: ok, failed, neutral (stopped or interrupted) or refused
-    (nothing ran: sit wrote no start row). A refused item itself (usage) counts as failed."""
+    (nothing ran: sit wrote no start row). A refused item itself (usage) counts as failed. The
+    answer alone decides; an answer that names no sitting (answers_no_sitting) is read as refused
+    here, and Pool.handle asks the ledger whether that sitting ran after all."""
     outcome = str(answer.get("outcome") or "")
     started = answer.get("ledger")
     ran = isinstance(started, Mapping) and started.get("start") is not None
@@ -678,11 +878,17 @@ def classify(answer: Mapping[str, Any]) -> str:
         if outcome in (sit.STOPPED, sit.INTERRUPTED):
             return RESULT_NEUTRAL
         return RESULT_FAILED if outcome == sit.OUTCOME_USAGE else RESULT_REFUSED
-    if outcome == sit.OK and answer.get("ok") is True:
-        return RESULT_OK
-    if outcome in (sit.STOPPED, sit.INTERRUPTED):
-        return RESULT_NEUTRAL
-    return RESULT_FAILED
+    if outcome == sit.OK and answer.get("ok") is not True:
+        return RESULT_FAILED
+    return ended_result(outcome)
+
+
+def answers_no_sitting(answer: Mapping[str, Any]) -> bool:
+    """Whether an answer is an error that carries no ledger key: not sit's answer for a sitting it
+    ran (that carries the ledger key) nor one of its named refusals (each has its own outcome),
+    but the launcher's or the dispatcher's for a child that died without its answer line, raised,
+    or never ran. Only the ledger can tell whether its sitting started."""
+    return str(answer.get("outcome") or "") == sit.ERROR and "ledger" not in answer
 
 
 # --- candidates and the order ------------------------------------------------------------------
@@ -836,15 +1042,15 @@ def registered_verbs() -> list[str]:
 
 
 def build_view(settings: Settings, seats: Sequence[Seat], history: History, now: dt.datetime) -> View:
-    """The candidates in order, what is not offered and why, and the units in use."""
+    """The candidates in order, what is not offered and why, and the units in use. The units held
+    outside the seats come from read_live_sittings, over the whole ledger and not
+    LEDGER_LOOKBACK_HOURS."""
     problems: list[str] = []
     skips: list[Skip] = []
     candidates: list[Candidate] = []
 
     try:
-        rows = ledger.read(state_dir=settings.state_dir, verb=sit.VERB,
-                           since=now - dt.timedelta(hours=LEDGER_LOOKBACK_HOURS))
-        foreign = foreign_sittings(live_sittings(rows, now), seats)
+        foreign = foreign_sittings(read_live_sittings(settings.state_dir, now), seats)
     except OSError as exc:
         blocked = f"the ledger cannot be read ({type(exc).__name__}: {exc}); nothing starts"
         return View(now, settings.budget, None, None, [], skips, list(seats), [], [blocked], blocked)
@@ -1200,9 +1406,13 @@ class Pool:
         self.idle = False
         self.held: Candidate | None = None
         self.view: View | None = None
+        self.logged_problems: list[str] = []
         self.counts = {"started": 0, "ended": 0, "failed": 0, "benched": 0}
         self.error: str | None = None
         self._next_seat = 1
+        # the orphaned seats of earlier pools: looked for at begin and, while one is unresolved, on each fill
+        self.orphans_unresolved = False
+        self.adopted: set[tuple[str, str, str | None]] = set()
 
     # rows ------------------------------------------------------------------------------------
 
@@ -1249,8 +1459,44 @@ class Pool:
             return {"ok": False, "outcome": sit.OUTCOME_LEDGER,
                     "error": f"the pool could not start its record: {type(exc).__name__}: {exc}"}
         log.info("lab pool: started with a budget of %d units", self.settings.budget)
+        self._adopt_orphans(now)
         self._save(now)
         return None
+
+    def _adopt_orphans(self, now: dt.datetime) -> None:
+        """Record the outcomes of the seats earlier pools started and died before recording
+        (orphan_seats): each whose sitting has its sit end row gets the History.ended and the pool end
+        row (source ORPHAN_SOURCE) its pool never wrote; the rest are looked for again on the next
+        fill. A ledger that cannot be read is logged and looked at again on the next fill."""
+        self.orphans_unresolved = False
+        try:
+            rows = ledger.read(state_dir=self.state_dir, since=now - dt.timedelta(hours=LEDGER_LOOKBACK_HOURS),
+                               verb=lambda verb: verb in (sit.VERB, V_BEGIN, V_START, V_END))
+        except OSError as exc:
+            self.orphans_unresolved = True
+            log.error("lab pool: the ledger cannot be read to record the sittings of earlier pools' seats "
+                      "(%s: %s); looked at again on the next fill", type(exc).__name__, exc)
+            return
+        pool_rows = [row for row in rows if row.get("actor") == ACTOR]
+        sitting_rows = [row for row in rows if row.get("verb") == sit.VERB or row.get("verb") == V_END]
+        for orphan in orphan_seats(pool_rows):
+            if orphan.key in self.adopted:
+                continue
+            start, end = orphan_sitting(sitting_rows, orphan)
+            if start is None or end is None:
+                self.orphans_unresolved = True
+                continue
+            sitting_id = _row_run_id(start)
+            ended_at = parse_iso(end.get("ts")) or now
+            outcome = str(end.get("outcome") or "unknown")
+            self.adopted.add(orphan.key)
+            # the sitting is claimed now, so a later orphan of the same item never takes it
+            sitting_rows.append({"verb": V_END, "actor": ACTOR, "refs": {"run_id": sitting_id}})
+            self._record_end(orphan.seat, ended_result(outcome), sitting_id, outcome, now, ended_at=ended_at,
+                             error=end.get("error"))
+            log.warning("lab pool: %s of an earlier pool (%s %s, started %s) ended %s without its pool end row; "
+                        "recorded now", orphan.seat.seat, orphan.seat.tier, orphan.seat.label,
+                        iso(orphan.seat.started), outcome)
 
     def _check_stop(self, now: dt.datetime) -> None:
         if not self.stopping and stop.stopped():
@@ -1276,6 +1522,8 @@ class Pool:
         return chosen
 
     def _fill(self, now: dt.datetime) -> Plan | None:
+        if self.orphans_unresolved:
+            self._adopt_orphans(now)
         self._check_stop(now)
         if self.stopping or self.draining:
             self.idle = False
@@ -1286,6 +1534,7 @@ class Pool:
         self.paused_until = None
         view = build_view(self.settings, list(self.seats.values()), self.history, now)
         self.view = view
+        self._note_problems(view.problems)
         if view.blocked:
             self._pause(now, view.blocked)
             return None
@@ -1302,6 +1551,19 @@ class Pool:
         self.held = chosen.held
         self.idle = not self.seats and not chosen.starts and chosen.held is None
         return chosen
+
+    def _note_problems(self, problems: Sequence[str]) -> None:
+        """Log the view's problems when they differ from the last fill's, so a pool that reads
+        stale refinement files (a failed fetch, a ref git cannot resolve) or cannot load its board
+        says so once per change instead of on every tick or never."""
+        current = list(problems)
+        if current == self.logged_problems:
+            return
+        if current:
+            log.warning("lab pool: %d problem(s) in the view: %s", len(current), "; ".join(current))
+        else:
+            log.info("lab pool: the view's earlier problems are gone")
+        self.logged_problems = current
 
     def _start(self, candidate: Candidate, view: View, now: dt.datetime) -> bool:
         seat = Seat(f"seat-{self._next_seat}", candidate.tier, candidate.item, now, candidate.source, candidate.why,
@@ -1343,35 +1605,70 @@ class Pool:
         seat = self.seats.pop(seat_id, None)
         if seat is None:
             return
-        result = classify(answer)
-        record = self.history.ended(seat.label, seat.tier, result, now, seat.progress, seat.started)
+        result, sitting_id = self._judge(seat, answer)
         self.counts["ended"] += 1
         outcome = str(answer.get("outcome") or "unknown")
-        sitting_id = answer.get("sitting") if isinstance(answer.get("sitting"), str) else None
-        more: dict[str, Any] = {}
-        if answer.get("error"):
-            more["error"] = clip(answer["error"])
-        self._row(V_END, "ended", tier=seat.tier, task=seat.item.task,
-                  metrics={**self._units_metrics(self.view), "pool.seat_s": round((now - seat.started).total_seconds(), 1)},
-                  refs={"run_id": sitting_id}, item=seat.label, seat=seat.seat, units_held=seat.units,
-                  sitting_outcome=outcome, result=result, failures=record.failures, progress=seat.progress,
-                  started_at=iso(seat.started), **more)
+        benched = self._record_end(seat, result, sitting_id, outcome, now, error=answer.get("error"))
         log.info("lab pool: %s ended %s %s: %s (%s)", seat.seat, seat.tier, seat.label, outcome, result)
         if result == RESULT_FAILED:
             self.counts["failed"] += 1
-            until = record.bench_until(now)
-            if until is not None:
+            if benched:
                 self.counts["benched"] += 1
-                self._row(V_BENCH, "benched", tier=seat.tier, task=seat.item.task, item=seat.label,
-                          failures=record.failures, until=iso(until))
-                log.warning("lab pool: %s is benched until %s after %d failed sittings in a row", seat.label,
-                            iso(until), record.failures)
-            if self.history.streak >= BREAKER_FAILURES:
-                self.history.streak = 0
-                self._pause(now, f"{BREAKER_FAILURES} sittings in a row failed")
         elif result == RESULT_REFUSED:
             self._pause(now, f"python -m lab sit started nothing for {seat.label}: {outcome}"
                              + (f": {answer.get('error')}" if answer.get("error") else ""))
+
+    def _record_end(self, seat: Seat, result: str, sitting_id: str | None, outcome: str, now: dt.datetime, *,
+                    ended_at: dt.datetime | None = None, error: Any = None) -> bool:
+        """Record one seat's end, the pool's own (handle) or an earlier pool's orphan (_adopt_orphans,
+        which passes ended_at, the time its sit end row names): History.ended, the pool end row, and
+        for a failure the bench row and the breaker's pause. True when the item is benched."""
+        when = ended_at or now
+        ending = self.history.ended(seat.label, seat.tier, result, when, seat.progress, seat.started)
+        record = ending.record
+        more: dict[str, Any] = {}
+        if error:
+            more["error"] = clip(error)
+        if ended_at is not None:
+            more.update(source=ORPHAN_SOURCE, ended_at=iso(ended_at))
+        self._row(V_END, "ended", tier=seat.tier, task=seat.item.task,
+                  metrics={**self._units_metrics(self.view), "pool.seat_s": round((when - seat.started).total_seconds(), 1)},
+                  refs={"run_id": sitting_id}, item=seat.label, seat=seat.seat, units_held=seat.units,
+                  sitting_outcome=outcome, result=result, failures=record.failures, progress=seat.progress,
+                  started_at=iso(seat.started), **more)
+        if result != RESULT_FAILED:
+            return False
+        until = record.bench_until(now)
+        if until is not None:
+            self._row(V_BENCH, "benched", tier=seat.tier, task=seat.item.task, item=seat.label,
+                      failures=record.failures, until=iso(until))
+            log.warning("lab pool: %s is benched until %s after %d failed sittings in a row", seat.label,
+                        iso(until), record.failures)
+        if ending.tripped:
+            self._pause(now, f"{BREAKER_FAILURES} sittings in a row failed")
+        return until is not None
+
+    def _judge(self, seat: Seat, answer: Mapping[str, Any]) -> tuple[str, str | None]:
+        """(how the pool judges the seat's sitting, the sitting's id). classify judges the answer;
+        one that answers no sitting (answers_no_sitting) is judged by the ledger: a start row of
+        the seat's sitting (seat_sitting) means it ran and ended without its answer, so it failed,
+        and the end row names it; none means nothing ran, so it was refused. A ledger that cannot
+        be read leaves classify's refusal, which pauses the pool, and says so."""
+        result = classify(answer)
+        sitting_id = answer.get("sitting") if isinstance(answer.get("sitting"), str) else None
+        if result != RESULT_REFUSED or not answers_no_sitting(answer):
+            return result, sitting_id
+        try:
+            rows = ledger.read(state_dir=self.state_dir, verb=lambda verb: verb in (sit.VERB, V_END),
+                               since=seat.started - dt.timedelta(minutes=SEAT_MATCH_MINUTES))
+        except OSError as exc:
+            log.error("lab pool: %s answered no sitting and the ledger cannot be read to tell whether its sitting "
+                      "started (%s: %s); judged refused", seat.seat, type(exc).__name__, exc)
+            return result, sitting_id
+        start = seat_sitting(rows, seat.tier, seat.label, seat.started)
+        if start is None:
+            return RESULT_REFUSED, sitting_id
+        return RESULT_FAILED, _row_run_id(start)
 
     def tick(self, timeout: float) -> None:
         """One step: fill, wait up to timeout for a seat to end, record every seat that ended, and
@@ -1461,6 +1758,7 @@ class Pool:
             "pause_reason": self.pause_reason if self.paused_until and self.paused_until > now else None,
             "stopping": self.stopping, "draining": self.draining,
             "board": view.board if view else None, "counts": dict(self.counts),
+            "problems": list(view.problems) if view else [],
         }
         write_state(state_path(self.state_dir), data)
 
@@ -1502,15 +1800,16 @@ def dry_run(settings: Settings, now: dt.datetime | None = None) -> dict[str, Any
 
 
 def status(state_dir: Path, now: dt.datetime | None = None) -> dict[str, Any]:
-    """Whether a pool runs, its units in use and seats, and the sittings that hold units outside it."""
+    """Whether a pool runs, its units in use and seats, the problems of its latest view, and the
+    sittings that hold units outside it (read_live_sittings, over the whole ledger and not
+    LEDGER_LOOKBACK_HOURS)."""
     now = now or utc_now()
     running, holder = pool_running(state_dir)
     data = read_state(state_path(state_dir)) or {}
     seats = [Seat.from_summary(s) for s in data.get("seats") or [] if isinstance(s, Mapping)] if running else []
     seats = [seat for seat in seats if seat is not None]
     try:
-        rows = ledger.read(state_dir=state_dir, verb=sit.VERB, since=now - dt.timedelta(hours=LEDGER_LOOKBACK_HOURS))
-        foreign = foreign_sittings(live_sittings(rows, now), seats)
+        foreign = foreign_sittings(read_live_sittings(state_dir, now), seats)
         problem = None
     except OSError as exc:
         foreign, problem = [], f"the ledger cannot be read: {type(exc).__name__}: {exc}"
@@ -1526,7 +1825,7 @@ def status(state_dir: Path, now: dt.datetime | None = None) -> dict[str, Any]:
     }
     if running:
         for key in ("since", "updated", "held", "benched", "paused_until", "pause_reason", "stopping", "draining",
-                    "board", "counts"):
+                    "board", "counts", "problems"):
             answer[key] = data.get(key)
     elif data:
         answer["last_pool"] = {"since": data.get("since"), "updated": data.get("updated")}

@@ -8,9 +8,14 @@ __pycache__/
 *.db-wal
 *.db-shm
 data/
+# research records committed beside the notes (search spaces, chip sheets); runtime data/ stays ignored
+!lab/refine/research/*/data/
 graphify-out/
 *.engine
 yolo*.pt
 # lab machine runtime state (the ledger, its lock, the stop file); only the folder is kept
 lab/state/*
 !lab/state/.gitkeep
+# face models fetched by jetson/face-fetch.sh (YuNet is in the repo; these two are not)
+contexts/perception/models/face_recognition_sface_2021dec.onnx
+contexts/perception/models/facial_expression_recognition_mobilefacenet_2022july.onnx

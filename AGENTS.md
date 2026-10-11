@@ -1,7 +1,7 @@
 # Working on Atlas (for AI coding agents and the people driving them)
 
 Atlas is our Knight Hacks project: a screenless, always-on AI box (NVIDIA Jetson)
-with cameras, memory, an agent, and a learning lab on two AMD R9700 GPUs. Four
+with cameras, memory, an agent, and a learning lab on two AMD Strix Halo pods. Four
 people build it in parallel, and each of them works with a coding agent (Claude
 Code, Codex, Cursor, and so on). This file tells every agent how to coordinate
 with the team.
@@ -234,6 +234,7 @@ Nobody commits straight to `main` any more. Every piece of work goes on a
 feature branch and lands through a pull request.
 
 1. **Branch from fresh `main`:** `git checkout main && git pull --rebase && git checkout -b ctx/<context>/<feature>` (e.g. `ctx/agent/keyframe-tool`, `ctx/memory/sqlite-store`; `ctx/docs/<topic>` for docs). One task per branch.
+   - **Several agent sessions on one machine? Each one works in its own git worktree**, never in the shared checkout, or they switch branches under each other and carry each other's uncommitted files: `git fetch origin && git worktree add -b ctx/<context>/<feature> ../<repo>-<feature> origin/main`, then work, test and push from that folder. After the PR merges: `git worktree remove ../<repo>-<feature>`. Leave the main checkout on `main`.
 2. **Commit small**, with messages that say what changed and why.
 3. **Before pushing:** `git fetch origin && git rebase origin/main`, then `pytest -q`. Push the branch: `git push -u origin <branch>`.
 4. **Open a PR** (`gh pr create --base main`) titled with the task ID, e.g. `A1: get_keyframe tool`. The body says what changed, how it was tested, and anything others must do.

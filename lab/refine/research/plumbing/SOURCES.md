@@ -1,7 +1,7 @@
 # Sources for the plumbing research notes
 
 Index of every source cited in the notes in this folder: `hub-api-lifecycle.md` (hub), `proxy-path.md` (proxy),
-`transfers.md` (transfers), `idle-credits-recovery.md` (idle) and the measurement record
+`transfers.md` (transfers), `idle-credits-recovery.md` (idle), `placement.md` (placement) and the measurement record
 `measurements-2026-10-10.md`. Each source was opened on the date shown (the page, file or thread itself, not a
 search snippet) before it was cited. Keys are stable: a note cites `[S20]`, and a pass that relies on a finding
 cites the note's file and heading. Source code is cited at the tag or commit that matches what the live hub and
@@ -15,6 +15,12 @@ culling, JupyterLab's chunk size, the token-mint handler) only refined findings 
 
 Plumbing pass 1 (2026-10-10, 11:58 AM to 12:12 PM ET) added S44 to S48 and re-opened S15, S25, S27 and S36
 before a change rested on them; its search log is at the end of `hub-api-lifecycle.md`.
+
+Plumbing pass 2 (2026-10-10, 2:57 to 3:12 PM ET) added S49 to S59, re-opened S44, and wrote `contention.md`; its search
+log is at the end of `hub-api-lifecycle.md`.
+
+Plumbing pass 3 (2026-10-10, 8:30 to 9:10 PM ET) added S63 to S68 and re-opened S15 and S61; its search log is at the
+end of `hub-api-lifecycle.md`.
 
 ## Vendor and project documentation
 
@@ -37,6 +43,7 @@ before a change rested on them; its search log is at the end of `hub-api-lifecyc
 | S16 | Cloudflare docs, "Error 413" | Max upload size by plan | vendor doc | https://developers.cloudflare.com/support/troubleshooting/http-status-codes/4xx-client-error/error-413/ | 2026-10-10 | transfers |
 | S17 | Cloudflare docs, "Error 524" | cause and resolutions | vendor doc | https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-524/ | 2026-10-10 | proxy |
 | S44 | Cloudflare docs, "Error 502 or 504" | 502/504 from Cloudflare; 502/504 from your origin web server | vendor doc | https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-502-504/ | 2026-10-10 | hub |
+| S50 | Cloudflare docs, "Error responses" | Content negotiation; Response fields; Error categories; Retry-After header | vendor doc | https://developers.cloudflare.com/fundamentals/reference/error-responses/ | 2026-10-10 | hub |
 
 ## Source code at pinned versions
 
@@ -64,6 +71,9 @@ before a change rested on them; its search log is at the end of `hub-api-lifecyc
 | S39 | AMD AUP Learning Cloud git history | 29b463a (2026-02-06, quota and timer code already present), 6e09fad (2026-06-25, `repo_persist`), b5b9b7f8 and 351cba34 (2026-07-06, `WORKDIR` and landing paths), cff8981 (2026-07-28, `restartPolicy: Never`) | https://github.com/AMDResearch/aup-learning-cloud/commits/main | 2026-10-10 | hub, transfers |
 | S45 | CPython v3.12.11 (also read at v3.13.7 and main) | `Lib/http/server.py`: `SimpleHTTPRequestHandler.send_head` (no Range handling, no 206 anywhere in the module) | https://github.com/python/cpython/blob/v3.12.11/Lib/http/server.py | 2026-10-10 | transfers |
 | S46 | Zero to JupyterHub 4.3.3 | `jupyterhub/files/hub/jupyterhub_config.py`: `hub_bind_url`, `hub_connect_url` | https://github.com/jupyterhub/zero-to-jupyterhub-k8s/blob/4.3.3/jupyterhub/files/hub/jupyterhub_config.py | 2026-10-10 | idle |
+| S51 | vLLM b1388b1 | `vllm/config/cache.py`: `CacheConfig.gpu_memory_utilization` (L41-L48: fraction of GPU memory, default 0.9, a per-instance limit) | https://github.com/vllm-project/vllm/blob/b1388b1fbf5aaef47937fabe98931211684666a6/vllm/config/cache.py | 2026-10-10 | contention, placement |
+| S60 | vLLM b1388b1 | `vllm/v1/worker/utils.py`: `request_memory` (L403-L423: asks for the device's total memory times `gpu_memory_utilization` at start and raises when the free memory is less) | https://github.com/vllm-project/vllm/blob/b1388b1fbf5aaef47937fabe98931211684666a6/vllm/v1/worker/utils.py | 2026-10-10 | placement |
+| S68 | jupyter_server v2.19.0 and v2.20.0 | `jupyter_server/services/contents/largefilemanager.py` (identical at both tags) and, at v2.20.0, `jupyter_server/serverapp.py` (`max_body_size` 512 MiB, L1237-L1248; `contents_manager_class` default `AsyncLargeFileManager`, L1617-L1621) | https://github.com/jupyter-server/jupyter_server/blob/v2.20.0/jupyter_server/serverapp.py#L1237-L1248 | 2026-10-10 | transfers |
 
 ## Issues and pull requests
 
@@ -88,6 +98,22 @@ before a change rested on them; its search log is at the end of `hub-api-lifecyc
 | R8 | O3 plumbing rubric, `lab/refine/plumbing/RUBRIC.md` (metric set and tests T1 to T8), merged as 936fb69 | https://github.com/raohemdutt/Knighthacks26/blob/936fb69/lab/refine/plumbing/RUBRIC.md | 2026-10-10 | hub, proxy, transfers, idle |
 | S47 | Read-only probes by plumbing pass 1, 2026-10-10 15:58 to 16:04 UTC (M16 front door, M17 clock) | `lab/refine/research/plumbing/measurements-2026-10-10.md` | 2026-10-10 | hub, idle |
 | S48 | R9 task page, lock line of Sat 11:24 AM ET (the hub answering 502) | https://app.notion.com/p/3f596ef5fec581579ba5c7a9c6d19230 | 2026-10-10 | hub |
+| S49 | Read-only probes by plumbing pass 2, 2026-10-10 18:59 to 19:31 UTC (M18 to M24: SJC front door, accounts C and D before and after their relaunch as Strix Halo, pod C's Jupyter server, DUB's structured 502, clock, `python -m lab ready`) | `lab/refine/research/plumbing/measurements-2026-10-10.md` | 2026-10-10 | hub, transfers |
+| S52 | `lab/machine/ready.py` (`ACCOUNTS`, `REQUIRED_ENV`, `HUB_URL`, L37-L41) and the sitting prompts `lab/machine/prompts/opus.md`, `fable.md`, `sonnet.md` (L12), main at 97428e4 | https://github.com/raohemdutt/Knighthacks26/blob/97428e4/lab/machine/ready.py | 2026-10-10 | hub |
+| S53 | `lab/refine/metrics.jsonl` lines 9, 10, 13 and 14 (teacher engine init 270 s, teacher 84 percent of VRAM at 0.90, trainer 0.51 samples/s and 8.7 GiB peak), main at 97428e4 | https://github.com/raohemdutt/Knighthacks26/blob/97428e4/lab/refine/metrics.jsonl | 2026-10-10 | contention |
+| S54 | `lab/hub.py` (L55-L62 accounts A and B and the retry pauses, L191 one hub address, L199-L200 the Accept header, L268), `lab/controller.py` (module docstring, `credit_figures`, `keep_alive`) and `jetson/egress.py` L50 (`HUB_HOSTS`), main at 97428e4 | https://github.com/raohemdutt/Knighthacks26/blob/97428e4/lab/hub.py | 2026-10-10 | hub, contention |
+| S55 | `lab/README.md` L3 (one R9700, 32 GB, per pod) and L104 (engine init about 270 s, 84 percent of VRAM) and `lab/pod_a_teacher.sh` L79 (`--gpu-memory-utilization 0.90`), main at 97428e4 | https://github.com/raohemdutt/Knighthacks26/blob/97428e4/lab/pod_a_teacher.sh | 2026-10-10 | contention |
+| S56 | O54 task page (accounts C and D on SJC, verified read-only at 1:52 PM ET; the Done when covers `lab/hub.py` and the controller) | https://app.notion.com/p/3f596ef5fec5813e8975ed859ff4dc01 | 2026-10-10 | pass 2 log |
+| S57 | R29 task page (SJC pod C brought up from an empty home; rows on node pod-a; pods C and D up since 2:54 PM ET for 40 hours) | https://app.notion.com/p/3f596ef5fec581459f14c5afc37c7819 | 2026-10-10 | pass 2 log, placement |
+| S58 | Ilan1 and Ilan2 dispatcher page (only Ilan1 touches pods; the sjc host missing from `jetson/egress.py`, a review finding on PR #142; lines of Sat 3:46, 4:00 and 4:27 PM ET by that page's clock: SJC ignores the REST launch, the pods relaunched through the web form as Strix Halo, and Ilan's decision to move the lab to them) | https://app.notion.com/p/3f596ef5fec58106826dcbd9d3d17561 | 2026-10-10 | pass 2 log |
+| S59 | Ilan's Team Comms page, FYI of Sat 2:47 PM ET (the pods moved to SJC; quota off there; code must take the hub from a setting) | https://app.notion.com/p/3f596ef5fec58163bbefd0e7ea5acea7 | 2026-10-10 | pass 2 log |
+| S61 | R30 task page (pod D's hour-0 facts at 21:35 UTC: 64.0 GiB visible to torch, 62 GB RAM with 58 GB available, idle 9 W; the vLLM build and checkpoint left in pod D's home; engine ready 523 s after a cold start; nothing listening on port 8000 after 22:21 UTC) | https://app.notion.com/p/3f596ef5fec58118b653e4f3ae2d3024 | 2026-10-10 | placement |
+| S62 | `lab/refine/metrics.jsonl` lines 14, 24, 29, 34, 35 and 36 (LoRA peak 8.7 GiB on the R9700; on pod C the teacher's 2.88 tok/s, 120.3 W decoding, 297 s warm start, 10.2 W idle loaded, 106.8 W in request windows), main at 7208c59 | https://github.com/raohemdutt/Knighthacks26/blob/7208c59/lab/refine/metrics.jsonl | 2026-10-10 | placement |
+| S63 | Read-only probes by plumbing pass 3, 2026-10-11 00:30 to 00:39 UTC (M25 SJC accounts C and D, their servers, quota and Jupyter roots; M26 clock; M27 `python -m lab ready`) | `lab/refine/research/plumbing/measurements-2026-10-10.md` | 2026-10-10 | hub, transfers |
+| S64 | `lab/credits.py` (module docstring, `_assess_unmetered`), `lab/package_pull.py` and `lab/package_server.py` (module docstrings), `lab/transfer.py` (module docstring, `push_file`, the `--via` option, default `files`), `lab/placement.py` and `jetson/egress.py` (L56-L61, L119-L120), main at fba248a | https://github.com/raohemdutt/Knighthacks26/blob/fba248a/lab/transfer.py | 2026-10-10 | hub, transfers, contention |
+| S65 | `lab/refine/metrics.jsonl` lines 38 to 41 (R13 on pod D: 5.55 s to ready by form launch, first request 11.7 s, keep-alive 70 min, 0 credits per hour unmetered) and 49 to 58 (R18 on pod D: the proxy's answers by case, 294.1 s restart to ready, streamed and buffered first byte, 5 MB body, 20 concurrent), main at fba248a | https://github.com/raohemdutt/Knighthacks26/blob/fba248a/lab/refine/metrics.jsonl | 2026-10-10 | hub, proxy, contention |
+| S66 | `lab/README.md` at fba248a: "Controlling the pods: `lab/controller.py`" (R13's measured paragraph), "Failure-mode map of the proxy path on SJC (R18)" and "The same build on pod D, from scripts alone (R30)" | https://github.com/raohemdutt/Knighthacks26/blob/fba248a/lab/README.md | 2026-10-10 | hub, proxy |
+| S67 | Task pages R10, R13, R14, R15, R17, R18, R31 and R43 as fetched by plumbing pass 3 (R18's open stopped-pod clause, Sat 7:06 PM; R43's placement rule from Ilan, signed Sat 9:08 PM ET by the Ilan1 agent's clock; R14 and R15 handed to Hemdutt's agents, Sat 5:23 PM ET) | https://app.notion.com/p/3f596ef5fec5813082b348fe147d739e | 2026-10-10 | proxy, contention |
 
 ## Opened but not cited
 
@@ -95,3 +121,5 @@ before a change rested on them; its search log is at the end of `hub-api-lifecyc
 |---|---|---|---|
 | Zero to JupyterHub docs, "Culling user pods" | https://z2jh.jupyter.org/en/stable/jupyterhub/customizing/user-management.html | 2026-10-10 | only says idle kernels keep servers active; the culler README and source (S06, S29) cover the rest |
 | Web search results on Cloudflare and SSE buffering (a blog post and two community threads, seen only as snippets) | n/a | 2026-10-10 | not opened as pages, so not citable; the gap is recorded in `proxy-path.md` |
+| The `type` URL in Cloudflare's JSON 502 body, "error-502" | https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-502/ | 2026-10-10 | answered 404 when opened (M21) |
+| Web search results on Cloudflare's structured 5xx responses (snippets only) | n/a | 2026-10-10 | not opened as pages, so not citable; the reference page they pointed to is S50 |

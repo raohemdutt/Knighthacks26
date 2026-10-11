@@ -18,7 +18,7 @@ A row is one JSON object on one line, its fields in this order:
   task     the Task Board ID the row is about, or None
   verb     what was done
   outcome  how it ended: ok, fail, error, skipped, ...
-  metrics  {name: finite number}, dotted lowercase names such as
+  metrics  {name: finite number (finite_number)}, dotted lowercase names such as
            teacher.decode_tok_s; may be empty
   refs     {pr, commit, slot, run_id}: strings, integers or None; append
            fills in the ones a row leaves out as None and keeps any other
@@ -59,16 +59,21 @@ from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 from typing import IO, Any
 
+from lab.machine import stop
 from lab.machine.lock import FileLock, LockTimeout
+from lab.machine.metrics import _METRIC_RE as METRIC_NAME_RE
 
 __all__ = ["ENV_STATE_DIR", "DEFAULT_STATE_DIR", "LEDGER_FILE", "LOCK_FILE", "LOCK_TIMEOUT", "FIELDS",
            "REF_KEYS", "OPTIONAL_FIELDS", "FILTER_NAMES", "LockTimeout", "RowError", "resolve_state_dir",
-           "ledger_path", "lock_path", "validate", "append", "read", "tail", "latest_metric"]
+           "ledger_path", "lock_path", "utc_text", "now_text", "finite_number", "validate", "append",
+           "read", "tail", "latest_metric"]
 
 log = logging.getLogger("lab.ledger")
 
-ENV_STATE_DIR = "LAB_STATE_DIR"
-DEFAULT_STATE_DIR = Path(__file__).resolve().parents[1] / "state"
+# the state dir is the one the kill switch (stop.py) already resolves; these are its own
+# names, re-exported for the callers that read them here (pool.py, sit.py), never a copy
+ENV_STATE_DIR = stop.STATE_DIR_ENV
+DEFAULT_STATE_DIR = stop.DEFAULT_STATE_DIR
 LEDGER_FILE = "ledger.jsonl"
 LOCK_FILE = "ledger.lock"
 LOCK_TIMEOUT = 10.0          # seconds an append waits while another writer holds the lock
@@ -82,6 +87,9 @@ FILTER_NAMES = ("has_metric", "since", "before", "state_dir")
 _TEXT_FIELDS = ("actor", "tier", "task", "verb", "outcome")
 _MAY_BE_NONE = frozenset({"tier", "task"})
 _BLOCK = 16 * 1024           # bytes read at a time when reading the ledger from its end
+# a metric name every ledger row must use, shared with the metrics file (metrics.py) so the
+# two stores agree on one name shape and latest_metric finds what append wrote
+METRIC_NAME_EXAMPLE = "teacher.decode_tok_s"
 
 Row = dict[str, Any]
 
@@ -98,11 +106,12 @@ class RowError(ValueError):
 # --- where ----------------------------------------------------------------------------
 
 def resolve_state_dir(state_dir: str | os.PathLike[str] | None = None) -> Path:
-    """state_dir when given, else LAB_STATE_DIR when set and not empty, else lab/state."""
+    """state_dir when given, else stop.state_dir(): LAB_STATE_DIR when set and not
+    empty, else lab/state. Looked up through the stop module on every call, so the
+    ledger and the STOP file always resolve one and the same state dir."""
     if state_dir is not None:
         return Path(state_dir)
-    configured = os.environ.get(ENV_STATE_DIR)
-    return Path(configured) if configured else DEFAULT_STATE_DIR
+    return stop.state_dir()
 
 
 def ledger_path(state_dir: str | os.PathLike[str] | None = None) -> Path:
@@ -117,14 +126,27 @@ def lock_path(state_dir: str | os.PathLike[str] | None = None) -> Path:
 
 # --- times ----------------------------------------------------------------------------
 
-def _utc_text(moment: dt.datetime) -> str:
-    """An aware time as the ledger writes it: UTC, ending in Z."""
+_UTC_OFFSET_TEXT = "+00:00"  # the offset isoformat() writes for UTC, written as Z instead
+_UTC_SUFFIX = "Z"
+
+
+def utc_text(moment: dt.datetime) -> str:
+    """An aware time as the ledger writes it: UTC, ending in Z. The one copy of
+    this format for the lab: a reader that shows ledger times (metrics_report.py)
+    imports it from here, since this module cannot import that one back."""
     text = moment.astimezone(dt.timezone.utc).isoformat()
-    return text[:-len("+00:00")] + "Z" if text.endswith("+00:00") else text
+    return text[:-len(_UTC_OFFSET_TEXT)] + _UTC_SUFFIX if text.endswith(_UTC_OFFSET_TEXT) else text
 
 
-def _now_text() -> str:
-    return _utc_text(dt.datetime.now(dt.timezone.utc).replace(microsecond=0))
+def now_text() -> str:
+    """The current time as utc_text, to the whole second."""
+    return utc_text(dt.datetime.now(dt.timezone.utc).replace(microsecond=0))
+
+
+# the module's own callers go through these names, so a test that sets the ledger's clock
+# (monkeypatching ledger._now_text, as tests/test_lab_slots.py does) still stamps every row
+_utc_text = utc_text
+_now_text = now_text
 
 
 def _parse_ts(value: Any) -> dt.datetime | None:
@@ -161,18 +183,26 @@ def _is_name(value: Any) -> bool:
     return isinstance(value, str) and value.strip() != ""
 
 
-def _number(value: Any) -> int | float | None:
-    """value as a finite int or float; None when it is not one. A bool is not
-    a number here."""
+def _is_metric_name(value: Any) -> bool:
+    """value is a metric name of the shape both the ledger and the metrics
+    file use: dotted lowercase words such as teacher.decode_tok_s."""
+    return isinstance(value, str) and METRIC_NAME_RE.fullmatch(value) is not None
+
+
+def finite_number(value: Any) -> int | float | None:
+    """value as a finite int or float, the ledger's one rule for a metric
+    value; None when it is not one. A bool is not a number here. Finite means
+    a float can hold it: nan, inf and an integer beyond float range (10**400)
+    are refused, while an integer that fits is kept exact as an int."""
     if isinstance(value, bool) or not isinstance(value, numbers.Real):
         return None
-    if isinstance(value, numbers.Integral):
-        return int(value)
     try:
         number = float(value)
     except (OverflowError, ValueError):
         return None
-    return number if math.isfinite(number) else None
+    if not math.isfinite(number):
+        return None
+    return int(value) if isinstance(value, numbers.Integral) else number
 
 
 def _json_problem(name: str, value: Any) -> str | None:
@@ -220,9 +250,10 @@ def _check_metrics(row: Mapping[str, Any], out: Row, problems: list[str]) -> Non
         return
     clean: dict[str, int | float] = {}
     for name, value in metrics.items():
-        number = _number(value)
-        if not _is_name(name):
-            problems.append(f"metrics name {name!r} must be a non-empty string")
+        number = finite_number(value)
+        if not _is_metric_name(name):
+            problems.append(f"metrics name {name!r} must be dotted lowercase words such as "
+                            f"{METRIC_NAME_EXAMPLE!r}")
         elif number is None:
             problems.append(f"metrics value for {name!r} must be a finite number, not {value!r}")
         else:
@@ -535,7 +566,7 @@ def latest_metric(name: str, node: str | None = None, *, conditions: Mapping[str
                                                  for key, wanted in conditions.items()):
                 continue
         moment = _parse_ts(row.get("ts"))
-        if moment is None or _number(row["metrics"][name]) is None:
+        if moment is None or finite_number(row["metrics"][name]) is None:
             continue
         key = (moment, row["seq"])
         if best_key is None or key > best_key:

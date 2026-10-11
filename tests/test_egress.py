@@ -231,6 +231,35 @@ def test_every_tailscale_relay_address_comes_from_the_derp_map_uncapped(config):
     assert egress.derp_nodes(run=lambda *a, **k: (_ for _ in ()).throw(OSError("no tailscale"))) == []
 
 
+def test_a_star_host_opens_the_web_ports_after_every_named_group_and_only_online():
+    groups = {"connector:browser": ["html.duckduckgo.com", "*"], "hub": ["dub.aupcloud.io"]}
+    any_host = egress.any_host_groups(groups)
+    assert any_host == {"connector:browser"}
+    resolved = {"connector:browser": ({"9.9.9.9"}, set()), "hub": ({"104.18.0.205"}, set())}
+    v4 = egress.render(4, resolved, DNS, offline=False, any_host=any_host).splitlines()
+    web = [n for n, line in enumerate(v4) if "--dports" in line]
+    named = [n for n, line in enumerate(v4) if "-d 104.18.0.205" in line or "-d 9.9.9.9" in line]
+    assert [v4[n] for n in web] == [
+        '-A ATLAS_EGRESS -p tcp -m multiport --dports 80,443 -m comment --comment "connector:browser" -j ACCEPT',
+        '-A ATLAS_EGRESS -p udp -m multiport --dports 443 -m comment --comment "connector:browser" -j ACCEPT']
+    assert max(named) < min(web) < next(n for n, line in enumerate(v4) if "blocked" in line)
+    assert "--dports" in egress.render(6, resolved, DNS, offline=False, any_host=any_host)
+    assert "--dports" not in egress.render(4, resolved, DNS, offline=True, any_host=any_host)  # offline cuts the web too
+
+
+def test_a_star_host_is_never_looked_up(monkeypatch):
+    looked = []
+    monkeypatch.setattr(egress, "resolve", lambda host: looked.append(host) or (set(), set()))
+    egress.resolve_groups({"connector:browser": ["*"]})
+    assert looked == []
+
+
+def test_the_browser_connector_may_read_any_website():
+    groups = egress.host_groups(Path(__file__).parent.parent / "config", {})
+    assert "*" in groups["connector:browser"]
+    assert egress.any_host_groups(groups) == {"connector:browser"}
+
+
 def test_counting_rules_come_before_the_established_accept_and_count_each_address_once():
     shared = {"hub": ({"104.18.0.205"}, set()), "neon": ({"104.18.0.205", "3.3.3.3"}, set())}
     v4 = egress.render(4, shared, DNS, offline=False)
@@ -256,3 +285,14 @@ def test_snapshot_reports_every_byte_from_the_counting_rule_and_connections_from
     old = egress.snapshot(egress.parse_counters(SAVE), {"hub": []}, [], offline=False)  # rules from before this change
     assert next(a for a in old["allowed"] if a["name"] == "hub")["bytes"] == 1300
     assert not any(a["name"] == "tailnet" for a in old["allowed"])
+
+
+def test_a_group_that_may_reach_any_website_says_its_bytes_cover_named_addresses_only():
+    counters = egress.parse_counters("""\
+[50:70000] -A ATLAS_EGRESS -d 9.9.9.9/32 -m comment --comment "acct:connector:browser"
+[4:240] -A ATLAS_EGRESS -d 9.9.9.9/32 -m comment --comment "connector:browser" -j ACCEPT
+""")
+    snap = egress.snapshot(counters, {"connector:browser": ["html.duckduckgo.com", "*"], "hub": ["dub.aupcloud.io"]}, [], offline=False)
+    browser = next(a for a in snap["allowed"] if a["name"] == "connector:browser")
+    assert browser["open_web"] is True and browser["bytes_cover"] == "named addresses only" and browser["bytes"] == 70000
+    assert "open_web" not in next(a for a in snap["allowed"] if a["name"] == "hub")

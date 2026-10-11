@@ -3,7 +3,11 @@
 A small quantized model is shaky at multi-step tool use, so common question
 shapes are pre-fetched in code and the model gets one short prompt with the
 evidence. Only open-ended questions go through the tool loop (max 3 calls).
-No evidence means "I didn't see that." without asking the model at all.
+No evidence means "I didn't see that." without asking the model at all. When the box
+has web tools, an unsure fixed path for a question that may not be about the room
+(calendar, a time window, "when was the last ...": nothing found, or the model says it
+has no evidence) falls back to the tool loop instead (A13). Questions about objects in
+the room ("where is my wallet?") never do: if Atlas didn't see it, it says so at once.
 """
 
 import asyncio
@@ -13,6 +17,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
 from pathlib import Path
+from time import monotonic
 from zoneinfo import ZoneInfo
 
 import yaml
@@ -26,6 +31,7 @@ from runtime.interface import Runtime
 
 NO_EVIDENCE = "I didn't see that."
 MAX_TOOL_CALLS = 3
+MAX_WEB_TOOL_CALLS = 4  # web_search -> read_page -> maybe one more -> answer
 
 SYSTEM = (
     "You are Atlas, a home camera assistant. Answer in one or two short sentences "
@@ -100,6 +106,81 @@ WEB_TOOLS = [
     },
 ]
 TOOLS = MEMORY_TOOLS  # kept for the learning task: the tool set the student model is trained on
+# A13: more of what the box knows, for the tool loop. Not in TOOLS, so the learning task's dataset is unchanged.
+AGENT_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "item_history",
+            "description": "Everything known about one object over the last hours: where it was last seen and "
+                           "the moments it appeared, newest first.",
+            "parameters": {
+                "type": "object",
+                "properties": {"label": {"type": "string"}, "hours": {"type": "number"}},
+                "required": ["label"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "upcoming",
+            "description": "Calendar events, Canvas assignments, campus events and group-chat plans in the next days.",
+            "parameters": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}, "days": {"type": "number"}},
+                "required": [],
+            },
+        },
+    },
+]
+PREPARE_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "prepare_for",
+        "description": "Make a short plan for an upcoming exam, deadline or event from the calendar, sleep, "
+                       "group chats and the web.",
+        "parameters": {"type": "object", "properties": {"event": {"type": "string"}}, "required": ["event"]},
+    },
+}
+# A small model often refuses in its own words instead of saying NO_EVIDENCE: treat that as unsure too (A13)
+REFUSAL = re.compile(
+    r"\b(?:can(?:no|['\u2019]?)t|unable to|not able to) (?:browse|access|check|search|look up|see)"
+    r"|\bdon['\u2019]?t have (?:access|the ability|real[- ]time|internet|any (?:information|data))"
+    r"|\bi don['\u2019]?t know\b|\bas an ai\b|\bi['\u2019]?m (?:just )?an ai\b|\bno (?:internet|web) access\b",
+    re.IGNORECASE)
+
+
+def unsure(text: str) -> bool:
+    return text.strip() == NO_EVIDENCE or bool(REFUSAL.search(text))
+
+
+# About the world outside the room, so only the web can answer: with web tools these skip small talk (A13)
+OUTSIDE = re.compile(
+    r"\b(?:scores?|standings|playoffs?|box score|final score|kickoff|tip-?off)\b"
+    r"|\b(?:game|match|matchup) (?:against|vs\.?|versus|with)\b|\b(?:last|latest|most recent|next|upcoming) (?:game|match)\b"
+    r"|\b(?:vs\.?|versus)\b|\bwho (?:won|is winning|plays)\b|\bdid (?:ucf|uf|the knights|the gators)\b",
+    re.IGNORECASE)
+
+
+WEB_BUDGET_S = 25.0  # a web question answers from what it has after this long (the 4B on the Jetson is slow)
+WEB_CALL_MIN_S = 3.0  # but one web call always gets at least this long
+WEB_CALL_MAX_S = 12.0  # and never longer than this (a page load that hangs)
+MAX_PAGES = 1  # pages read per question: each one is a slow browser load and a long prompt
+WEB_TOOL_NAMES = {"web_search", "reddit_search", "read_page"}
+NUMBER = re.compile(r"\d+")
+
+
+def grounded(answer: str, evidence: list[str]) -> bool:
+    """Every number in the answer (a score, a date, a price) appears in the evidence it was written from."""
+    seen = set(NUMBER.findall(" ".join(evidence)))
+    return all(n in seen for n in NUMBER.findall(answer))
+
+
+WEB_HINT = (" For news, sports scores, opening hours or anything outside this room, use web_search, "
+            "then read_page on the best link.")
+HISTORY_HOURS = 24.0
+UPCOMING_DAYS = 7.0
 KEYFRAME_TOOL = {
     "type": "function",
     "function": {
@@ -131,6 +212,14 @@ NIGHT = re.compile(r"\b(?:overnight|last night|while (?:i|we) (?:was |were )?(?:
 RECENT = re.compile(r"\b(?:recently|just now|a minute ago|a few minutes ago)\b")
 SHORT_WINDOW = timedelta(hours=3)  # up to this long, each episode is its own line and citation
 LAST_N = re.compile(r"(?:last|past) (?P<n>\d+|an?) ?(?P<unit>hours?|minutes?|mins?)")
+# A12: "what happened while they were here?" -- the most recent visit, however long it was
+VISIT = re.compile(
+    r"\bwhile (?:they|the judges?|our guests?|the visitors?|he|she|someone) (?:was|were) (?:here|at (?:the|our) table|visiting)\b"
+    r"|\b(?:their|the last|the latest|that|the) visit\b"
+)
+VISIT_LOOKBACK = timedelta(hours=3)
+VISIT_GAP = timedelta(minutes=3)  # people out of view for longer than this end one visit
+VISIT_SPOKEN = 4  # moments read out in a visit recap
 
 
 @dataclass
@@ -139,6 +228,7 @@ class Evidence:
     citations: list[Citation] = field(default_factory=list)
     system: str | None = None  # a prompt for this shape of question, instead of SYSTEM
     direct: str | None = None  # an answer written from the data itself: no model call (lists the model garbles)
+    room_only: bool = False  # about objects or people in the room: no tool-loop fallback when nothing is found (A13)
 
     def add(self, line: str, citation: Citation) -> None:
         self.lines.append(line)
@@ -286,8 +376,10 @@ class QA:
         self.web = web
         self.subreddit = subreddit
         self.load_keyframe = load_keyframe  # frame_ref -> blurred JPEG bytes
-        self.tools = MEMORY_TOOLS + ([KEYFRAME_TOOL] if load_keyframe else []) + (WEB_TOOLS if web else [])
+        self.tools = MEMORY_TOOLS + AGENT_TOOLS + ([KEYFRAME_TOOL] if load_keyframe else []) + (WEB_TOOLS if web else [])
         self.planner = None  # set by the composition root; answers "help me prep for ..." (A8)
+        self.talk = None  # set by the composition root; small talk and simple questions (talk.py)
+        self.monotonic: Callable[[], float] = monotonic  # the web time budget (A13); tests replace it
         self.on_delta: Callable[[str, str], None] | None = None  # (question_id, text): streamed answer pieces (A11)
 
     async def on_question(self, e: QuestionAsked) -> AnswerGenerated:
@@ -301,13 +393,30 @@ class QA:
             return Answer(plan.text or NO_EVIDENCE, plan.citations, plan.model_version)
         evidence = self.prefetch(question)
         if evidence is None:
-            return await self.tool_loop(question)
+            if self.web and OUTSIDE.search(question):  # a score or a game: search at once, no tool-choice round
+                return await self.web_first(question, stream)
+            if self.talk and self.talk.wants(question):
+                a = await self.talk.reply(question, stream)
+                if self.web and unsure(a.text):  # small talk gave up ("I can't browse the web"): let the tools try
+                    return await self.tool_loop(question, stream)
+                return a
+            return await self.tool_loop(question, stream)
+        unsure_ok = self.web is not None and not evidence.room_only  # A13: may fall back to the tool loop
         if not evidence:
+            if unsure_ok:  # the room has nothing; a connector or the web may
+                return await self.tool_loop(question, stream)
             return Answer(NO_EVIDENCE, [], self.runtime.model_info().version)
         if evidence.direct:
             if stream:
                 stream(evidence.direct)
             return Answer(evidence.direct, evidence.citations, self.runtime.model_info().version)
+        if unsure_ok:  # not streamed: an unsure answer is replaced by the tool loop's
+            a = await self._answer_from(question, evidence)
+            if not unsure(a.text):
+                if stream:
+                    stream(a.text)
+                return a
+            return await self.tool_loop(question, stream)
         return await self._answer_from(question, evidence, stream)
 
     # --- tools (A1) ---
@@ -339,6 +448,32 @@ class QA:
             eid = b.episode_ids[0] if b.episode_ids else None
             ev.add(f"{self._t(b.hour)} hour: " + " ".join(b.captions), Citation(episode_id=eid, frame_ref=ref, ts=b.hour))
             ev.citations += [Citation(episode_id=other, ts=b.hour) for other in b.episode_ids[1:]]  # every episode in the hour
+
+    def visit(self, ev: Evidence) -> None:
+        """The most recent stretch with a person in view (episodes less than VISIT_GAP apart), and everything the
+        cameras saw during it. No identity: episodes carry labels and captions, never names."""
+        now = self.clock()
+        episodes = sorted(self.memory.episodes(now - VISIT_LOOKBACK, now), key=lambda e: e.start)
+        people = [e for e in episodes if "person" in e.labels]
+        if not people:
+            return
+        start = people[-1].start
+        for before, after in zip(reversed(people[:-1]), reversed(people[1:])):
+            if after.start - (before.end or before.start) > VISIT_GAP:
+                break
+            start = before.start
+        last = people[-1].end or people[-1].start
+        spoken = []
+        for e in [e for e in episodes if start <= e.start <= last][:MAX_EPISODE_LINES]:
+            text = e.summary or " ".join(e.captions) or ", ".join(e.labels)
+            ref = e.keyframe_refs[0] if e.keyframe_refs else None
+            ev.add(f"{self._t(e.start)} on {e.camera_id}: {text}", Citation(episode_id=e.id, frame_ref=ref, ts=e.start))
+            said = text.strip().rstrip(".") + "."
+            spoken.append(said if not spoken else f"{self._t(e.start)}: {said}")
+        # Written from the data, no model call: on the Jetson the 4B read "while the judges were here" literally and
+        # refused when the evidence said "a courier". Captions describe people, never name them.
+        more = f" And {len(spoken) - VISIT_SPOKEN} more moments." if len(spoken) > VISIT_SPOKEN else ""
+        ev.direct = f"The latest visit started {self._t(start)}: " + " ".join(spoken[:VISIT_SPOKEN]) + more
 
     def trace(self, item: str, ev: Evidence) -> None:
         """Where `item` was last seen, the latest episodes the detector tagged with it, then caption matches."""
@@ -386,6 +521,42 @@ class QA:
         text = await asyncio.to_thread(self.runtime.caption, jpeg, prompt)
         ev.add(f"Keyframe {frame_ref}: {text}", Citation(frame_ref=frame_ref))
 
+    def item_history(self, label: str, hours: float, ev: Evidence) -> None:
+        """What `trace` and `last_time` gather, for one object over the last `hours` (A13, Q18)."""
+        label = label.strip().lower()
+        self.last_seen(label, ev)
+        now = self.clock()
+        start = now - timedelta(hours=max(0.25, min(hours, 24 * 7)))
+        name = label[:-1] if label.endswith("s") and not self.memory.episodes(start, now, label=label) else label
+        seen = set()
+        for e in sorted(self.memory.episodes(start, now, label=name), key=lambda e: e.start, reverse=True)[:5]:
+            text = e.summary or " ".join(e.captions) or ", ".join(e.labels)
+            ev.add(f"{self._t(e.start)} on {e.camera_id}: {text}",
+                   Citation(episode_id=e.id, frame_ref=(e.keyframe_refs or [None])[0], ts=e.start))
+            seen.add(e.id)
+        for h in sorted(self.memory.search(label), key=lambda h: h.ts, reverse=True):
+            if not h.url and h.episode_id not in seen and h.ts >= start:
+                ev.add(f"{self._t(h.ts)} on {h.camera_id}: {h.text}",
+                       Citation(episode_id=h.episode_id, frame_ref=h.frame_ref, ts=h.ts))
+
+    def upcoming(self, query: str | None, days: float, ev: Evidence) -> None:
+        """Connector items (calendar, Canvas, campus, chats) from now to `days` ahead, matching `query` if given."""
+        now = self.clock()
+        items = sorted(self.memory.items(now, now + timedelta(days=max(0.1, min(days, 31)))), key=lambda i: i.when)
+        words = [w for w in re.findall(r"[a-z0-9]+", (query or "").lower()) if len(w) > 2]
+        if words:
+            items = [i for i in items if any(w in f"{i.title} {i.summary or ''}".lower() for w in words)] or items
+        for i in items[:10]:
+            extra = f" ({i.summary})" if i.summary else ""
+            ev.add(f"{i.title}: {self._t(i.when)}{extra} [{i.connector}]", Citation(url=i.url, title=i.title, ts=i.when))
+
+    async def prepare_for(self, event: str, ev: Evidence) -> None:
+        """The exam-prep workflow (A8) as a tool: its plan text, with the plan's own citations."""
+        plan = await self.planner.answer(f"help me prep for {event}")
+        if plan.text:
+            ev.lines.append(f"Plan for {event}: {plan.text}")
+            ev.citations += plan.citations
+
     # --- web tools (K5, K7) ---
 
     async def web_search(self, query: str, ev: Evidence) -> None:
@@ -428,13 +599,19 @@ class QA:
         q = question.lower().strip()
         ev = Evidence()
         if m := WHERE_IS.search(q):
+            ev.room_only = True
             self.last_seen(item_name(m["item"]), ev)
             return ev
         if ITEMS_Q.search(q) or (ITEM_THING.search(q) and FUTURE.search(q)):  # A9: "what is due this week?"
             self.upcoming_items(q, ev)
             return ev
         if m := WHAT_HAPPENED.search(q) or ARRIVED.search(q):  # "what happened to the package?" / "did a package arrive?"
+            ev.room_only = True
             self.trace(item_name(m["item"]), ev)
+            return ev
+        if VISIT.search(q):  # before the windows: "while they were here" names no window of its own
+            ev.room_only = True
+            self.visit(ev)
             return ev
         if window := time_window(q, self.clock(), self.sleep):
             self.episodes_between(*window, ev, question=q)
@@ -459,29 +636,99 @@ class QA:
 
     # --- open-ended (tool loop) ---
 
-    async def tool_loop(self, question: str) -> Answer:
+    async def tool_loop(self, question: str, stream: Callable[[str], None] | None = None) -> Answer:
         now = self.clock()
+        hint = WEB_HINT if self.web else ""
         msgs = [
-            ChatMessage(role="system", content=f"{SYSTEM} The time now is {now.isoformat()}. Use tools to find evidence."),
+            ChatMessage(role="system", content=f"{SYSTEM} The time now is {now.isoformat()}. Use tools to find evidence.{hint}"),
             ChatMessage(role="user", content=question),
         ]
+        tools = self.tools + ([PREPARE_TOOL] if self.planner else [])
         ev = Evidence()
-        for _ in range(MAX_TOOL_CALLS):
-            r = await self._chat(msgs, self.tools)
+        searched = False  # the web was searched, by the model or by us
+        pages = 0
+        started = self.monotonic()
+
+        def left() -> float:
+            return WEB_BUDGET_S - (self.monotonic() - started)
+
+        for _ in range(MAX_WEB_TOOL_CALLS if self.web else MAX_TOOL_CALLS):
+            if self.web and left() <= 0:
+                break  # out of time (model calls count too): answer from what was found so far
+            r = await self._chat(msgs, tools)
             if not r.tool_calls:
-                text = r.content.strip() if ev else NO_EVIDENCE
-                return Answer(text or NO_EVIDENCE, ev.citations, r.model_version)
+                text = (r.content.strip() if ev else NO_EVIDENCE) or NO_EVIDENCE
+                if self.web and not searched and unsure(text) and left() > 0:
+                    # the model gave up without trying the web: search with the question itself, answer from that
+                    found = Evidence()
+                    await self._web_call(ToolCall(id="auto-web", name="web_search", arguments={"query": question}),
+                                         found, left())
+                    if found:
+                        ev.lines += found.lines
+                        ev.citations += found.citations
+                        return await self._finish(question, ev, stream)
+                if self.web and ev:
+                    return self._checked(Answer(text, ev.citations, r.model_version), ev, stream)
+                if stream:
+                    stream(text)
+                return Answer(text, ev.citations, r.model_version)
             msgs.append(ChatMessage(role="assistant", content=r.content, tool_calls=r.tool_calls))
             for call in r.tool_calls:
+                searched = searched or call.name == "web_search"
                 found = Evidence()
-                await self._run_tool(call, found)
+                note = ""
+                if call.name == "read_page" and pages >= MAX_PAGES:
+                    note = "skipped: one page per question; answer from what you have"
+                elif self.web and call.name in WEB_TOOL_NAMES:
+                    pages += call.name == "read_page"
+                    if not await self._web_call(call, found, left()):
+                        note = f"{call.name} timed out"
+                else:
+                    await self._run_tool(call, found)
                 ev.lines += found.lines
                 ev.citations += found.citations
-                result = "\n".join(found.lines) or "nothing found"
+                result = "\n".join(found.lines) or note or "nothing found"
                 msgs.append(ChatMessage(role="tool", content=result, tool_call_id=call.id))
         if not ev:
             return Answer(NO_EVIDENCE, [], self.runtime.model_info().version)
-        return await self._answer_from(question, ev)
+        return await self._finish(question, ev, stream)
+
+    async def web_first(self, question: str, stream: Callable[[str], None] | None = None) -> Answer:
+        """Search with the question itself and answer from the results in one model call (checked). Saves the
+        small model's tool-choice round, the slowest part of a web question on the Jetson."""
+        ev = Evidence()
+        await self._web_call(ToolCall(id="web-first", name="web_search", arguments={"query": question}), ev,
+                             WEB_BUDGET_S)
+        if not ev:
+            return await self.tool_loop(question, stream)
+        return await self._finish(question, ev, stream)
+
+    async def _web_call(self, call: ToolCall, ev: Evidence, left: float) -> bool:
+        """One web tool call inside the time budget. False when it ran out of time (nothing is added)."""
+        found = Evidence()
+        try:
+            await asyncio.wait_for(self._run_tool(call, found), timeout=min(WEB_CALL_MAX_S, max(WEB_CALL_MIN_S, left)))
+        except (TimeoutError, asyncio.TimeoutError):  # distinct classes on Python 3.10, which the Jetson runs
+            return False
+        ev.lines += found.lines
+        ev.citations += found.citations
+        return True
+
+    async def _finish(self, question: str, ev: Evidence, stream: Callable[[str], None] | None) -> Answer:
+        if not self.web:
+            return await self._answer_from(question, ev, stream)
+        return self._checked(await self._answer_from(question, ev), ev, stream)  # checked before it is streamed
+
+    def _checked(self, a: Answer, ev: Evidence, stream: Callable[[str], None] | None) -> Answer:
+        """A web answer whose numbers are not in what was found is not said: the links are offered instead."""
+        if not grounded(a.text, ev.lines):
+            links = [c for c in ev.citations if c.url][:3]
+            where = "; ".join(c.title or c.url for c in links)
+            text = "I couldn't confirm that from what I found." + (f" These may have it: {where}." if where else "")
+            a = Answer(text, links, a.model_version)
+        if stream:
+            stream(a.text)
+        return a
 
     def _t(self, ts: datetime) -> str:
         """Times the model sees are local to the household, e.g. "Sun 7:30 AM"."""
@@ -498,6 +745,12 @@ class QA:
                 tz = self.clock().tzinfo
                 start, end = (datetime.fromisoformat(args[k]) for k in ("start", "end"))
                 self.episodes_between(start.replace(tzinfo=start.tzinfo or tz), end.replace(tzinfo=end.tzinfo or tz), ev)
+            elif call.name == "item_history":
+                self.item_history(str(args["label"]), float(args.get("hours") or HISTORY_HOURS), ev)
+            elif call.name == "upcoming":
+                self.upcoming(args.get("query"), float(args.get("days") or UPCOMING_DAYS), ev)
+            elif self.planner and call.name == "prepare_for":
+                await self.prepare_for(str(args["event"]), ev)
             elif self.load_keyframe and call.name == "get_keyframe":
                 await self.get_keyframe(str(args["frame_ref"]), args.get("question"), ev)
             elif self.web and call.name == "web_search":

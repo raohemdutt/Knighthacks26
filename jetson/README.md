@@ -164,7 +164,7 @@ temp file in RAM for the 2 seconds whisper reads it). It needs nothing from the 
 **One-time setup** (the tools come from a laptop with internet, because the box's firewall blocks GitHub and Hugging Face):
 
 ```bash
-./jetson/voice-fetch.sh alexander@192.168.1.126      # on the laptop: downloads, copies, builds whisper.cpp on the box
+./jetson/voice-fetch.sh alexander@172.20.10.6      # on the laptop: downloads, copies, builds whisper.cpp on the box
 sudo dpkg -i ~/atlas/voice/debs/pulseaudio-module-bluetooth_arm64.deb && pulseaudio -k   # on the box: lets PulseAudio use a Bluetooth speaker
 ```
 
@@ -193,6 +193,12 @@ when done (it also ends by itself after 1 s of quiet), tap while it speaks to st
 it heard, what it answered, and whether the mic and speaker are fine. The box never speaks while the microphone is open.
 `python -m contexts.demo preflight` has a "voice on the box" line.
 
+**Hands-free:** with `wake_word: true` in `config/voice.yaml` (the default) the box is always listening: say "Hey Atlas", it
+answers "What's up?", then ask your question. The microphone stays open and, every 1.5 s, the last 3 s of sound are
+transcribed on the box by whisper, so music or a crowd in the room does not hide the wake phrase. Everything that is not
+the wake phrase is dropped unread; nothing is kept or sent anywhere. Tapping still works, and `wake_word: false` goes back to
+push to talk only.
+
 ## 10. Zones in a room you could not preset
 
 Open `http://<jetson>:8000/zones/` on a laptop or phone (or "Set zones" on `/operator/`): pick the camera and the zone,
@@ -204,6 +210,20 @@ names. Sort It reads its bin boxes at start, so restart `atlas-gateway` after mo
 
 `./jetson/push.sh` keeps the box's `config/zones.yaml` when it differs from the tree's (so a push cannot undo zones drawn
 on site); `./jetson/push.sh --zones` overwrites it. To keep what was drawn, copy it back: `scp <box>:Knighthacks26/config/zones.yaml config/`.
+
+## 11. Face models (owner recognition and the face profile)
+
+YuNet (finds and blurs faces) is in the repo. The two models behind the opt-in People screen are not, and the app never
+downloads anything; from a laptop with internet:
+
+```bash
+./jetson/face-fetch.sh [alexander@<ip>]     # SFace (37 MB) and the expression model (5 MB) into contexts/perception/models/, then restarts the app
+curl localhost:8000/identity/settings       # available: true (SFace), expressions_available: true, photos_available: true (OpenCV)
+```
+
+Without SFace recognition cannot be switched on; without the expression model "Read my expressions" and the anonymous
+room mode stay unavailable and everything else works. `./jetson/push.sh` leaves the box's model files alone. Everything is
+off until someone switches it on in the app, and stored pictures are blurred in every mode.
 
 ## Firmware update (boards with old factory firmware)
 

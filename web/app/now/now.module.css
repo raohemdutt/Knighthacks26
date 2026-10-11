@@ -1,0 +1,619 @@
+/* Now: the day as one story, top to bottom. Phone first (390 to 520 px); tokens from globals.css. */
+
+/* ---------- the hero: what Atlas would say right now ---------- */
+.hero {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 22px 20px 20px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, var(--accent-soft), transparent 70%), var(--surface);
+  box-shadow: var(--sh-raised-lg);
+  min-width: 0;
+}
+
+.heroWarn {
+  background: linear-gradient(180deg, var(--danger-soft), transparent 70%), var(--surface);
+  box-shadow: var(--sh-raised-lg), inset 0 0 0 2px var(--danger);
+}
+
+.greeting {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.greeting strong {
+  font-size: 17px;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.lead {
+  font-size: 21px;
+  line-height: 1.4;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+
+.sub {
+  font-size: 16px;
+  line-height: 1.45;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.subLabel {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.heroRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.speak {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 18px 8px 14px;
+  border-radius: var(--radius-pill);
+  border: 0;
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--accent-text);
+  font-size: 16px;
+  font-weight: 650;
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .speak:hover:not(:disabled) {
+    transform: translateY(-2px);
+  }
+}
+
+.speak:active:not(:disabled) {
+  box-shadow: var(--sh-inset-sm);
+  transform: scale(0.97);
+}
+
+.speak svg {
+  width: 22px;
+  height: 22px;
+}
+
+.speakOn,
+.speakOn:active:not(:disabled) {
+  background: var(--accent-grad);
+  color: var(--accent-ink);
+  box-shadow: var(--glow);
+}
+
+.speak:disabled {
+  opacity: 0.5;
+  box-shadow: none;
+}
+
+.engine {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ---------- one primary action ---------- */
+.action {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.primary {
+  width: 100%;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hint {
+  font-size: 15px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.more {
+  border-radius: var(--radius-sm);
+  min-width: 0;
+}
+
+.more > summary,
+.why > summary,
+.fold > summary {
+  cursor: pointer;
+  list-style: none;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.more > summary::-webkit-details-marker,
+.why > summary::-webkit-details-marker,
+.fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.more > summary::after,
+.why > summary::after,
+.fold > summary::after {
+  content: "+";
+  font-size: 20px;
+  line-height: 1;
+}
+
+.more[open] > summary::after,
+.why[open] > summary::after,
+.fold[open] > summary::after {
+  content: "–";
+}
+
+.moreBody {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.moreBody > * {
+  min-height: 48px;
+  font-size: 16px;
+  padding: 10px 14px;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ---------- meters, as a strip ---------- */
+.strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--sh-raised);
+  overflow: hidden;
+}
+
+.cell {
+  padding: 14px 6px;
+  text-align: center;
+  min-width: 0;
+}
+
+.cell + .cell {
+  border-left: 1px solid var(--line);
+}
+
+.cellNum {
+  font-size: 20px;
+  font-weight: 750;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.cellLabel {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.25;
+}
+
+/* ---------- the ribbon ---------- */
+.ribbon {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.item {
+  display: grid;
+  grid-template-columns: 62px 18px minmax(0, 1fr);
+  column-gap: 8px;
+  position: relative;
+  min-width: 0;
+}
+
+.when {
+  padding-top: 13px;
+  font-size: 14px;
+  color: var(--muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rail {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+.rail::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--line);
+}
+
+.item:first-child .rail::before {
+  top: 18px;
+}
+
+.item:last-child .rail::before {
+  bottom: calc(100% - 18px);
+}
+
+.dot {
+  position: relative;
+  z-index: 1;
+  margin-top: 15px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--muted);
+  background: var(--surface-solid);
+  box-shadow: var(--sh-raised-sm);
+}
+
+/* fixed, from the calendar: a filled square; a suggestion from Atlas: a hollow circle */
+.dotFixed {
+  border-radius: 3px;
+  border-color: var(--text);
+  background: var(--text);
+}
+
+.dotNow {
+  border-color: var(--accent-bright);
+  background: var(--accent-bright);
+  box-shadow: 0 0 0 5px var(--accent-soft);
+}
+
+.dotNote {
+  width: 8px;
+  height: 8px;
+  margin-top: 17px;
+  border: none;
+  background: var(--muted);
+}
+
+.body {
+  margin: 6px 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 0;
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  text-align: left;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font: inherit;
+  color: inherit;
+}
+
+button.body {
+  cursor: pointer;
+  transition: box-shadow var(--ease-press), transform var(--t) var(--ease-out);
+}
+
+@media (hover: hover) {
+  button.body:hover {
+    transform: translateY(-2px);
+  }
+}
+
+button.body:active {
+  transform: scale(0.98);
+}
+
+/* a fixed item (from the calendar) is raised; a suggestion from Atlas is sunk into the page */
+.bodyFixed {
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm), inset 4px 0 0 var(--text);
+}
+
+button.bodyFixed:active {
+  box-shadow: var(--sh-inset-sm), inset 4px 0 0 var(--text);
+}
+
+button.body:active {
+  box-shadow: var(--sh-inset);
+}
+
+.bodyNow {
+  background: var(--accent-soft);
+  box-shadow: var(--sh-inset-sm), inset 0 0 0 2px var(--accent);
+}
+
+.bodyNow.bodyFixed {
+  background: var(--accent-soft);
+  box-shadow: var(--sh-raised-sm), inset 4px 0 0 var(--text), inset 0 0 0 2px var(--accent);
+}
+
+.bodyNext {
+  box-shadow: var(--sh-inset-sm), inset 0 0 0 2px var(--muted);
+}
+
+.bodyWarn {
+  background: var(--danger-soft);
+  box-shadow: var(--sh-inset-sm), inset 0 0 0 2px var(--danger);
+}
+
+.past .body,
+.past .when {
+  opacity: 0.55;
+}
+
+.titleRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: 17px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  font-size: 14px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pill {
+  display: inline-block;
+  padding: 2px 12px;
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 650;
+  background: var(--surface-2);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.pillHere {
+  background: var(--accent-grad);
+  color: var(--accent-ink);
+}
+
+.pillWarn {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.pillGood {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.progress {
+  height: 10px;
+  border-radius: 5px;
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: 5px;
+  background: linear-gradient(90deg, var(--accent-bright), var(--accent));
+  transition: width 900ms var(--ease-out);
+}
+
+.leave {
+  font-size: 15px;
+  font-weight: 650;
+}
+
+/* When to leave for the next fixed block, with the route button: sits flush under that block. */
+.leaveRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: -2px 0 6px;
+  padding: 6px 8px 6px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border-left: 4px solid var(--accent);
+  min-width: 0;
+}
+
+.leaveRow .leave {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.leaveRowWarn {
+  border-left-color: var(--danger);
+}
+
+.reason {
+  font-size: 15px;
+  line-height: 1.4;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.here {
+  margin: 6px 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  box-shadow: var(--sh-inset-sm), inset 0 0 0 2px var(--accent);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.note {
+  margin: 6px 0;
+  padding: 12px 14px 12px 18px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm), inset 4px 0 0 var(--accent);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.noteLabel {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.noteText {
+  font-size: 16px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.fold {
+  min-width: 0;
+}
+
+.fold > summary {
+  min-height: var(--tap);
+  font-size: 14px;
+  justify-content: flex-start;
+}
+
+/* The marker keeps its own place at the right edge, so a summary that wraps ("Was that right? Tell the coach about
+   the 2 breaks") and a short one beside it show the same "+" in the same spot, and a long one can never squeeze it out. */
+.fold > summary::after {
+  margin-left: auto;
+  flex: none;
+}
+
+.foldBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 6px;
+  min-width: 0;
+}
+
+.legend {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--muted);
+  padding-left: 4px;
+}
+
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--muted);
+  border-radius: 50%;
+}
+
+.legend i.sq {
+  border-radius: 2px;
+  border-color: var(--text);
+  background: var(--text);
+}
+
+/* ---------- why this plan ---------- */
+.why {
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--sh-raised);
+  padding: 6px 20px;
+  min-width: 0;
+}
+
+.why > summary {
+  color: var(--text);
+  font-size: 17px;
+  min-height: 52px;
+}
+
+.whyBody {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 0 14px;
+  min-width: 0;
+}
+
+.whyBody h3 {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+@media (max-width: 360px) {
+  .item {
+    grid-template-columns: 54px 16px minmax(0, 1fr);
+  }
+  .lead {
+    font-size: 19px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progressFill {
+    transition: none;
+  }
+}

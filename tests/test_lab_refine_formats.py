@@ -452,6 +452,26 @@ def test_a_heading_inside_a_code_fence_is_not_an_entry():
     assert entry.next_pass == "re-walk T9 and E9. ``` ## Notes ```"
 
 
+@pytest.mark.parametrize(
+    "block",
+    [
+        pytest.param("~~~\n## Notes\n~~~", id="tilde-fence"),
+        pytest.param("````\n```\n## Notes\n```\n````", id="backtick-fence-inside-a-longer-one"),
+        pytest.param("```text\n```text\n## Notes\n```", id="a-fence-with-an-info-string-does-not-close"),
+        pytest.param("```\n~~~\n## Notes\n~~~\n```", id="tilde-fence-inside-a-backtick-one"),
+    ],
+)
+def test_a_heading_inside_any_fenced_code_block_is_not_an_entry(block):
+    """A fenced block opens with three or more backticks or tildes and closes only at a bare fence of the same
+    character at least as long, as CommonMark reads it, so a quoted '## ' line inside never becomes an entry."""
+    fenced = edit(SAMPLE, "Left for the next pass: re-walk T9 and E9.", "Left for the next pass: re-walk T9 and E9.\n\n" + block)
+
+    entry = only_entry(fenced)
+
+    assert (entry.kind, entry.number) == ("pass", 7)
+    assert entry.next_pass == "re-walk T9 and E9. " + " ".join(block.splitlines())
+
+
 def test_a_section_label_may_appear_only_once_in_an_entry():
     doubled = edit(SAMPLE, "Converged: NO - two changes made.", "Converged: NO - two changes made.\nConverged: NO - again.")
 
@@ -564,9 +584,10 @@ CHECK_CASES = [
         [("Converged: NO - two changes made.", "Converged: YES - nothing to do.")],
         [
             "pass 7: Converged is YES but the entry makes 2 change(s); a converged walk changes nothing",
+            "pass 7: Converged is YES but the entry raises 1 ruling(s); a converged walk raises no new ruling",
             "pass 7: Converged is YES, so the entry must end with the line 'CONVERGED at pass 7'",
         ],
-        id="converged-yes-with-changes",
+        id="converged-yes-with-changes-and-a-ruling",
     ),
 ]
 
@@ -842,6 +863,26 @@ def test_the_converged_closing_line_must_agree_with_the_entry(edits, expected):
     assert rf.check_pass_entry(only_entry(text)) == expected
 
 
+def test_a_converged_entry_raises_no_new_ruling():
+    """lab/refine/PASS_RULES.md, "Convergence": a pass converges when its walk changed nothing, which means no
+    board edit, no new queued experiment and no new ruling. A YES entry that raises one would end the run while a
+    question is still open, and the next trigger would start a new run."""
+    raised = (
+        "Rulings raised (candidates; the merge pass numbers them into OWNER_RULINGS.md):\n"
+        "(a) Should E9 run on pod A or pod B?\n"
+        "    Now: pod B.\n"
+        "    Recommend: pod B, because pod A serves the teacher.\n"
+        '    Source of tension: lab/README.md, section "Teacher (pod A)" against the GPU queue rules.\n'
+        "    Answer: ____"
+    )
+    entry = only_entry(edit(CONVERGED_PASS, "Rulings raised: none", raised))
+
+    assert [r.label for r in entry.rulings_raised] == ["a"]
+    assert rf.check_pass_entry(entry) == [
+        "pass 5: Converged is YES but the entry raises 1 ruling(s); a converged walk raises no new ruling"
+    ]
+
+
 def test_a_cap_entry_closes_with_the_cap_line_and_raises_a_ruling():
     entry = only_entry(cap_pass())
 
@@ -964,3 +1005,47 @@ def test_dimension_ids_may_be_a_rubrics_own_labels():
     assert entry.findings[0].dimension == "LT1"
     assert entry.changes[0].dimensions == ("LT1",)
     assert rf.check_pass_entry(entry) == []
+
+
+def test_the_refinement_loop_names_its_four_tracks_in_one_place():
+    """refine_formats holds the one track tuple; the other modules of the loop hand on that same object, so a fifth
+    track (which takes a ruling and a board task) is added once."""
+    from lab.machine import experiments, refine_merge, refine_track
+
+    assert rf.TRACKS == ("telemetry", "learning", "plumbing", "kernels")
+    assert refine_track.TRACKS is rf.TRACKS
+    assert refine_merge.TRACKS is rf.TRACKS
+    assert experiments.TRACKS is rf.TRACKS
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["pod.idle_watts", "teacher.decode_tok_s", "a.b.c", "decode.8k_tok_s", "teacher.2x", "pod.idle_watts.",
+     "Pod.idle_watts", "idle_watts", "pod..idle", "pod.idle-watts"],
+)
+def test_a_metric_name_is_read_by_metrics_py_rule_in_pass_entries_and_experiments(tmp_path, name):
+    """lab/machine/metrics.py decides what a metric name is, since it keeps the file every reading cites. A pass
+    entry's metrics table and an experiment take exactly the names it takes; a name with a digit-led part such as
+    decode.8k_tok_s cannot be stored there, so it cannot be cited or moved either."""
+    from lab.machine import experiments, metrics
+
+    try:
+        metrics.add({"metric": name, "value": 1.0, "unit": "W", "node": "pod-a", "conditions": {},
+                     "source": "test", "low_confidence": False}, path=tmp_path / "metrics.jsonl")
+        stored = True
+    except metrics.MetricsFormatError as exc:
+        assert "metric must be" in str(exc)
+        stored = False
+
+    entry = only_entry(edit(SAMPLE, "| pod.idle_watts | 39 |", f"| {name} | 39 |"))
+    in_entry = f"pass 7: metrics before: {name!r} is not a dotted lowercase metric name" not in rf.check_pass_entry(entry)
+
+    fields = {"id": "E9", "track": "kernels", "hypothesis": "h", "lever": "l", "arms": {"A": "a", "B": "b"},
+              "metric": name, "better": "lower", "citation": "c"}
+    try:
+        experiments.validate_definition(fields)
+        in_experiment = True
+    except experiments.ExperimentError:
+        in_experiment = False
+
+    assert (in_entry, in_experiment) == (stored, stored)
