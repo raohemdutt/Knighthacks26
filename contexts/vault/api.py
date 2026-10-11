@@ -2,7 +2,8 @@
 
     app.include_router(vault_router(atlas.policy, atlas.bus, wiper=atlas.wiper, guard=authorized))
 
-- GET  /vault/policy          {blur_faces, paused_cameras, offline, keep_days, live_faces}
+- GET  /vault/policy          {blur_faces, paused_cameras, offline, keep_days, live_faces}; `live_faces` is "clear" unless
+                               the owner switched it off, also on a box that never recorded it
 - PUT  /vault/policy          any of those fields; the rest stay as they are
 - POST /vault/view-ticket     -> {ticket, expires_at, expires_in}: a short-lived ticket the owner's signed-in screen puts
                                on the live picture's address (`?ticket=`) to see faces there while `live_faces` is

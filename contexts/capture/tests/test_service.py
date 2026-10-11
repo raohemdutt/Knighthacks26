@@ -225,7 +225,7 @@ def test_blur_1_is_blurred_with_the_strict_blur_whatever_the_policy_or_a_ticket_
 
         holder["plain"] = ask("snapshot.jpg")
         holder["asked"] = ask("snapshot.jpg?blur=1")
-        policy.blur_faces, policy.live_faces = True, "clear"  # the usual box, and the owner's signed-in screen
+        policy.blur_faces, policy.live_clear = True, True  # the usual box, and the owner's signed-in screen
         holder["ticket"] = ask("snapshot.jpg?ticket=owner")
         holder["both"] = ask("snapshot.jpg?ticket=owner&blur=1")
         service.stop()

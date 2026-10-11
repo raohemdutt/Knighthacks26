@@ -1989,6 +1989,11 @@ export interface VaultPolicy {
   live_faces: "blurred" | "clear";
 }
 
+/** "Your live view" is on: the owner's signed-in screen shows faces. On unless the owner switched it off. */
+export function liveClear(policy: Pick<VaultPolicy, "live_faces">): boolean {
+  return policy.live_faces !== "blurred";
+}
+
 /** GET /api/voice/status: the box's own microphone and speaker (X16). "off" also means the voice service is not running. */
 export interface VoiceStatus {
   state: "off" | "idle" | "listening" | "thinking" | "speaking";

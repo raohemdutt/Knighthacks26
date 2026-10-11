@@ -1,5 +1,5 @@
 """The view ticket and the `live_faces` policy field: who may ask for the clear live picture, and what an older box
-does after the upgrade (nothing new until its owner switches it)."""
+does after the upgrade (clear on the owner's signed-in screen, like every box, until its owner switches that off)."""
 
 import asyncio
 import json
@@ -88,6 +88,26 @@ def test_a_new_box_starts_clear_and_the_switch_round_trips(tmp_path):
     assert box.http.put("/vault/policy", json={"live_faces": "clear"}).json()["live_faces"] == "clear"
     assert box.http.put("/vault/policy", json={"live_faces": "sharp"}).status_code == 422
     assert Policy(tmp_path).live_faces == "clear"  # after a restart, from the file alone
+    assert box.policy.live_clear and Policy(tmp_path).live_clear
+
+
+def test_an_explicit_blurred_survives_a_pause_a_restart_and_a_replay(tmp_path):
+    """The switch is the way to turn the clear view off: once off, nothing but the owner turns it back on."""
+    box = Box(tmp_path)
+    box.http.put("/vault/policy", json={"live_faces": "blurred"})
+    box.http.put("/vault/policy", json={"paused_cameras": ["cam-door"]})  # a pause carries the choice
+    assert box.seen[-1].live_faces == "blurred" and not box.policy.live_clear
+    assert json.loads(box.policy.path.read_text())["live_faces"] == "blurred"
+
+    restarted = Policy(tmp_path)  # from the file alone
+    assert restarted.live_faces == "blurred" and not restarted.live_clear
+
+    box.policy.path.unlink()  # from the log alone
+    replayed = Box(tmp_path)
+    assert replayed.policy.live_clear  # nothing applied yet: the default
+    assert asyncio.run(replayed.bus.replay_into()) == 2
+    assert replayed.policy.live_faces == "blurred" and not replayed.policy.live_clear
+    assert replayed.http.get("/vault/policy").json()["live_faces"] == "blurred"
 
 
 def test_pausing_a_camera_keeps_the_live_view_choice(tmp_path):
@@ -102,7 +122,7 @@ def test_pausing_a_camera_keeps_the_live_view_choice(tmp_path):
     assert r.json()["live_faces"] == "clear" and box.seen[-1].live_faces == "clear"
 
 
-def test_an_event_from_before_the_field_still_parses_and_replays_to_blurred(tmp_path):
+def test_an_event_from_before_the_field_still_parses_and_replays_to_clear(tmp_path):
     old = parse_event(OLD_EVENT)
     assert isinstance(old, PolicyChanged) and old.live_faces is None
     events = tmp_path / "events"
@@ -112,22 +132,28 @@ def test_an_event_from_before_the_field_still_parses_and_replays_to_blurred(tmp_
     assert box.policy.live_faces == "clear"  # nothing applied yet
     assert asyncio.run(box.bus.replay_into()) == 1
     assert box.policy.snapshot() == {"blur_faces": True, "paused_cameras": ["cam-door"], "offline": False,
-                                     "keep_days": None, "live_faces": "blurred"}  # the box does what it did before
+                                     "keep_days": None, "live_faces": "clear"}  # nothing recorded: clear, no switch touched
+    assert box.policy.live_clear and box.http.get("/vault/policy").json()["live_faces"] == "clear"
+    assert json.loads((events / "2026-10-01.jsonl").read_text().splitlines()[0]) == OLD_EVENT  # the old event is not rewritten
 
-    # The owner switches it; from then on every policy event carries the choice, so a replay ends up there too.
-    assert box.http.put("/vault/policy", json={"live_faces": "clear"}).json()["live_faces"] == "clear"
+    # The owner switches it off; from then on every policy event carries the choice, so a replay ends up there too.
+    assert box.http.put("/vault/policy", json={"live_faces": "blurred"}).json()["live_faces"] == "blurred"
     box.http.put("/vault/policy", json={"paused_cameras": []})
     box.policy.path.unlink()
     again = Box(tmp_path)
     assert asyncio.run(again.bus.replay_into()) == 3
-    assert again.policy.live_faces == "clear" and again.policy.snapshot()["paused_cameras"] == []
+    assert again.policy.live_faces == "blurred" and again.policy.snapshot()["paused_cameras"] == []
 
 
-def test_a_policy_file_from_before_the_field_loads_as_blurred(tmp_path):
+def test_a_policy_file_from_before_the_field_loads_as_clear(tmp_path):
     (tmp_path / "vault").mkdir()
-    (tmp_path / "vault" / "policy.json").write_text(json.dumps(OLD_FILE))
-    policy = Policy(tmp_path)
-    assert policy.live_faces == "blurred" and policy.keep_days == 30 and policy.blur_faces
+    for name, old in (("absent", OLD_FILE), ("null", OLD_FILE | {"live_faces": None})):
+        (tmp_path / "vault" / "policy.json").write_text(json.dumps(old))
+        policy = Policy(tmp_path)
+        assert policy.live_faces == "clear" and policy.live_clear and policy.keep_days == 30 and policy.blur_faces, name
     box = Box(tmp_path)
+    assert box.http.get("/vault/policy").json()["live_faces"] == "clear"  # the Privacy screen's switch shows on
     r = box.http.put("/vault/policy", json={"paused_cameras": ["cam-desk"]})  # an unrelated change does not flip it
-    assert r.json()["live_faces"] == "blurred"
+    assert r.json()["live_faces"] == "clear"
+    assert box.http.put("/vault/policy", json={"live_faces": "blurred"}).json()["live_faces"] == "blurred"
+    assert Policy(tmp_path).live_faces == "blurred"  # and the file now records the owner's choice

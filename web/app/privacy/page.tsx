@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import priv from "@/components/privacy/privacy.module.css";
 import { Empty, ErrorBox, Loading, WriteError } from "@/components/States";
 import ui from "@/components/ui.module.css";
-import { ApiError, api, viewTicketReady, viewTicketState, type Egress, type VaultPolicy, type WipeResult, type WipeScope, type WipeToken } from "@/lib/api";
+import { ApiError, api, liveClear, viewTicketReady, viewTicketState, type Egress, type VaultPolicy, type WipeResult, type WipeScope, type WipeToken } from "@/lib/api";
 import { bytes, groupLabel, internetSummary, picturesLine } from "@/lib/egress";
 import { cameraName } from "@/lib/format";
 import { useFetch } from "@/lib/useFetch";
@@ -88,7 +88,7 @@ function Controls({ policy, cameras, busy, change }: { policy: VaultPolicy; came
         <h2 className={ui.sectionTitle}>Faces</h2>
         <div className={priv.card}>
           <Row title="Your live view" help={liveHelp} guide="privacy:live-view">
-            <Switch on={policy.live_faces === "clear"} label="Show faces on my own signed-in screen" disabled={busy} onChange={(v) => change({ live_faces: v ? "clear" : "blurred" })} />
+            <Switch on={liveClear(policy)} label="Show faces on my own signed-in screen" disabled={busy} onChange={(v) => change({ live_faces: v ? "clear" : "blurred" })} />
           </Row>
           {policy.blur_faces ? (
             <Row title="Saved pictures" help="Always blurred before they are saved." guide="privacy:saved-pictures">
