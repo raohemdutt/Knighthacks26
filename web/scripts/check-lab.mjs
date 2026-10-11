@@ -188,6 +188,27 @@ try {
   is("another tool, its name in words", W.answerWords('{"tool_calls": [{"name": "set_reminder", "arguments": {}}]}'), "set reminder");
   is("episodes_between says looked back", W.answerWords('{"tool_calls": [{"name": "episodes_between", "arguments": {"start": "2026-10-11T00:44:00-04:00", "end": "2026-10-11T01:09:00-04:00"}}]}').startsWith("looked back from "), true);
   is("a plain sentence stays a sentence", W.answerWords("  The keys are on the desk. "), "The keys are on the desk.");
+  // ---- the live power graph (lib/livePower.ts): real readings only, gaps where there are none
+  const LP = await load("livePower");
+  const lpMember = (node, online, w) => ({ name: node, node, online, watts_now: w, watts_idle: 10.27 });
+  const route = (a, b) => ({ configured: true, members: [lpMember("pod-a", ...a), lpMember("pod-b", ...b)] });
+  const r0 = LP.readingFrom(route([true, 10], [true, 12]), 0);
+  const r1 = LP.readingFrom(route([true, 20], [true, 12]), 2000);
+  is("a reading takes each pod's watts", `${r0.w["pod-a"]},${r0.w["pod-b"]}`, "10,12");
+  is("an offline pod is a gap, not its last watts", LP.readingFrom(route([false, 30], [true, 12]), 0).w["pod-a"], null);
+  is("a failed poll is a gap for both pods", LP.metersOffline(LP.readingFrom(null, 0)), true);
+  is("a route not configured is offline", LP.metersOffline(LP.readingFrom({ configured: false, members: [] }, 0)), true);
+  is("one pod up is not offline", LP.metersOffline(LP.readingFrom(route([false, null], [true, 12]), 0)), false);
+  is("trapezoid, both pods: (10+20)/2*2 + 12*2", LP.trapezoidJoules(r0, r1), 54);
+  is("a missed stretch adds nothing", LP.trapezoidJoules(r0, { ...r1, t: 10_000 }), 0);
+  is("a pod without a reading at one end adds nothing", LP.trapezoidJoules(r0, LP.readingFrom(route([false, null], [true, 12]), 2000)), 24);
+  let buf = [];
+  for (let i = 0; i <= 70; i++) buf = LP.appendReading(buf, LP.readingFrom(route([true, 10], [true, 10]), i * 2000));
+  is("the buffer keeps two minutes and a poll of margin", buf[0].t >= 140_000 - 125_000, true);
+  is("the buffer starts empty and fills, nothing made up", LP.appendReading([], r0).length, 1);
+  const line = LP.podLine([r0, r1, { t: 20_000, w: { "pod-a": 15 } }], "pod-a");
+  is("the line breaks across a missed stretch", line.map((x) => x[1]).join(","), "10,20,-,15");
+  is("kJ text", LP.kjText(54), "0.05 kJ");
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

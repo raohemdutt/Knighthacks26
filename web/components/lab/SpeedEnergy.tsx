@@ -29,6 +29,7 @@ import type { SharedBrainPair } from "@/lib/sharedBrain";
 import { useFetch } from "@/lib/useFetch";
 import { type ChartTokens, LabEChart, chartAxis, chartBase, useChartTokens } from "./Charts";
 import { PointDetail, useReduced } from "./Labels";
+import { LivePower, useSharedBrain } from "./LivePower";
 import { Sheet } from "./LabRun";
 import b from "./bench.module.css";
 import s from "./speed.module.css";
@@ -106,40 +107,6 @@ function Tile({ value, label, sub, missing, why }: { value: string | null; label
 }
 
 /* ---------- 0. live meters ---------- */
-
-const LIVE_MS = 2000;
-
-/** GET /api/circle/shared-brain every 2 s while the tab is open; null until it first answers, never a made-up value. */
-function useSharedBrain(): { brain: SharedBrainPair | null; fresh: boolean } {
-  const [brain, setBrain] = useState<SharedBrainPair | null>(null);
-  const [at, setAt] = useState(0);
-  const [now, setNow] = useState(0);
-  useEffect(() => {
-    let alive = true;
-    let ctl: AbortController | null = null;
-    const tick = () => {
-      ctl?.abort();
-      ctl = new AbortController();
-      api
-        .circleSharedBrain(ctl.signal)
-        .then((d) => {
-          if (!alive) return;
-          setBrain(d);
-          setAt(Date.now());
-        })
-        .catch(() => undefined);
-      setNow(Date.now());
-    };
-    tick();
-    const id = window.setInterval(tick, LIVE_MS);
-    return () => {
-      alive = false;
-      ctl?.abort();
-      window.clearInterval(id);
-    };
-  }, []);
-  return { brain, fresh: at > 0 && now - at < LIVE_MS * 3 };
-}
 
 function LiveTile({ title, value, sub, offline, fresh, reduced }: { title: string; value: string | null; sub?: string | null; offline: boolean; fresh: boolean; reduced: boolean }) {
   return (
@@ -1029,6 +996,7 @@ export function SpeedEnergy({
       {sessions.length === 0 ? <p className={b.banner}>{data.empty_reason ?? "No bench session in these rows yet."}</p> : null}
 
       <LiveStrip brain={live.brain} fresh={live.fresh} box={boxReading} reduced={reduced} />
+      <LivePower poll={live.poll} reduced={reduced} />
       <ChipFix story={story} reduced={reduced} a100={a100} setA100={setA100} onPick={pickFromChart} />
       <BiggerBrain story={story} reduced={reduced} both={both} />
 
