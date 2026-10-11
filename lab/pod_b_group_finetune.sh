@@ -5,7 +5,7 @@
 #
 # On the workstation, from the repo root (Git Bash):
 #   bash lab/pod_b_group_finetune.sh bundle          lab/ contracts/ bus/ runtime/ contexts/ config/ at HEAD, one tar.gz
-# On pod D (python tooling/dispatcher/pod_exec.py D run lab/pod_b_group_finetune.sh <name>.sh, or the controller):
+# On pod D (python -m lab.controller run-script --account D lab/pod_b_group_finetune.sh <step> [args]):
 #   prep                                             unpack the bundle into ~/l10/src; the verb's few packages into the
 #                                                    training venv L16 made (~/venvs/atlas-train); check llama.cpp
 #   roster <circle> <task> <member>[=<current version>] ...
@@ -37,6 +37,21 @@ VENV="$HOME/venvs/atlas-train"
 MODEL="$HOME/models/Qwen3.5-4B"
 MMPROJ="${MMPROJ:-$HOME/models/Qwen3.5-4B-GGUF/mmproj-F16.gguf}"
 POOL="$HOME/pool"
+# llama.cpp: the source tree (convert_hf_to_gguf.py, gguf-py, .git) and the build whose bin/ holds llama-server.
+# On pod D today: LLAMA_SRC=~/e29/llama.cpp LLAMA_BUILD=~/e29/llama.cpp/build-hip (E29's HIP build, no llama-quantize).
+# prep makes ~/l10/llama.cpp, a folder of links in the layout lab/package.py reads (<dir>/build/bin/...), and builds a
+# CPU-only llama-quantize in ~/l10/llama-quant when the build has none (cmake from PATH, else pip's cmake in the
+# venv). Nothing in LLAMA_SRC or LLAMA_BUILD is changed.
+LLAMA_SRC="${LLAMA_SRC:-$HOME/llama.cpp}"
+LLAMA_BUILD="${LLAMA_BUILD:-$LLAMA_SRC/build}"
+LLAMA="$L10/llama.cpp"
+# Smoke knobs: L10_STEPS caps the trainer's optimizer steps (--max-steps); GATE=fake scores with the stand-in gate
+# (no model servers; recorded as gate fake, no metrics rows); MIN_HELD_OUT lowers the gate's floor to report a short
+# held-out set (it then never deploys); TEACHER_EXPECT names what the teacher's checkpoint must hold.
+L10_STEPS="${L10_STEPS:-}"
+GATE="${GATE:-real}"
+MIN_HELD_OUT="${MIN_HELD_OUT:-50}"
+TEACHER_EXPECT="${TEACHER_EXPECT:-Qwen3.8-27B}"
 
 die() { echo "pod_b_group_finetune: $*" >&2; exit 1; }
 
@@ -55,12 +70,38 @@ prep() {
   [ -x "$VENV/bin/python" ] || die "no $VENV: run lab/l16_run.sh prep first (it makes the training venv)"
   PYTHONNOUSERSITE=1 "$VENV/bin/python" -m pip install --quiet pydantic httpx jsonschema pyyaml \
     || die "pip could not install the verb's packages into $VENV"
-  [ -x "$HOME/llama.cpp/build/bin/llama-server" ] && [ -x "$HOME/llama.cpp/build/bin/llama-quantize" ] \
-    || die "llama.cpp tools missing: bash lab/pod_b_trainer.sh llama"
+  llama_links || die "llama.cpp tools missing under $LLAMA_SRC / $LLAMA_BUILD (set LLAMA_SRC and LLAMA_BUILD)"
   [ -f "$MODEL/config.json" ] || die "no base at $MODEL"
   [ -f "$MMPROJ" ] || die "no base projector at $MMPROJ (set MMPROJ)"
   (cd "$SRC" && PYTHONNOUSERSITE=1 "$VENV/bin/python" -m lab group-finetune -h > /dev/null) || die "the verb does not load"
   echo "prep done"
+}
+
+llama_links() {
+  [ -f "$LLAMA_SRC/convert_hf_to_gguf.py" ] && [ -x "$LLAMA_BUILD/bin/llama-server" ] || return 1
+  local quant="$LLAMA_BUILD/bin/llama-quantize" cmake_bin
+  if [ ! -x "$quant" ]; then
+    quant="$L10/llama-quant/bin/llama-quantize"
+    if [ ! -x "$quant" ]; then
+      cmake_bin="$(command -v cmake || true)"
+      if [ -z "$cmake_bin" ]; then
+        PYTHONNOUSERSITE=1 "$VENV/bin/python" -m pip install --quiet cmake || return 1
+        cmake_bin="$VENV/bin/cmake"
+      fi
+      echo "building a CPU-only llama-quantize from $LLAMA_SRC into $L10/llama-quant"
+      "$cmake_bin" -S "$LLAMA_SRC" -B "$L10/llama-quant" -DGGML_HIP=OFF -DLLAMA_CURL=OFF -DCMAKE_BUILD_TYPE=Release \
+        > "$L10/llama-quant.log" 2>&1 \
+        && "$cmake_bin" --build "$L10/llama-quant" --target llama-quantize -j 16 >> "$L10/llama-quant.log" 2>&1 \
+        || { tail -5 "$L10/llama-quant.log"; return 1; }
+    fi
+  fi
+  rm -rf "$LLAMA" && mkdir -p "$LLAMA/build/bin" || return 1
+  ln -s "$LLAMA_SRC/convert_hf_to_gguf.py" "$LLAMA/convert_hf_to_gguf.py"
+  ln -s "$LLAMA_SRC/gguf-py" "$LLAMA/gguf-py"
+  ln -s "$LLAMA_SRC/.git" "$LLAMA/.git"
+  ln -s "$LLAMA_BUILD/bin/llama-server" "$LLAMA/build/bin/llama-server"
+  ln -s "$quant" "$LLAMA/build/bin/llama-quantize"
+  echo "llama.cpp links: $LLAMA at $(git -C "$LLAMA" rev-parse HEAD)"
 }
 
 roster() {
@@ -102,13 +143,15 @@ run() {
   mkdir -p "$out"
   log="$out/run.log"
   export PYTHONNOUSERSITE=1 PYTHONUNBUFFERED=1 LAB_STATE_DIR="$L10/state" LAB_TASK=L10
+  [ -x "$LLAMA/build/bin/llama-quantize" ] || die "no $LLAMA: run prep first"
   echo "### L10 run $run_id start $(date -u +%Y-%m-%dT%H:%M:%SZ) slot $GPU_SLOT" | tee -a "$log"
   (cd "$SRC" && timeout -s INT -k 120 "$RUN_TIMEOUT_S" "$VENV/bin/python" -m lab group-finetune \
     --circle "$circle" --task "$task" --pool "$POOL" --run-id "$run_id" --work "$out" \
     --packages "$HOME/data/packages" --teacher-url "$TEACHER_URL" --teacher-token-env TEACHER_TOKEN \
-    --model "$MODEL" --mmproj "$MMPROJ" --llama-cpp "$HOME/llama.cpp" --trainer-python "$VENV/bin/python" \
+    --model "$MODEL" --mmproj "$MMPROJ" --llama-cpp "$LLAMA" --trainer-python "$VENV/bin/python" \
     --base-revision "$BASE_REVISION" --label-workers "$LABEL_WORKERS" --decode-attested \
-    --metrics-file "$out/metrics.jsonl" "$@") 2>&1 | tee -a "$log"
+    --gate "$GATE" --min-held-out "$MIN_HELD_OUT" --teacher-expect-model "$TEACHER_EXPECT" \
+    ${L10_STEPS:+--max-steps "$L10_STEPS"} --metrics-file "$out/metrics.jsonl" "$@") 2>&1 | tee -a "$log"
   rc=${PIPESTATUS[0]}
   cp "$L10/state/ledger.jsonl" "$out/ledger.jsonl" 2>/dev/null || echo "no ledger rows to copy" | tee -a "$log"
   echo "### L10 run $run_id end $(date -u +%Y-%m-%dT%H:%M:%SZ) rc=$rc" | tee -a "$log"
@@ -123,7 +166,7 @@ serve() {
 }
 
 cleanup() {
-  rm -rf "$L10/src" "$L10/l10-bundle.tar.gz"
+  rm -rf "$L10/src" "$L10/l10-bundle.tar.gz" "$LLAMA"
   echo "cleanup done; kept $L10/state, ~/group-runs and ~/data/packages"
 }
 
@@ -135,5 +178,5 @@ case "$STEP" in
   run) shift; run "$@" ;;
   serve) serve ;;
   cleanup) cleanup ;;
-  *) sed -n '2,25p' "$0" ;;
+  *) sed -n '2,26p' "$0" ;;
 esac

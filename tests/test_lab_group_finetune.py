@@ -351,3 +351,24 @@ def test_the_pod_script_runs_only_inside_a_gpu_slot_and_with_the_teacher_token(t
     no_token = subprocess.run(["bash", str(script), "run", CIRCLE, TASK, "g9"], env={**env, "GPU_SLOT": "row-1"},
                               capture_output=True, text=True)
     assert no_token.returncode != 0 and "TEACHER_TOKEN" in no_token.stderr
+
+
+def test_the_smokes_fake_gate_is_recorded_as_such_writes_no_metrics_and_take_dry_run_runs_nothing(
+        pool_root, tmp_path, pod):
+    servers, client = gf.fake_gate()
+    fake = FakeTeacher(text_policy("mug"))
+    with Teacher(fake.base_url, transport=fake.transport, sleep=lambda s: None) as teacher:
+        result = gf.run_group_finetune(
+            pool_root=pool_root, circle=CIRCLE, task=TASK, run_id="s1", work=tmp_path / "work",
+            packages=tmp_path / "packages", teacher=teacher, trainer=FakeTrainer(), gate_client=client,
+            servers=servers, toolchain=FakeToolchain(), model=str(pod["base_dir"]), min_held_out=1,
+            metrics_path=tmp_path / "metrics.jsonl", gate_mode="fake", **pod)
+    assert result["ok"], result
+    assert rows("group-finetune.run")[-1]["conditions"]["gate"] == "fake"
+    assert not (tmp_path / "metrics.jsonl").exists()
+    offer = Path(result["package"]) / gf.OFFER_FILE
+    assert json.loads(offer.read_text())["gate_mode"] == "fake"
+    box = FakeBox()
+    out = gf.take_offer(offer, "rao", box, dry_run=True)
+    assert out["ok"] and out["uploaded_examples"] == 0 and box.calls == []
+    assert out["would_run"][1] == f"python jetson/atlas_swap.py swap {result['model_version']}"

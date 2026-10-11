@@ -80,7 +80,7 @@ from contracts.learning import DatasetExample, DatasetManifest
 from lab import dataset as ds
 from lab import hub
 from lab import eval_gate, package
-from lab.label import Decode, LabelRefused, Teacher, label_dataset, running_on_pod
+from lab.label import EXPECTED_MODEL, Decode, LabelRefused, Teacher, label_dataset, running_on_pod
 from lab.machine import metrics as metrics_file
 from lab.machine.record import record
 
@@ -540,6 +540,27 @@ def gate_client_for(task: str, dataset: Path, *, teacher_url: str | None = None,
     return eval_gate.client_for(task, dataset)
 
 
+def fake_gate(teacher_url: str = "http://teacher.fake") -> tuple[Any, Callable[[str, Path], eval_gate.Client]]:
+    """The smoke's stand-in gate (--gate fake): no model server, canned scores (each current model passes no held-out
+    item, the group model and the teacher every one). The run's ledger row and the offer say gate fake, and no metrics
+    row is written from it; it proves the plumbing, never the model."""
+    from lab.eval_gate_fake import FakeClient
+    from lab.group_finetune_fake import FakeServers
+
+    servers = FakeServers()
+
+    def client(task: str, dataset: Path) -> eval_gate.Client:
+        held = {e.id for e in ds.load_split(dataset, require_images=False, min_held_out=1).held_out}
+        outcomes: dict[str, list[set[str]]] = {FakeServers.CANDIDATE: [held], FakeServers.TEACHER: [held]}
+
+        class _Client(FakeClient):
+            def score(self, base_url: str, *, model_version: str | None = None) -> dict[str, Any]:
+                self.outcomes.setdefault(base_url, [set()])   # every member's current model
+                return super().score(base_url, model_version=model_version)
+        return _Client(dataset, outcomes, by_id=True)
+    return servers, client
+
+
 # --- the run ------------------------------------------------------------------------------------------------------------
 
 def _delete(paths: Sequence[Path]) -> tuple[bool, list[str]]:
@@ -577,7 +598,8 @@ def run_group_finetune(*, pool_root: str | os.PathLike[str], circle: str, task: 
                        llama_dir: str | os.PathLike[str], toolchain: Any = None, config: TrainConfig = TrainConfig(),
                        min_held_out: int = eval_gate.MIN_ITEMS, decode_attested: bool = False, keep: bool = False,
                        label_workers: int = 1, metrics_path: str | os.PathLike[str] | None = None,
-                       node: str = NODE, account: str = "D") -> dict[str, Any]:
+                       node: str = NODE, account: str = "D", gate_mode: str = "real",
+                       expect_model: str | None = EXPECTED_MODEL) -> dict[str, Any]:
     """The whole group run (see the module docstring). GroupError before anything is written when the inputs do
     not hold up; after that, every way out deletes the pooled data (unless keep) and writes the run's rows."""
     if keep and running_on_pod():
@@ -600,6 +622,7 @@ def run_group_finetune(*, pool_root: str | os.PathLike[str], circle: str, task: 
         merged = merge_pool(pool, work / "data" / "exports", run_id=run_id)
         step = "label"
         labeled = label_dataset(merged.root, teacher, decode=Decode(), workers=label_workers, run_id=f"{run_id}.label",
+                                expect_model=expect_model,
                                 environ={})   # the pooled copy is deleted by this run on every way out
         result["labels"] = {"outcome": labeled.outcome, "accepted": labeled.accepted, "asked": labeled.asked,
                             "pending": labeled.pending_after, "checkpoint": labeled.checkpoint}
@@ -650,7 +673,7 @@ def run_group_finetune(*, pool_root: str | os.PathLike[str], circle: str, task: 
                     scores[member.member] = {k: gate["scores"][k] for k in ("current", "candidate", "teacher")}
         step = "offer"
         offer = {"version": 1, "circle": circle, "task": task, "run_id": run_id, "model_version": version,
-                 "created": dt.datetime.now(dt.timezone.utc).isoformat(), "account": account,
+                 "created": dt.datetime.now(dt.timezone.utc).isoformat(), "account": account, "gate_mode": gate_mode,
                  "members": [_member_entry(m, gates.get(m.member, {})) for m in pool.members],
                  "take": {"pull": f"python -m lab.package_pull pull --account {account} --version {version} "
                                   "--dest data/models",
@@ -679,11 +702,12 @@ def run_group_finetune(*, pool_root: str | os.PathLike[str], circle: str, task: 
                "group.examples": pool.examples, **({"group.train_rows": counts["train_rows"]}
                                                      if "train_rows" in counts else {})}
     record("group-finetune.run", "ok" if result["ok"] else "failed", metrics, refs, node=node, source=SOURCE,
-           conditions={"circle": circle, "task": task, "config": config.fields(), "min_held_out": min_held_out},
+           conditions={"circle": circle, "task": task, "config": config.fields(), "min_held_out": min_held_out,
+                       "gate": gate_mode},
            members=result["members"], counts=counts, scores=scores,
            decisions={m: (g.get("decision") or "unscored") for m, g in gates.items()},
            note=result.get("error"))
-    if result["ok"]:
+    if result["ok"] and gate_mode == "real":   # a smoke's stand-in gate scores are never metrics
         _metrics_rows(pool, scores, run_id=run_id, version=result["model_version"], node=node, path=metrics_path)
     return result
 
@@ -754,13 +778,21 @@ class RealBox:
         return self._run([sys.executable, "jetson/atlas_swap.py", "rollback", "--models-dir", self.models_dir])
 
 
-def take_offer(offer_path: str | os.PathLike[str], member: str, box: Box, *, rollback: bool = False) -> dict[str, Any]:
-    """Take the group model on one member's box (any member on the roster, uploader or not), or roll back."""
+def take_offer(offer_path: str | os.PathLike[str], member: str, box: Box, *, rollback: bool = False,
+               dry_run: bool = False) -> dict[str, Any]:
+    """Take the group model on one member's box (any member on the roster, uploader or not), or roll back.
+    dry_run checks the member against the offer and answers the commands it would run, running none."""
     offer = json.loads(Path(offer_path).read_text(encoding="utf-8"))
     entries = {m["member"]: m for m in offer.get("members", [])}
     if member not in entries:
         raise GroupError(f"{member!r} is not a member of the Circle this model was offered to")
     entry, version = entries[member], offer["model_version"]
+    if dry_run:
+        take = offer.get("take", {})
+        return {"ok": True, "outcome": "dry-run", "member": member, "version": version,
+                "uploaded_examples": entry.get("uploaded_examples"), "status": entry.get("status"),
+                "gate_mode": offer.get("gate_mode", "real"), "rollback_version": entry["rollback_version"],
+                "would_run": [take.get("rollback")] if rollback else [take.get("pull"), take.get("swap")]}
     refs = {"run_id": offer.get("run_id")}
     if rollback:
         ok = box.rollback(entry["rollback_version"])
@@ -814,6 +846,10 @@ def _run_parser() -> argparse.ArgumentParser:
     p.add_argument("--port", type=int, default=8091, help="the port the gate's llama-servers use on the pod")
     p.add_argument("--metrics-file", help="default lab/refine/metrics.jsonl")
     p.add_argument("--account", default="D", help="the hub account the boxes pull the package from")
+    p.add_argument("--gate", choices=("real", "fake"), default="real",
+                   help="fake: the smoke's stand-in gate, no model servers (recorded as such; no metrics rows)")
+    p.add_argument("--teacher-expect-model", default=EXPECTED_MODEL,
+                   help="what the teacher's served checkpoint name must hold ('' accepts any)")
     p.add_argument("--keep", action="store_true", help="keep the pooled data (debugging; refused on a pod)")
     p.add_argument("--dry-run", action="store_true", help="print the plan; write nothing")
     return p
@@ -826,8 +862,10 @@ def _take(argv: Sequence[str]) -> dict[str, Any]:
     p.add_argument("--account", default="D")
     p.add_argument("--models-dir", default="data/models")
     p.add_argument("--rollback", action="store_true")
+    p.add_argument("--dry-run", action="store_true", help="check the member and print the commands; run none")
     args = p.parse_args(argv)
-    return take_offer(args.offer, args.member, RealBox(args.account, args.models_dir), rollback=args.rollback)
+    return take_offer(args.offer, args.member, RealBox(args.account, args.models_dir), rollback=args.rollback,
+                      dry_run=args.dry_run)
 
 
 def _pool_add(argv: Sequence[str]) -> dict[str, Any]:
@@ -864,16 +902,19 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
                                        "seed": args.seed, "max_steps": args.max_steps,
                                        "base_revision": args.base_revision}.items() if v is not None}
         llama = Path(args.llama_cpp).expanduser()
-        servers = RealServers(llama_dir=llama, packages=packages, teacher_url=args.gate_teacher_url or args.teacher_url,
-                              port=args.port)
+        servers: Any = RealServers(llama_dir=llama, packages=packages,
+                                   teacher_url=args.gate_teacher_url or args.teacher_url, port=args.port)
+        gate_client: Callable[[str, Path], eval_gate.Client] = lambda task, dataset: gate_client_for(
+            task, dataset, teacher_url=servers.teacher_url, teacher_headers=headers)
+        if args.gate == "fake":
+            servers, gate_client = fake_gate()
         with Teacher(args.teacher_url, headers=headers,
                      scrub=(lambda text: text.replace(token, "***")) if token else None, node="pod-c") as teacher:
             return run_group_finetune(
                 pool_root=args.pool, circle=args.circle, task=args.task, run_id=run_id, work=work, packages=packages,
                 teacher=teacher, trainer=RealTrainer(args.trainer_python, args.trainer_arg),
-                gate_client=lambda task, dataset: gate_client_for(task, dataset, teacher_url=servers.teacher_url,
-                                                                  teacher_headers=headers),
-                servers=servers,
+                gate_client=gate_client, servers=servers, gate_mode=args.gate,
+                expect_model=args.teacher_expect_model or None,
                 model=str(Path(args.model).expanduser()), base_dir=Path(args.model).expanduser(),
                 mmproj=Path(args.mmproj).expanduser(), llama_dir=llama, config=TrainConfig(**overrides),
                 min_held_out=args.min_held_out, decode_attested=args.decode_attested, keep=args.keep,
