@@ -56,8 +56,8 @@ SYSTEM = (
 NAMES_A_TOOL = re.compile(
     r"\b(?:calendar|schedule|meeting|appointment|event|remind(?:er|ers)?|camera|cameras|room map|map of the room|"
     r"the map|room plan|model|energy|joules?|watts?|learning lab|lab run|training run|shared brain|who(?:'s| is) here|"
-    r"who(?:'s| is) in the room|open the|go to the|show me the|approvals?|plant floor|inspection|how is spot|"
-    r"spot (?:doing|robot))\b", re.I)
+    r"who(?:'s| is) in the room|open the|go to the|show me the|approvals?|needs? me on the plant floor|on the plant floor (?:today|now|right now|this shift)|plant floor status|inspection status|how(?:'s| is) spot(?: doing)?|"
+    r"take me to (?:the )?inspection)\b", re.I)
 
 # Tool calls written into the text instead of the tool_calls field (a vLLM server without a tool parser, or a small
 # model): <tool_call>{"name": ..., "arguments": {...}}</tool_call>, or a bare {"name": ..., "arguments": ...}.
@@ -101,7 +101,8 @@ CALENDAR = re.compile(r"\b(?:calendar|schedule|agenda)\b", re.I)
 DAY_WORD = re.compile(r"\b(?:today|tomorrow|yesterday|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{4}-\d{2}-\d{2})\b", re.I)
 RECAP = re.compile(r"\bwhat (?:did i do|happened|did you see)\b.*\b(?P<part>this morning|this afternoon|this evening|today|last hour|yesterday)\b", re.I)
 # Inspection (contexts/spot): asked after every older rule, so no question an older rule answered changes its tool
-INSPECTION = re.compile(r"\b(?:plant floor|inspection|how is spot|spot (?:doing|robot))\b", re.I)
+# only words that name the plant's shift: "my car inspection" and "a spot robot video" are everyday questions, not this
+INSPECTION = re.compile(r"\b(?:needs? me on the plant floor|on the plant floor (?:today|now|right now|this shift)|plant floor status|inspection status|how(?:'s| is) spot(?: doing)?)(?![\\w])", re.I)
 OPEN = re.compile(r"\b(?:open|go to|show me|take me to)\s+(?:the\s+|my\s+)?(?P<s>[a-z ]+?)(?:\s+(?:screen|page|tab))?[?.!]*$", re.I)
 
 
