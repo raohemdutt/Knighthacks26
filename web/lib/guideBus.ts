@@ -16,6 +16,11 @@ export interface GuideRun {
   t?: number | null;
   /** Points the pointer passes through on its way, in order (a walking route's waypoints on a map). Those not on screen are skipped. */
   via?: Locator[];
+  /**
+   * A walk along `via` at a walking pace: the dot covers each stretch in the time its sentence takes, and that sentence is
+   * said (and captioned) as the dot starts on it (lib/guideWalk.ts). `at` holds one share of the way per `via` point.
+   */
+  pace?: import("./guideWalk").WalkPlan;
   /** More sentences for the way there, after the target's own (the walking route in words). */
   extra?: string[];
   /** Said and shown on arrival instead of the target's own last sentence. */
@@ -30,6 +35,8 @@ export interface GuideRun {
   spot?: { label?: string; ring?: boolean };
   /** Exact or about, and why (lib/guide.ts `precisionOf`). "About" draws a dashed, soft outline and is said as "about". */
   precision?: import("./guide").Precision;
+  /** A camera zone to outline on that camera's refreshed picture where one runs (the right bin); its other zones are dimmed. */
+  zone?: string;
   /** One button in the caption ("Show me in the room"). */
   action?: { label: string; run: GuideRun };
 }
@@ -66,7 +73,7 @@ export function askGuide(question: string, route: string | null): boolean {
     return true;
   }
   const asked = classify(question, route);
-  if (asked?.kind !== "app") return false;
+  if (asked?.kind !== "app") return false; // a thing: the box answers, and the guide follows its answer
   pointAt({ target: asked.target });
   return true;
 }

@@ -141,6 +141,8 @@ LAB_MOVED_AT = "2026-10-10T20:25:00Z"
 
 
 def _old_chip(rec: dict) -> bool:
+    if (rec.get("conditions") or {}).get("other_chip") is True:  # says so itself: a reference on another chip (R57's A100)
+        return True
     gpu = str((rec.get("conditions") or {}).get("gpu", ""))
     if "gfx1151" in gpu or "Strix" in gpu:
         return False
@@ -167,6 +169,8 @@ def lab_metrics(path: str | Path | None = METRICS_FILE) -> dict[str, tuple]:
         name, moment = rec.get("metric"), _ts(rec.get("ts"))
         if name is None or rec.get("value") is None or moment is None:
             continue
+        if (rec.get("conditions") or {}).get("other_chip") is True:
+            continue  # a reference measured on another chip (R57's A100 on Colab): never a number for the lab's slide
         old = _old_chip(rec)
         if name in out and old and name not in old_rows:
             continue  # a current-chip row is already here

@@ -1,0 +1,28 @@
+{
+  "_about": "What the look guide needs from each screen's source, so a redesign cannot drop it silently. The registry is web/lib/guide.ts (ROWS, pinTarget, lib/guideBin.ts, lib/guideSpot.ts) and, for Inspection, contexts/spot/application/guide.py. `attributes` are data-guide hooks: each `need` string must appear, exactly, in one of `files`. `headings` are targets the registry finds by the text of a heading or a button: `text` must appear in one of `files`. Checked by tests/test_guide_hooks.py and by web/scripts/check-guide.mjs. If you rename or remove one on purpose, change the registry and this file in the same commit.",
+  "attributes": [
+    {"screen": "Ask (/)", "why": "the newest answer, and the question box", "files": ["web/app/page.tsx"], "need": ["data-guide=\"answer\"", "data-guide=\"ask:input\""]},
+    {"screen": "Ask (/)", "why": "the picture an answer comes from (the spotlight is drawn on it)", "files": ["web/components/Keyframe.tsx"], "need": ["data-guide=\"frame\""]},
+    {"screen": "Room (/map/)", "why": "the room view, the bins, and a thing's card in the detail rail", "files": ["web/app/map/page.tsx"], "need": ["data-guide=\"map:room\"", "data-guide=\"map:bins\"", "data-guide={`thing:${", "data-guide={`pin:${"]},
+    {"screen": "Room (/map/)", "why": "the picked pin's card in the room twin", "files": ["web/components/map/RoomTwin.tsx"], "need": ["data-guide={`pin:${"]},
+    {"screen": "Room (/map/)", "why": "the finder the guide presses to pick a thing (pinTarget's reveal)", "files": ["web/app/map/page.tsx"], "need": ["role=\"group\" aria-label=\"Item\"", "aria-pressed={on}"]},
+    {"screen": "Sort It (/play/)", "why": "the room twin whose bins light up", "files": ["web/app/play/page.tsx"], "need": ["data-guide=\"play:twin\""]},
+    {"screen": "Inspection (/spot/)", "why": "the tabs, the round, and the walk's controls under the plan", "files": ["web/app/spot/page.tsx"], "need": ["data-guide=\"tabs\"", "data-guide={`tab:${", "data-guide=\"round\"", "data-guide=\"walk\"", "guide=\"map\""]},
+    {"screen": "Inspection (/spot/)", "why": "the status line, the three cards, each do-first job", "files": ["web/components/spot/Shift.tsx"], "need": ["data-guide=\"status\"", "data-guide=\"trust\"", "data-guide=\"card:do-first\"", "data-guide=\"card:watch\"", "data-guide=\"card:fine\"", "data-guide={`do-first:${", "data-guide=\"all-equipment\""]},
+    {"screen": "Inspection (/spot/)", "why": "the plan: itself, its floor buttons, every equipment mark, every place, and the points of a walk", "files": ["web/components/spot/FloorMap.tsx"], "need": ["data-guide={guide}", "`${guide}:floor:${f}`", "`${guide}:floor:both`", "`asset:${a.asset_id}`", "`place:${l.location_id}`", "data-guide={`at:${", "data-guide={`walk:${"]},
+    {"screen": "Inspection (/spot/)", "why": "the ask box, the guide chips and the handoff", "files": ["web/components/spot/OperatorAsk.tsx"], "need": ["data-guide=\"ask\"", "data-guide=\"guide-me\"", "data-guide=\"handoff\""]},
+    {"screen": "Inspection (/spot/)", "why": "a round: its picker, steps and Play", "files": ["web/components/spot/Round.tsx"], "need": ["data-guide=\"round:pick\"", "data-guide=\"round:steps\"", "data-guide=\"round:play\""]},
+    {"screen": "Inspection (/spot/)", "why": "Shift Run's parts", "files": ["web/components/spot/ShiftRun.tsx"], "need": ["data-guide=\"shiftrun:turn-back\"", "data-guide=\"shiftrun:pool\"", "data-guide=\"shiftrun:run\"", "data-guide=\"shiftrun:last\""]},
+    {"screen": "Inspection (/spot/)", "why": "the Analysis folds, findings and explainers", "files": ["web/components/spot/AnalysisLayer.tsx", "web/components/spot/Explainers.tsx"], "need": ["data-guide=\"analysis:findings\"", "data-guide=\"analysis:tables\"", "data-guide=\"analysis:data-check\"", "data-guide=\"analysis:assumptions\"", "data-guide={`finding:${", "data-guide={`explainer:${"]}
+  ],
+  "headings": [
+    {"screen": "Room (/map/)", "files": ["web/app/map/page.tsx"], "text": ["Where are my things?", "Right now", "Camera views"]},
+    {"screen": "Home (/home/)", "files": ["web/app/home/page.tsx"], "text": ["aria-labelledby=\"what\"", "aria-label=\"By the numbers\"", "aria-labelledby=\"flow\"", "aria-labelledby=\"go\""]},
+    {"screen": "Today (/today/)", "files": ["web/app/today/page.tsx"], "text": ["Coming up", "Due next", "Habits", "Waste Watch"]},
+    {"screen": "Day Run (/dayrun/)", "files": ["web/app/dayrun/page.tsx", "web/components/dayrun/CampusMap.tsx", "web/components/dayrun/More.tsx"], "text": ["The board", "Where the day takes you", "Your plan"]},
+    {"screen": "Impact (/impact/)", "files": ["web/app/impact/page.tsx"], "text": ["This week&apos;s goal", "Practise in Sort It", "What went where"]},
+    {"screen": "Sort It (/play/)", "files": ["web/app/play/page.tsx"], "text": ["Are you getting better", "aria-label=\"Item\""]},
+    {"screen": "People (/people/)", "files": ["web/app/people/page.tsx", "web/components/people/FaceShare.tsx"], "text": ["Enrolled", "Teach Atlas your face"]},
+    {"screen": "Circle (/circle/)", "files": ["web/app/circle/page.tsx"], "text": ["League", "People", "Plans", "Sharing"]}
+  ]
+}
