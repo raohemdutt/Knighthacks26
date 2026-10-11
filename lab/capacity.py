@@ -175,7 +175,7 @@ def probe(client: ChipClient, *, node: str, role: str | None = None,
         "visible_gib": visible.view(),
         "bandwidth_gb_s": bandwidth.view(),
         "bf16_tflops": matmul.view(),
-        "probe": {"mode": "quick", "client": client.name, "wall_s": round(wall, 3), "sheet_gpu_s": gpu_seconds,
+        "probe": {"mode": sheet.get("mode") or ("sample" if fields.sample else "unknown"), "client": client.name, "wall_s": round(wall, 3), "sheet_gpu_s": gpu_seconds,
                   "budget_s": BUDGET_S, "within_budget": total <= BUDGET_S},
     }
 

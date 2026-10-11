@@ -39,6 +39,12 @@ matmul rate, versions, inside 110 s of GPU time) and the memory a new job can ta
 MemAvailable and the memory visible to torch). The record names the chip, its ROCm, its role and how long the probe
 took against a two-minute budget. A friend's chip is probed the same way with `--node <name>` (role `friend`).
 
+The measured gfx1151 sheet from pod D (`lab/refine/research/kernels/data/chipsheet-gfx1151-2026-10-11.json`, a full
+run of 203 GPU seconds, so over the two-minute budget by design) reads as 42.7 TFLOPS best bf16 matmul (a 4B LoRA
+step shape) and 943 GB/s best copy. The copy figure is the best over all sizes, as the placement plan defines it,
+and its best size is 16 MiB, which likely sits in the chip's cache rather than its shared DRAM; the ladder does not
+use bandwidth, but anyone reading the record as DRAM bandwidth should take the largest copy size instead.
+
 ## 4. What the ladder assumes, and what it does not
 
 - **Fit.** A rung fits a chip when its LoRA step peak times 1.5 plus 4 GiB is within the chip's free memory: the

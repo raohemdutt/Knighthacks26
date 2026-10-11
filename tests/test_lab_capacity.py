@@ -93,6 +93,7 @@ def test_probe_reads_an_r33_quick_sheet(tmp_path):
     assert record["rocm"] == {"value": "7.13.0", "source": f"{capacity.relative(r33_sheet(tmp_path))}: versions.rocm"}
     assert record["chip"]["name"] == "AMD Radeon 8060S"
     assert record["probe"]["sheet_gpu_s"] == 96.4
+    assert record["probe"]["mode"] == "quick"
 
 
 def test_probe_wall_clock_and_the_two_minute_budget(tmp_path):
@@ -118,7 +119,7 @@ def test_record_shape():
     for field in ("free_gib", "visible_gib", "bandwidth_gb_s", "bf16_tflops"):
         assert set(record[field]) == {"value", "unit", "source", "kind"}
     assert set(record["probe"]) == {"mode", "client", "wall_s", "sheet_gpu_s", "budget_s", "within_budget"}
-    assert record["probe"]["mode"] == "quick"
+    assert record["probe"]["mode"] == "sample"          # the sample sheet names no run mode
     json.dumps(record)
 
 
@@ -182,3 +183,20 @@ def test_verb_needs_a_client(capsys):
     with pytest.raises(SystemExit) as exc:
         capacity.build_parser().parse_args(["--node", "pod-b"])
     assert exc.value.code == 2
+
+
+def test_the_committed_measured_sheet_reads_and_a_full_run_is_over_budget():
+    """The measured gfx1151 sheet from pod D (a full run, not the quick mode): measured numbers, and its GPU
+    seconds alone are past two minutes, so the record says the probe was not within budget."""
+    sheets = sorted((REPO_ROOT / "lab" / "refine" / "research" / "kernels" / "data").glob("chipsheet-gfx1151-*.json"))
+    if not sheets:
+        pytest.skip("no measured gfx1151 sheet committed")
+    record = capacity.probe(FakeChipClient(sheet=sheets[-1], memory={"free_gib": 58.0, "visible_gib": 64.0}),
+                            node="pod-b")
+    assert record["sample"] is False
+    assert record["chip"]["gfx"] == "gfx1151"
+    assert record["bf16_tflops"]["kind"] == "measured" and record["bf16_tflops"]["value"] > 0
+    assert record["bandwidth_gb_s"]["kind"] == "measured" and record["bandwidth_gb_s"]["value"] > 0
+    sheet = json.loads(sheets[-1].read_text(encoding="utf-8"))
+    assert record["probe"]["mode"] == sheet["mode"]
+    assert record["probe"]["within_budget"] is (sheet["gpu_seconds"] <= capacity.BUDGET_S)
