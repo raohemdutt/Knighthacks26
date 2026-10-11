@@ -56,6 +56,7 @@ VERBS: dict[str, str] = {
     "package": "lab.package:main",
     "placement": "lab.placement:main",
     "pool": "lab.machine.pool:main",
+    "publish-adapter": "lab.publish_adapter:main",
     "ready": "lab.machine.ready:main",
     "referee": "lab.machine.referee:main",
     "research-check": "lab.machine.research_check:main",
