@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ErrorBox, Loading, WriteError } from "@/components/States";
 import ui from "@/components/ui.module.css";
-import { ApiError, api, snapshotUrl, type ZoneSet } from "@/lib/api";
+import { ApiError, api, snapshotUrl, viewTicketReady, type ZoneSet } from "@/lib/api";
 import { cameraName, humanize } from "@/lib/format";
 import { useFetch } from "@/lib/useFetch";
 import z from "./zones.module.css";
@@ -65,7 +65,9 @@ export default function ZonesPage() {
   }, [names, zone]);
 
   const grab = useCallback(() => {
-    if (camera) setPicture(snapshotUrl(camera, Date.now())); // frozen: a person walking by must not move the picture under the drag
+    // Frozen: a person walking by must not move the picture under the drag. It is taken once this screen knows
+    // whether it holds the owner's view ticket, so one frozen picture is not the blurred one by accident of timing.
+    if (camera) void viewTicketReady().then(() => setPicture(snapshotUrl(camera, Date.now())));
   }, [camera]);
   useEffect(() => {
     setDrafts({});

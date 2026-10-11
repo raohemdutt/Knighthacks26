@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import priv from "@/components/privacy/privacy.module.css";
 import { Empty, ErrorBox, Loading, WriteError } from "@/components/States";
 import ui from "@/components/ui.module.css";
-import { ApiError, api, type Egress, type VaultPolicy, type WipeResult, type WipeScope, type WipeToken } from "@/lib/api";
+import { ApiError, api, viewTicketReady, viewTicketState, type Egress, type VaultPolicy, type WipeResult, type WipeScope, type WipeToken } from "@/lib/api";
 import { bytes, groupLabel, internetSummary, picturesLine } from "@/lib/egress";
 import { cameraName } from "@/lib/format";
 import { useFetch } from "@/lib/useFetch";
@@ -13,7 +13,7 @@ import { ZONES } from "@/lib/zones.generated";
 /**
  * Privacy: what the box keeps, what it may send, and the delete button.
  *
- * Everything here is the Vault API: GET/PUT /vault/policy (blur, paused cameras, offline, retention),
+ * Everything here is the Vault API: GET/PUT /vault/policy (the live view, paused cameras, offline, retention),
  * GET /vault/egress (what the firewall let out, per group) and the two-step POST /vault/wipe/request + /vault/wipe.
  * "Offline" also pauses connected apps; the box keeps seeing, answering and alerting because that is all local.
  */
@@ -62,6 +62,23 @@ function Controls({ policy, cameras, onPolicy }: { policy: VaultPolicy; cameras:
     }
   }
 
+  // Whether this screen could get the owner's view ticket: it decides what the first row can honestly promise.
+  const [ticket, setTicket] = useState(() => viewTicketState());
+  useEffect(() => {
+    let alive = true;
+    void viewTicketReady().then(() => alive && setTicket(viewTicketState()));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const liveHelp =
+    "Show faces on my own signed-in screen. Everyone else sees the live view blurred." +
+    (ticket.problem === "not_signed_in"
+      ? " This screen is not signed in, so it shows the blurred view."
+      : ticket.problem === "box_has_no_token"
+        ? " This box has no sign-in token yet, so only a screen plugged into the box itself can show faces."
+        : "");
+
   const togglePause = (camera: string, pause: boolean) =>
     change({ paused_cameras: pause ? [...policy.paused_cameras, camera] : policy.paused_cameras.filter((c) => c !== camera) });
 
@@ -71,8 +88,22 @@ function Controls({ policy, cameras, onPolicy }: { policy: VaultPolicy; cameras:
       <section className={priv.section}>
         <h2>Pictures</h2>
         <div className={priv.card}>
-          <Row title="Blur faces before saving" help="Faces are blurred on the box before a picture is written to disk. Nothing else is changed." note="Anything that leaves this box is blurred, whatever this is set to.">
-            <Switch on={policy.blur_faces} label="Blur faces" disabled={busy} onChange={(v) => change({ blur_faces: v })} />
+          <Row title="Your live view" help={liveHelp}>
+            <Switch on={policy.live_faces === "clear"} label="Show faces on my own signed-in screen" disabled={busy} onChange={(v) => change({ live_faces: v ? "clear" : "blurred" })} />
+          </Row>
+          {policy.blur_faces ? (
+            <Row title="Saved pictures" help="Always blurred before they are saved.">
+              <span className={priv.pill}>Always</span>
+            </Row>
+          ) : (
+            <Row title="Saved pictures" help="This box is saving pictures with faces showing. Pictures it already saved stay as they are until you delete them below.">
+              <button type="button" className={`${ui.btn} ${ui.btnPrimary}`} disabled={busy} onClick={() => change({ blur_faces: true })}>
+                Blur saved pictures from now on
+              </button>
+            </Row>
+          )}
+          <Row title="Anything that leaves this box" help="Always blurred.">
+            <span className={priv.pill}>Always</span>
           </Row>
           {cameras.map((camera) => (
             <Row key={camera} title={`Pause the ${cameraName(camera).toLowerCase()}`} help="A paused camera is not looked at or saved. Live shows nothing for it.">

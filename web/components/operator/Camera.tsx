@@ -46,7 +46,10 @@ function useTracks(camera: string, stamp: number, enabled: boolean): LiveTracks 
   return enabled ? tracks : null;
 }
 
-/** One camera for the big display: the blurred picture from the box with boxes, track ids and zone outlines on top. */
+/**
+ * One camera for the big display: the live picture from the box with boxes, track ids and zone outlines on top.
+ * Faces are blurred by the box unless this is the owner's signed-in screen and "Your live view" is on (Privacy).
+ */
 export function OperatorCamera({ camera, status }: { camera: string; status: CameraStatus }) {
   const stamp = useClock(REFRESH_MS);
   const flowing = status.status !== "down";

@@ -61,7 +61,7 @@ def test_a_received_template_is_a_member_that_says_where_it_came_from(tmp_path):
     assert row == {"member_id": shared_member_id("zoe"), "name": "Zoe Example", "enrolled_at": row["enrolled_at"],
                    "updated_at": row["enrolled_at"], "photos": 3, "source": "circle", "expressions": False,
                    "circle_member_id": "zoe", "shared_by": "zoe", "received_at": row["enrolled_at"],
-                   "expires_at": LATER.isoformat()}
+                   "expires_at": LATER.isoformat(), "scanned": True, "recognised": True}  # made from their own scan, on their box
     assert shared_member_id("zoe").startswith("c-") and shared_member_id("zoe") != shared_member_id("Zoe")
     zoe = person(7)
     for i in range(3):
@@ -71,11 +71,11 @@ def test_a_received_template_is_a_member_that_says_where_it_came_from(tmp_path):
     assert len(rig.service.members()) == 1
 
 
-def test_rows_of_people_enrolled_here_look_exactly_as_before(tmp_path):
+def test_rows_of_people_enrolled_here_have_nothing_of_a_share_in_them(tmp_path):
     rig = Rig(tmp_path)
     events = rig.enroll("m-ana", "Ana Example", b"ana")
     assert set(rig.service.members()[0]) == {"member_id", "name", "enrolled_at", "updated_at", "photos", "source",
-                                              "expressions", "circle_member_id"}
+                                              "expressions", "circle_member_id", "scanned", "recognised"}
     assert all(e.received_from == [] for e in events if e.type == "perception.identity.changed")
 
 
