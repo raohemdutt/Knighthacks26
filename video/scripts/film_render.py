@@ -67,6 +67,7 @@ def main() -> int:
     ap.add_argument("--final", action="store_true")
     ap.add_argument("--whole", action="store_true", help="render 'all' as one composition instead of scene by scene")
     ap.add_argument("--jobs", type=int, default=3, help="scene renders at the same time")
+    ap.add_argument("--workers", type=int, default=0, help="browser workers per scene render (default: about 8 / jobs)")
     a = ap.parse_args()
     (HF / "renders").mkdir(exist_ok=True)
     build = [sys.executable, str(HF.parent / "scripts" / "film_build.py")]
@@ -82,7 +83,7 @@ def main() -> int:
             print(f"no scene called {sid!r}")
             return 1
     jobs = max(1, min(a.jobs, len(want)))
-    workers = max(3, 8 // jobs + 2)
+    workers = a.workers or max(3, 8 // jobs + 2)  # jobs x workers ~ the machine's threads (16 on Dom's laptop: --jobs 8 --workers 2)
     suffix = "-final" if a.final else ""
     try:
         with ThreadPoolExecutor(max_workers=jobs) as pool:
