@@ -143,7 +143,7 @@ def build_board(
                 deadlines.append(Deadline(id=item.external_id, title=item.title, due=when, work_left=left,
                                           in_window=when <= end, risk=risk_of(cfg, left, start, when), url=item.url))
             continue
-        if item.kind != "calendar_event":
+        if item.kind != "calendar_event" or item.external_id.startswith(tuple(cfg.ignored_event_prefixes)):
             continue
         until, place = _end_and_place(cfg, w, item, when)
         if until is None or until <= start or when >= end:

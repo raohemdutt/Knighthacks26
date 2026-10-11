@@ -248,6 +248,8 @@ def test_get_room_returns_the_plan_calibration_and_zones_on_the_floor(tmp_path):
     assert {f["type"] for f in body["furniture"]} >= {"bed", "desk", "bin"}
     cal = body["calibration"]["cam-door"]
     assert len(cal["image"]) == len(cal["floor"]) == 4 and len(cal["homography"]) == 3
+    # the points the room file ships with are a placeholder, and the API says so
+    assert {cam: c["source"] for cam, c in body["calibration"].items()} == {"cam-door": "default", "cam-desk": "default"}
     assert set(body["zones"]["cam-door"]) == {"door", "recycling", "trash"} and body["uncalibrated"] == []
     assert body["play"] == {"walk_speed": 1.2, "body_radius": 0.25, "start": [1.3, 3.7]}
 
@@ -260,6 +262,9 @@ def test_put_calibration_saves_four_taps_and_moves_the_tracks(tmp_path):
     r = c.put("/api/room/calibration/cam-door", json=taps, headers=auth)
     assert r.status_code == 200 and r.json()["calibration"]["cam-door"]["floor"][2] == [3.4, 1.0]
     assert load_room(config / "rooms" / "dorm.yaml").calibration["cam-door"].floor[2] == (3.4, 1.0)  # on disk
+    # only the camera that was given its four points is calibrated, and a restart (the file) still knows which
+    assert {cam: c["source"] for cam, c in r.json()["calibration"].items()} == {"cam-door": "set", "cam-desk": "default"}
+    assert {cam: c.source for cam, c in load_room(config / "rooms" / "dorm.yaml").calibration.items()} == {"cam-door": "set", "cam-desk": "default"}
     room.on_observation(obs(0, "cam-door", track(2, "package", 0.8, 0.9, 0.16, 0.14)))
     assert abs(room.tracks()[0].y - 0.778) < 0.01  # was 1.4 m from the wall with the old calibration
     line = {"image": [[0, 0.5], [0.5, 0.5], [1, 0.5], [0, 1]], "floor": taps["floor"]}

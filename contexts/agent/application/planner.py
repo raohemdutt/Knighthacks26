@@ -280,7 +280,8 @@ class Planner:
         """Deterministic, so it is instant at the door: next event, when to leave, where your things are."""
         ev = Evidence()
         lines = []
-        upcoming = [i for i in self.qa.memory.items(now, now + timedelta(hours=8)) if i.kind in ("calendar_event", "assignment")]
+        upcoming = [i for i in self.qa.memory.items(now, now + timedelta(hours=8)) if i.kind in ("calendar_event", "assignment")
+                    and not i.external_id.startswith("nearby:")]  # an optional "near you" event is not what you are leaving for
         if upcoming:
             nxt = upcoming[0]
             walk, dest = self._walk_minutes(nxt)

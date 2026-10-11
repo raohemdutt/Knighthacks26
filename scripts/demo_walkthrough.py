@@ -671,7 +671,8 @@ def uc_sortit(run: Run, scene_pushed: bool) -> None:
     run.screen("/play/")
     run.screen("/map/")
     room = run.fetch("the room twin", "/api/room", ("title", "furniture", "calibration", "uncalibrated"), missing="the room twin is not set up (no floor plan)",
-                     note=lambda d: f"{d['title']}: {len(d['furniture'])} pieces of furniture; calibrated: {', '.join(d['calibration']) or 'no camera'}; "
+                     note=lambda d: f"{d['title']}: {len(d['furniture'])} pieces of furniture; calibrated: {', '.join(c for c, v in d['calibration'].items() if v.get('source') == 'set') or 'no camera'}; "
+                                    f"placeholder points only: {', '.join(c for c, v in d['calibration'].items() if v.get('source') != 'set') or 'none'}; "
                                     f"not calibrated: {', '.join(d['uncalibrated']) or 'none'}")
     live = run.fetch("the room, live", "/api/room/live", ("tracks", "seen"), missing="the room twin is not set up",
                      note=lambda d: f"{len(d['tracks'])} people now, {len(d['seen'])} things placed, round: {(d.get('round') or {}).get('item') or 'none'}, "

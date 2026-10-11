@@ -658,7 +658,8 @@ export interface RoomPlan {
   windows: RoomOpening[];
   posters: RoomOpening[];
   furniture: RoomFurniture[];
-  calibration: Record<string, { image: [number, number][]; floor: [number, number][]; homography: number[][] }>;
+  /** `source`: "default" = the placeholder points the room file shipped with (positions are approximate); "set" = given for the real camera. */
+  calibration: Record<string, { image: [number, number][]; floor: [number, number][]; homography: number[][]; source?: "default" | "set" }>;
   zones: Record<string, Record<string, [number, number][]>>; // camera -> zone -> floor polygon (m)
   play: { walk_speed: number; body_radius: number; start: [number, number] };
   rooms: string[];
@@ -809,6 +810,8 @@ export interface Profile {
   meters: { habits: string[]; dayrun: string[] };
   shift: { start: string; end: string; sleep_after_minutes: number; sleep_hours: number } | null;
   scenario: string | null;
+  /** The Ask screen's suggested questions, in this profile's words (profile.yaml `suggestions:`). */
+  suggestions: string[];
   overrides: Record<string, string>;
 }
 

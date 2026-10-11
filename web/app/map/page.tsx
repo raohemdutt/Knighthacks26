@@ -73,6 +73,8 @@ export default function RoomMapPage() {
   const twinPins = useTwinPins(view === "3d" ? twin.plan : null, twin.live);
   // Whether the box has a floor plan at all, so the 2D view does not say there is none (the twin is only fetched for 3D).
   const hasPlan = useFetch((s) => api.room(s).then(() => true, () => false)).data ?? false;
+  // Cameras still on the points the room file shipped with: a placeholder, not a calibration of the real camera.
+  const placeholder = Object.entries(twin.plan?.calibration ?? {}).filter(([, c]) => c.source === "default").map(([camera]) => camera);
   const twinOn = view === "3d" && twin.plan !== null; // the box has a floor plan: one room, not a panel per camera
 
   useEffect(() => {
@@ -123,6 +125,12 @@ export default function RoomMapPage() {
             ) : (
               <Room3D cameras={CAMERAS} pins={pins} selected={selected} route={drawn} />
             )}
+            {twinOn && placeholder.length > 0 ? (
+              <p className={ui.small} role="note">
+                Not calibrated for {placeholder.length === 1 ? "this camera" : "these cameras"} yet ({placeholder.join(", ")}): positions are approximate. To calibrate, mark four spots
+                on the floor and send them once: <code>PUT /api/room/calibration/{placeholder[0]}</code> with the four picture points and the same four in room metres.
+              </p>
+            ) : null}
             {twinOn ? (
               <p className={`${ui.muted} ${ui.small}`}>
                 The room is drawn from its floor plan, in metres. People and things stand where each camera&apos;s calibration puts the bottom of their box on the floor; a pin stands where its
