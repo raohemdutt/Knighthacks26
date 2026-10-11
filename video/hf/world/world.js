@@ -262,7 +262,7 @@ scene.add(route);
     // Axes.
     membrane: 0, ring: 0, beads: 0, bars: 0, lab: 0, labGlow: 0, labCurve: 0, friends: 0, friendsLink: 0, campus: 0, route: 0, blur: 0,
     // Sets.
-    room: 0, person: 0, personLook: 0, kitchen: 0, canThrow: 0, binCount: 0,
+    room: 0, person: 0, personLook: 0, personSmile: 0, personSleepy: 0, personStrain: 0, personTalk: 0, kitchen: 0, canThrow: 0, binCount: 0,
   };
   const P = {
     ...atlas.P, lab: [14, 0.8, -2], friend: friendBoxes.map((g) => [g.position.x, -0.4, g.position.z]),

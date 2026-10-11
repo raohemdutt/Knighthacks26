@@ -5,7 +5,7 @@
 // (room.person.act): sitting up on the bed, standing, walking, sitting down at the desk. Units: 1 = 100 mm.
 import * as THREE from "three";
 import { SHADE, INK, ACCENT, MUTED, FLOOR_Y, hash, clamp01, lerp, softTexture, FONT, flat, matte, tint, between, fadingSet, RoundedBoxGeometry } from "./common.js";
-import { makeHuman } from "./human.js";
+import { makeHuman, LOOKS } from "./human.js";
 
 const WOOD = 0xe0d6c8, WALL = 0xe1e6ed, FABRIC = 0xa9b4c5, BOOKS = [0x8f9cb0, 0xc9b7a2, 0x9fb09c, 0xd2c2b0, 0x566176, 0xb4a6b8, 0xa7b8c4, 0xd9cbb9];
 
@@ -121,7 +121,7 @@ export function buildRoom(scene, humanGltf) {
 
   // The chair, pulled out from the desk, facing it; the person sits down into it.
   const CHAIR = [0.6, F, 8.5];
-  const chair = new THREE.Group(); chair.position.set(...CHAIR); chair.rotation.y = -Math.PI / 2;
+  const chair = new THREE.Group(); chair.position.set(...CHAIR); chair.rotation.y = Math.PI / 2; // backrest toward the bed (+x), seat facing the desk
   chair.add(at(rbox(4.4, 0.6, 4.2, fabric, 0.28, 3), 0, 4.3, 0));
   const back = at(rbox(4.2, 4.6, 0.55, fabric, 0.28, 3), 0, 7.6, 2.25); back.rotation.x = 0.1; chair.add(back);
   for (const sd of [-1, 1]) chair.add(at(rbox(0.25, 3.0, 0.3, ink, 0.1, 2), sd * 1.4, 5.9, 2.1));
@@ -134,7 +134,7 @@ export function buildRoom(scene, humanGltf) {
   set.add(chair);
 
   // The person (sets/human.js). Default: seated at the desk, facing it. Scenes add acts (bed, stand, walk, sit).
-  const person = makeHuman(humanGltf);
+  const person = makeHuman(humanGltf, LOOKS.hemdutt);
   for (const m of person.mats) { m.transparent = true; m.userData.baseOpacity = m.opacity; }
   root.add(person.root);
   const FACE_DESK = -Math.PI / 2;
@@ -158,6 +158,7 @@ export function buildRoom(scene, humanGltf) {
     if (!person.root.visible) return;
     for (const m of person.mats) { m.opacity = m.userData.baseOpacity * pv; m.depthWrite = pv > 0.6; }
     person.at(t);
+    person.express({ smile: state.personSmile || 0, sleepy: state.personSleepy || 0, strain: state.personStrain || 0, talk: state.personTalk || 0 }, t);
     person.root.position.y -= (1 - pv) * 0.6;
     // The head turns from where the body faces toward the device on the shelf.
     const l = clamp01(state.personLook || 0), e = l * l * (3 - 2 * l);

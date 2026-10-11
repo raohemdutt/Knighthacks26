@@ -57,6 +57,11 @@ export default function choreograph(tl, world, scene) {
   tl.to(state, { room: 1, person: 1, duration: 0.5, ease: "power2.out" }, t0);
   world.leg(tl, t0, SHOTS.deskClose, 0.9, "power4.out");
   tl.to(state, { eyes: 1, duration: 0.8, ease: "power2.out" }, t0 + 0.6); // it starts to watch
+  // Faces: sleepy on the bed, waking as they walk, a smile once seated and briefed.
+  tl.set(state, { personSleepy: 1, personSmile: 0, personStrain: 0 }, t0);
+  tl.to(state, { personSleepy: 0, duration: 1.2, ease: "power2.inOut" }, exitAt + 0.5);
+  tl.to(state, { personSmile: 1, duration: 0.6, ease: "power2.out" }, sit + 0.4);
+  tl.to(state, { personSmile: 0, duration: 0.6, ease: "power2.inOut" }, tEnd - 0.8);
 
   // ---- Line 0: "Point it at your week ... how the day really goes at the desk": one long pull back to the room. ----
   const pullAt = t0 + 0.9, pullEnd = t0 + 3.4;

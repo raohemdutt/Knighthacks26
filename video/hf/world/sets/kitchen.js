@@ -4,7 +4,7 @@
 // throws the can into the grey bin, state.binCount lights the counter device. Units: 1 = 100 mm.
 import * as THREE from "three";
 import { SHADE, INK, FLOOR_Y, DESK_Y, hash, clamp01, lerp, softTexture, FONT, flat, matte, tint, fadingSet, RoundedBoxGeometry } from "./common.js";
-import { makeHuman } from "./human.js";
+import { makeHuman, LOOKS } from "./human.js";
 import { buildEnclosureLite } from "./enclosure.js";
 
 export const KX = -42;
@@ -97,7 +97,7 @@ export function buildKitchen(scene, humanGltf) {
   set.add(atlasHolder);
 
   // The person (sets/human.js), standing by the bins with a can; Quaternius' "Interact" clip is the reach to drop it.
-  const person = makeHuman(humanGltf);
+  const person = makeHuman(humanGltf, LOOKS.hemdutt);
   const pHolder = new THREE.Group(); pHolder.position.set(-1.6, F, 6.2); pHolder.rotation.y = 0.5 + Math.PI; pHolder.add(person.root); set.add(pHolder);
   const REACH = 0.9; // seconds into "Interact" where the hand is furthest out: the can leaves the hand here
   const can = new THREE.Group();
@@ -121,6 +121,7 @@ export function buildKitchen(scene, humanGltf) {
     const w = clamp01(c / 0.05), it = Math.min(swing, 1) * REACH + clamp01((c - 0.18) / 0.82) * (person.duration("Interact") - REACH);
     person.sample(w < 1 ? [["Idle_Loop", (t * 0.8) % person.duration("Idle_Loop"), 1 - w], ["Interact", it, w]] : [["Interact", it, 1]]);
     person.look(0, lerp(0.35, 0.5, c));
+    person.express({ strain: 0.2 }, t);
     if (c < 0.18) { root.worldToLocal(person.handPos("R", hv)); can.position.copy(hv); can.position.y -= 0.35; can.rotation.set(0, 0, 0); }
     else {
       const u = (c - 0.18) / 0.82;
