@@ -95,3 +95,31 @@ The run is reproducible from its ledger row: the row holds the base repo and com
 LoraConfig and SFTConfig as JSON text. The same bundle commit, the same rows file (its sha256 checks it) and the same
 command line give the same run up to the run-to-run noise PyTorch allows on one platform ([S64], `lora_recipe.md`
 section 6).
+
+## What the run measured (2026-10-10, 11:22 to 11:35 PM ET; 03:22 to 03:35 UTC on 2026-10-11)
+
+Run `train-20261011T032149Z-7dd098`, bundle commit c81a659, slot row `3f696ef5fec5816e90d1eb5c9350c669` (started 11:19 PM
+ET, done 11:36 PM ET). The trainer's row (verb `train`, outcome `trained`) and the files are in `fixtures/demo/`:
+`l16-ledger.jsonl` (the pod's `train-install` and `train` rows and the workstation's `train-clip` row),
+`l16-run.json`, `l16-telemetry.jsonl` (18 `telemetry.train.step` events), `l16-adapter_config.json`, `l16-train.log`,
+`l16-loss.png`, `l16-train-clip.mp4` (the log scrolling, 2 fps, 807 s) and `l16-train-clip-10x.mp4` (the same, ten
+times faster).
+
+| Number | Value |
+| --- | --- |
+| Loss, first and last step | 0.1273 to 0.0095 (mean over the run 0.0544) |
+| `trainer.samples_per_s` | 0.367 (288 by the trainer's count over 784.5 s; 252 examples actually trained, 0.321 a second) |
+| Peak memory (`max_memory_allocated`) | 11.1 GiB of the 64 GiB the GPU reports |
+| `trainer.train_s` | 784.5 s; the script's wall-clock 792 s; prep inside the slot 106 s (the pinned install 12 s, the base download 81 s) |
+| Steps, tokens | 18 optimizer steps, 174,999 tokens seen, 8,775 loss tokens an epoch |
+| Trainable parameters | 32,464,896 LoRA weights on a 4,205,751,296-parameter base |
+| Base | `Qwen/Qwen3.5-4B` at 851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a |
+| Kernels | TRL's Triton loss kernel built and ran on gfx1151; Gated DeltaNet on the torch fallback |
+| Power | none recorded: no sampler ran on pod D |
+| Data | the dataset copy and the rows were deleted on the pod (`refs.data_deleted` yes) |
+
+Against the prediction: 0.32 examples a second is above the predicted 0.06 to 0.19, so the
+Strix Halo ran this step faster than the scaled R9700 figure, and 18 steps took 13 minutes instead of 22 to 70. The
+first loss is already low (0.127, mean token accuracy 0.966): the base nearly writes the teacher's tool-call format
+before training, so a lower training loss says little about the held-out score, which is L17's job (LIMA's warning,
+`lora_recipe.md` section 2).
