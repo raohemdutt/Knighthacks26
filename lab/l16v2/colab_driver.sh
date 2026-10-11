@@ -19,7 +19,9 @@
 #
 # Every read of the Colab CLI goes through clean(): ANSI codes stripped, ASCII only, so no output can break a match.
 # A status read that fails is retried, never taken as a dead poll. The session is stopped only after the last
-# download is verified, and the usage rate is read back afterwards.
+# download is verified, and the usage rate is read back afterwards. lab/l16v2/colab_keepalive.sh polls the session
+# until the driver's first good status read, and again if the driver ends early (a trap on exit), so the VM always
+# has something polling it.
 set -u
 export MSYS_NO_PATHCONV=1
 S="${1:?session}"; BRANCH="${2:?branch}"; MODE="${3:-2400}"
@@ -75,11 +77,32 @@ get() { # get <product name>: the .sha256 first, then the file, checked; up to 4
   plog "PROBLEM download of $name failed 4 times"; return 1
 }
 
-touch "$OUT/keepalive.stop"       # the driver's polls keep the session busy from here on
+# If the driver ends for any reason before its last verified download, say so and hand the session back to the
+# keepalive, so the VM is never left with nothing polling it. (The keepalive is one copy at a time: starting it
+# while it still runs does nothing.)
+DONE_OK=0
+finish() {
+  local rc=$?
+  if [ "$DONE_OK" != 1 ]; then
+    plog "PROBLEM driver exited with code $rc before the last verified download; the session is left up and the keepalive takes over"
+    rm -f "$OUT/keepalive.stop"
+    (nohup bash "$HERE/colab_keepalive.sh" "$S" > "$OUT/keepalive.log" 2>&1 &)
+  fi
+}
+trap finish EXIT
+
 if [ "$MODE" != "--attach" ]; then
-  plog "driver start session=$S branch=$BRANCH commit=$(git -C "$REPO" rev-parse --short HEAD) budget_s=$MODE"
+  # git is a Windows program and MSYS_NO_PATHCONV=1 (set for the Colab wrapper) stops /c/... arguments from being
+  # converted for it: run it from inside the clone and hand it Windows-form paths.
+  COMMIT=$(cd "$REPO" && git rev-parse --short "$BRANCH" 2>/dev/null)
+  [ -n "$COMMIT" ] || { plog "PROBLEM driver refuses to start: no commit for branch $BRANCH in $REPO"; exit 1; }
+  [ -z "$(cd "$REPO" && git status --porcelain -- lab contexts contracts runtime fixtures config 2>/dev/null)" ] \
+    || plog "note: the clone has uncommitted changes under lab/ or the agent's folders; the bundle holds commit $COMMIT only"
+  plog "driver start session=$S branch=$BRANCH commit=$COMMIT budget_s=$MODE"
   rm -f "$OUT/l16v2.bundle"
-  git -C "$REPO" bundle create "$OUT/l16v2.bundle" "$BRANCH" > /dev/null 2>&1 || { plog "PROBLEM git bundle failed"; exit 1; }
+  (cd "$REPO" && git bundle create "$(WIN "$OUT/l16v2.bundle")" "$BRANCH") > "$OUT/bundle.log" 2>&1
+  [ -s "$OUT/l16v2.bundle" ] || { plog "PROBLEM git bundle failed: $(tail -1 "$OUT/bundle.log" | cut -c1-140)"; exit 1; }
+  plog "bundle made commit=$COMMIT bytes=$(stat -c %s "$OUT/l16v2.bundle")"
   cat > "$OUT/launch/launch_job.py" <<PY
 import subprocess
 subprocess.run("pkill -f '[c]olab_job.sh'; pkill -f '[l]ab/train.py'; pkill -f '[l]16v2/sweep.py'; rm -rf /content/l16v2/markers /content/l16v2/products /content/l16v2/runs /content/l16v2/finished.txt /content/l16v2/status.txt", shell=True)
@@ -103,6 +126,7 @@ for poll in $(seq 1 400); do
     sleep 30; continue
   fi
   FAILS=0
+  [ -e "$OUT/keepalive.stop" ] || touch "$OUT/keepalive.stop"   # the driver's own polls keep the session busy from here
   line=$(echo "$st" | grep "^STATUS " | head -1 | cut -c8-)
   plog "${line:-stage=unknown} vm_job_alive=$(echo "$st" | grep '^ALIVE' | cut -d' ' -f2)"
   now_stage=$(echo "$line" | grep -oE "stage=[a-z_]+" | head -1)
@@ -145,6 +169,7 @@ for poll in $(seq 1 400); do
     timeout 180 $C stop -s "$S" 2>&1 | clean | tail -1
     use=$(timeout 120 $C usage 2>&1 | clean | tr '\n' ' ')
     plog "RESULT session $S stopped; $use"
+    DONE_OK=1
     exit 0
   fi
   if [ "$(echo "$st" | grep '^ALIVE' | cut -d' ' -f2)" = "0" ]; then
@@ -152,8 +177,6 @@ for poll in $(seq 1 400); do
     if [ $DEAD -ge 3 ]; then
       plog "PROBLEM the job is not running on the VM and wrote no JOB_DONE; pulling the logs; the session is LEFT UP"
       raw /content/colab_job.log colab_job.log; raw /content/l16v2/sweep.log sweep.log; raw /content/l16v2/smoke.log smoke.log
-      rm -f "$OUT/keepalive.stop"    # and keep the session from idling while the job is looked at
-      [ -f "$OUT/launch/keepalive.sh" ] && (nohup bash "$OUT/launch/keepalive.sh" > "$OUT/keepalive.log" 2>&1 &)
       exit 6
     fi
   else
