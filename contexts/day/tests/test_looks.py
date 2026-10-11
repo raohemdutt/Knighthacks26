@@ -49,7 +49,8 @@ def test_similar_is_the_same_look_on_another_day_close_on_the_context():
     close = moment(FRIDAY, sitting_min=120, since_drink_min=100, activity="study")
     assert memory.distance(now, close.context) < 0.2 and memory.similar(now, TODAY, MEMBER, [close]) is close
     # the parts: minutes at the desk, minutes since a drink, what they were doing, the time of day, each 0 to 1
-    assert memory.distance(ctx(15, sitting_min=60), ctx(15, sitting_min=120)) == 0.5  # an hour apart at the desk is as far as it gets
+    assert memory.distance(ctx(15, sitting_min=60), ctx(15, sitting_min=120)) == 0.5  # an hour apart at the desk: that part is 1
+    assert memory.distance(ctx(15, sitting_min=60), ctx(15, sitting_min=300)) == 0.5  # ... and it gets no further than 1
     assert memory.distance(ctx(9, activity="study"), ctx(15, activity="class")) == 1.0
     assert memory.distance(ctx(23, 30, sitting_min=10), ctx(0, 30, sitting_min=10)) == 60 / memory.CLOCK_MIN / 2  # midnight is not a day apart
 
@@ -66,6 +67,7 @@ def test_nothing_similar_enough_is_never_forced():
     assert memory.similar(now, TODAY, MEMBER, [old]) is None  # further back than the window
     # only the time of day in common: too little to call it the same kind of moment
     assert memory.distance(ctx(15), ctx(15)) is None and memory.similar(ctx(15), TODAY, MEMBER, [moment(FRIDAY)]) is None
+    assert memory.distance(ctx(15, sitting_min=100), ctx(15, activity="study")) is None and memory.MIN_SHARED == 2  # nothing in common but the hour
 
 
 def test_among_near_ties_the_most_recent_wins_and_a_clearly_closer_one_beats_a_recent_one():
@@ -241,6 +243,26 @@ def test_a_sustained_look_is_remembered_once_with_what_was_going_on_and_what_hap
     shown = loop.looks.view(at(16, 0, FRIDAY))["moments"][0]
     assert shown["when"] == "This afternoon" and shown["going_on"] == "At the desk for two hours, no drink seen for about an hour and three quarters."
     assert shown["helped"] == "Ten minutes away from the desk helped: the look eased within half an hour."
+
+
+def test_with_no_record_from_the_desk_zone_the_members_own_windows_say_how_long_they_sat(places, tmp_path):  # noqa: F811
+    """A box whose desk zone recorded nothing for that time (no zone drawn, the zone engine off): an unbroken run of the
+    member's own windows is them in front of the desk camera, a gap of three minutes or more is them gone from it."""
+    d = FRIDAY
+    turned_away = ExpressionObserved(event_id="look-away", ts=at(13, 3, d), camera_id="cam-desk", member_id=MEMBER, window_start=at(13, 0, d),
+                                     window_end=at(13, 3, d), dominant="neutral", shares={}, samples=0, confidence=0.0, looks=30, turned_away=1.0)
+    looks = [turned_away, *windows(at(13, 3, d), 34, 0.1), *windows(at(14, 45, d), 7, 0.7), *windows(at(15, 16, d), 6, 0.1)]
+    loop, bus, out, _ = box(places, tmp_path)
+    asyncio.run(bus.publish_all([scanned(MEMBER), *looks]))
+    [m] = loop.looks.remembered(at(16, 0, d))
+    assert m.at == at(15, 0, d) and m.context.sitting_min == 120 and m.context.since_drink_min is None  # from 1 PM: the window with no counted look counts
+    assert m.outcome == Outcome(known=True, got_up=True, away_min=10, drink=None, eased=True)  # gone from 3:06 to 3:16
+    assert loop.looks.presence.closed == [] and loop.looks.presence.open == {}  # nothing came from the desk zone
+    # a break of under three minutes in the windows is not a break: the run goes on
+    loop, bus, out, _ = box(places, tmp_path / "b", "b")
+    asyncio.run(bus.publish_all([scanned(MEMBER), *windows(at(13, 0, d), 20, 0.1), *windows(at(14, 2, d), 10, 0.1), *windows(at(14, 32, d), 7, 0.7)]))
+    [m] = loop.looks.remembered(at(16, 0, d))
+    assert m.context.sitting_min == 107 and m.outcome.got_up is True and m.outcome.away_min is None and m.outcome.eased is None  # left and did not come back
 
 
 def test_the_check_in_calls_back_to_it_and_leads_with_what_helped(places, tmp_path):  # noqa: F811

@@ -18,9 +18,13 @@ reads:
   leaves the list (switched it off, or was forgotten) has every remembered look CLEARED here: turning it off stops the
   remembering and takes the memories with it. Before the log has one, Perception's own rule is what holds (it publishes
   a member's looks only for a scanned member who switched it on: contexts/perception/application/identity.py);
-- the desk: `perception.zone.event` (kept here too, so an outcome can be read after the coach has let go of the day);
-- a drink: the check-in's own `DrinkWatch`, read as each desk observation arrives; only the time of a pick-up is kept,
-  never the frame;
+- the desk: `perception.zone.event` (kept here too, so an outcome can be read after the coach has let go of the day).
+  Where the desk zone has no record that reaches the moment (no zone drawn, or the zone engine was not running), the
+  member's own windows of looks stand in: an unbroken run of them (no gap of three minutes) is that member in front
+  of the desk camera, and a gap of three minutes or more is them gone from it;
+- a drink: a pick-up the check-in's own `DrinkWatch` completed on a desk observation, or a desk caption that says
+  someone is drinking (its DRINK_VERBS); a container in view from the same tracks and the desk's object list. Only
+  times are kept, never the frame. Kept here by time, so an event that reaches the log late still lands on its day;
 - the watch: the check-in's nights, as two booleans (short night, resting heart rate above the person's own usual);
 - what they were doing: the Day plan's block at that time; a deadline within a day from `connector.item.synced`;
 - energy drinks so far against the limit: Habits' digest, through the port the Day loop already has;
@@ -33,6 +37,7 @@ place their words go is the box-only `day.checkin.raised` (its `callback`). Noth
 """
 
 import logging
+from bisect import bisect_left
 from datetime import UTC, date, datetime, timedelta
 
 from contexts.day.domain import checkin as rule
@@ -50,6 +55,7 @@ from contracts.perception import ExpressionObserved, ObservationRecorded, SceneD
 log = logging.getLogger("atlas.day.looks")
 KEEP_LOOKS = timedelta(hours=2)  # raw windows: enough for the rule and for an outcome
 KEEP_DESK = timedelta(days=1)
+SAME_VIEW = timedelta(seconds=60)  # a container in view is noted about once a minute, not once a second
 KEEP_RAISED = 50
 ENERGY = "energy_drinks"  # the habit's id in config/habits.yaml
 SHOWN = 5  # "Looks Atlas remembers": the most recent five
@@ -61,9 +67,10 @@ class LookMemory:
         # --- state, rebuilt from the log ---
         self.allowed: set[str] | None = None  # who scanned and switched expressions on; None: the log has not said yet
         self.looks: dict[str, list[Look]] = {}
+        self.faces: dict[str, list[Span]] = {}  # member -> the windows in which the desk camera had their face, counted or not
         self.presence = DeskPresence()
-        self.drinks: list[datetime] = []  # when a drink was seen picked up (times only)
-        self.container_at: datetime | None = None  # when a drink container was last in view
+        self.drinks: list[datetime] = []  # when a drink was seen picked up (times only), in time order
+        self.containers: list[datetime] = []  # when a drink container was in view, about once a minute, in time order
         self.dues: dict[str, tuple[str, datetime]] = {}  # assignment -> (short title, when it is due)
         self.moments: dict[str, Moment] = {}
         self.open: dict[str, str] = {}  # member -> the moment whose stretch is still holding
@@ -93,6 +100,7 @@ class LookMemory:
         """Who may be remembered. Anyone no longer on the list is cleared: their windows and every remembered look."""
         self.allowed = set(getattr(e, "expressions", ()) or ())
         self.looks = {m: rows for m, rows in self.looks.items() if m in self.allowed}
+        self.faces = {m: rows for m, rows in self.faces.items() if m in self.allowed}
         self.moments = {i: m for i, m in self.moments.items() if m.member_id in self.allowed}
         self.open = {m: i for m, i in self.open.items() if m in self.allowed}
 
@@ -105,15 +113,32 @@ class LookMemory:
             self.presence.prune(e.ts - KEEP_DESK)
 
     def on_desk(self, e: ObservationRecorded | SceneDescribed) -> None:
-        """After the check-in took the same event in: did its DrinkWatch see a pick-up, is a container in view."""
+        """After the check-in took the same event in: did its DrinkWatch complete a pick-up on it, does a caption say
+        someone is drinking, is a container in view."""
         if e.camera_id != self.coach.desk_camera:
             return
-        watch = self.checkin.drinks
-        if watch.moments and (not self.drinks or watch.moments[-1][0] > self.drinks[-1]):
-            self.drinks.append(watch.moments[-1][0])
-            self.drinks = [d for d in self.drinks if d >= e.ts - KEEP_DESK]
-        self.container_at = watch.container[0] if watch.container else None
+        if isinstance(e, SceneDescribed):
+            drank = e.zone_id is None and bool(rule.DRINK_VERBS.search(e.caption or ""))
+            in_view = e.zone_id == self.coach.desk_zone and any(o.label.lower() in rule.DRINK_LABELS for o in e.objects)
+        else:
+            in_view = any(t.label.lower() in rule.DRINK_LABELS for t in e.tracks)
+            watch = self.checkin.drinks
+            drank = in_view and bool(watch.moments) and watch.moments[-1][0] == e.ts
+        if drank and all(abs(e.ts - d) >= rule.SAME_DRINK for d in self.drinks):
+            self.drinks = sorted([d for d in self.drinks if d >= e.ts - KEEP_DESK] + [e.ts])
+        if in_view and all(abs(e.ts - c) >= SAME_VIEW for c in self.containers[-3:] + self.near(self.containers, e.ts)):
+            self.containers = sorted([c for c in self.containers if c >= e.ts - KEEP_DESK] + [e.ts])
         self.settle(e.ts)
+
+    @staticmethod
+    def near(times: list[datetime], ts: datetime) -> list[datetime]:
+        i = bisect_left(times, ts)
+        return times[max(0, i - 1):i + 1]
+
+    def in_view(self, at: datetime, either_side: bool = False) -> bool:
+        """A drink container was in view within the check-in's CONTAINER_WITHIN before `at` (or after it, for an outcome)."""
+        lo = bisect_left(self.containers, at - rule.CONTAINER_WITHIN)
+        return any(c <= at + (rule.CONTAINER_WITHIN if either_side else timedelta(0)) for c in self.containers[lo:lo + 1])
 
     def on_item(self, e: ItemSynced) -> None:
         if e.kind != "assignment" or e.when is None:
@@ -136,11 +161,19 @@ class LookMemory:
     def on_expression(self, e: ExpressionObserved) -> None:
         """One window of looks. When the check-in's own rule holds over the last twenty minutes, a stretch is under
         way: its first window makes ONE moment, the later ones only move its end."""
-        if e.member_id is None or e.camera_id != self.coach.desk_camera or e.samples <= 0:
+        if e.member_id is None or e.camera_id != self.coach.desk_camera:
             return  # the anonymous room count is nobody's
         if self.allowed is not None and e.member_id not in self.allowed:
             return  # not scanned, or expressions are off: nothing is remembered
         now = e.window_end
+        if e.samples > 0 or (e.looks or 0) > 0:  # their face was in front of the desk camera, counted or turned away
+            seen = self.faces.setdefault(e.member_id, [])
+            seen.append((e.window_start, e.window_end))
+            if len(seen) > 6000:
+                self.faces[e.member_id] = [w for w in seen if w[1] >= now - KEEP_DESK]
+        if e.samples <= 0:
+            self.settle(now)
+            return
         rows = self.looks.setdefault(e.member_id, [])
         rows.append(Look(e.window_start, e.window_end, e.samples, rule.strained_looks(e.shares, e.samples)))
         self.settle(now)
@@ -155,7 +188,7 @@ class LookMemory:
                 self.moments[current.id] = memory.replace(current, until=now)
             return
         try:
-            context = self.context(now)
+            context = self.context(now, e.member_id)
         except Exception:  # remembering must never stop the day
             log.debug("no context for a look", exc_info=True)
             return
@@ -178,8 +211,8 @@ class LookMemory:
     def on_wipe(self, e: Event) -> None:
         """Live only. A wipe of everything removes the log this is a projection of: empty it now, not at the next restart."""
         if getattr(e, "scope", "") == "all":
-            self.looks, self.moments, self.open, self.raised, self.answers = {}, {}, {}, [], {}
-            self.drinks, self.container_at, self.dues, self.presence = [], None, {}, DeskPresence()
+            self.looks, self.faces, self.moments, self.open, self.raised, self.answers = {}, {}, {}, {}, [], {}
+            self.drinks, self.containers, self.dues, self.presence = [], [], {}, DeskPresence()
 
     # --- what a moment holds ---
 
@@ -194,14 +227,22 @@ class LookMemory:
                 out.append((a, b))
         return out
 
-    def context(self, now: datetime) -> Context:
+    def desk(self, member_id: str, at: datetime, as_of: datetime) -> list[Span]:
+        """When `member_id` was at the desk around `at`, as far as `as_of` knows: the desk zone's own record when it
+        reaches `at`; else the windows in which the desk camera had this member's face."""
+        zone = self.spans(at - timedelta(hours=12), as_of)
+        if rule.sitting([s for s in zone if s[0] <= at], at) is not None:
+            return zone
+        return sorted(w for w in self.faces.get(member_id, ()) if w[1] >= at - timedelta(hours=12) and w[0] <= as_of)
+
+    def context(self, now: datetime, member_id: str) -> Context:
         """What is going on at `now`, from what the log held by then. Labels and whole numbers; never a heart value."""
         tz, day = self.clock.tz, self.clock.day_of(now)
         local = now.astimezone(tz)
-        run = rule.sitting(self.spans(now - timedelta(hours=12), now), now)
+        run = rule.sitting(self.desk(member_id, now, now), now)
         sitting = int((now - run[0]).total_seconds() // 60) if run else None
         since_drink = None
-        if run and self.container_at is not None and timedelta(0) <= now - self.container_at <= rule.CONTAINER_WITHIN:
+        if run and self.in_view(now):
             last = max((d for d in self.drinks if run[0] <= d <= now), default=run[0])
             since_drink = int((now - last).total_seconds() // 60)
         nights = self.checkin.nights
@@ -254,8 +295,8 @@ class LookMemory:
         if m.outcome.known:
             return m
         rows = self.looks.get(m.member_id, [])
-        container = self.container_at is not None and abs(m.at - self.container_at) <= rule.CONTAINER_WITHIN
-        got = memory.outcome(m.at, now, self.spans(m.at - timedelta(hours=12), now), self.drinks, container, rows, m.outcome.answer)
+        got = memory.outcome(m.at, now, self.desk(m.member_id, m.at, now), self.drinks, self.in_view(m.at, either_side=True), rows,
+                             m.outcome.answer)
         return memory.with_outcome(m, got) if got.known else m
 
     def settle(self, now: datetime) -> None:
@@ -291,7 +332,7 @@ class LookMemory:
         if member is None or (self.allowed is not None and member not in self.allowed):
             return None
         today = self.clock.day_of(now)
-        then = memory.similar(self.context(now), today, member, self.remembered(now))
+        then = memory.similar(self.context(now, member), today, member, self.remembered(now))
         if then is None:
             return None
         helped, lead = memory.learned(then, self.words)

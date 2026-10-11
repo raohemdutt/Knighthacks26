@@ -24,7 +24,8 @@ The rules, in plain words (every time is event time):
   SIMILAR_MAX or less. The distance is the mean of up to four parts, each 0 (the same) to 1: minutes at the desk
   (a difference of SIT_MIN minutes or more is 1), minutes since a drink (DRINK_GAP_MIN), what they were doing (the same
   kind of block is 0, another is 1), and the time of day (CLOCK_MIN minutes apart or more is 1). A part missing on
-  either side is left out; with fewer than MIN_SHARED parts nothing is similar. Among the moments within NEAR_TIE of
+  either side is left out; with fewer than MIN_SHARED parts (the time of day and one more) nothing is similar: a
+  moment known only by its hour is not "the same kind of moment". Among the moments within NEAR_TIE of
   the closest, the most recent wins. When nothing is similar enough nothing is said about the past.
 - What it learned (`learned`): getting up, or a drink, followed by the look easing is said ("... helped then.") and
   that advice is said first; staying put and the look not easing is said gently; anything else is not said.
@@ -43,10 +44,10 @@ CALLBACK_DAYS = 21  # how far back a callback may reach
 KEEP_DAYS = 90  # how long a moment is kept at all (the examples a later training step would read)
 GOT_UP_MIN = 15  # "got up": left the desk within this many minutes of the moment
 EASE_MIN = 30  # the outcome is known this long after the moment
-CLOCK_MIN = 180  # two times of day this far apart are as different as they get
+CLOCK_MIN = 240  # two times of day four hours apart are another part of the day: as different as they get
 SIMILAR_MAX = 0.5  # the largest distance that is still "the same look in the same kind of moment"
 NEAR_TIE = 0.1  # within this of the closest: the most recent wins
-MIN_SHARED = 2  # parts both moments must have for a comparison to mean anything
+MIN_SHARED = 2  # parts both moments must have: the time of day and one more, or the comparison means nothing
 RECENT = timedelta(hours=3)  # "why do you think I look strained?" is about a look this recent
 WALK_KINDS = ("walk", "break")  # the check-in's two ways of saying "get up"
 
@@ -274,9 +275,10 @@ def went(m: Moment, w: Words = Words()) -> str:
 def view(m: Moment, today: date, tz: tzinfo, w: Words = Words()) -> dict:
     """One remembered moment for the owner's own screen: labels, numbers and plain lines. No picture, no heart value."""
     local = m.at.astimezone(tz)
+    about = local.replace(second=0, microsecond=0) + timedelta(minutes=round(local.minute / 5) * 5 - local.minute)  # "around": to five minutes
     return {"id": m.id, "member_id": m.member_id, "look": m.look, "at": m.at.isoformat(), "until": m.until.isoformat(),
             "day": m.day.isoformat(), "weekday": WEEKDAYS[local.weekday()], "part": part_of_day(hhmm(local)),
-            "when": cap(when_words(m.at, today, tz)), "time": clock(hhmm(local)), "short": short_day(m.at, today, tz),
+            "when": cap(when_words(m.at, today, tz)), "time": clock(hhmm(about)), "short": short_day(m.at, today, tz),
             "context": asdict(m.context), "going_on": going_on(m.context, w), "helped": went(m, w),
             "suggested": list(m.suggested), "checkin_id": m.checkin_id, "outcome": asdict(m.outcome)}
 

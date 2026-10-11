@@ -1,6 +1,7 @@
 """The check-in, shown (D4): one ordinary afternoon that ends in Atlas speaking up, through the real app.
 
     python -m contexts.demo checkin --data-dir <an empty directory> [--end 2026-10-10T15:40:00-04:00]
+    python -m contexts.demo checkin --data-dir <a `circle`-seeded directory> --onto     # the same afternoon, on the demo night
     ATLAS_DATA_DIR=<that directory> ATLAS_MEMORY_FIXTURE= ATLAS_CONNECTORS=0 python -m contexts.gateway   # then open /now/
 
 Nothing here was measured on anybody. Every value is invented for the demo: the nights are written in the
@@ -22,6 +23,20 @@ What is published, as source events through the app's own bus, so the rule that 
   written straight to the log and replayed, the way a box that has been running for a week would have them,
   so nothing is said or pushed about them now.
 
+- and one more earlier afternoon, three days back (`earlier`), for the look memory (contexts/day/application/looks.py)
+  to call back to. It is the demo owner's looks and nothing else (`perception.expression.observed`): two hours of them
+  without a gap, the last twenty minutes strained, then none for ten minutes, then calmer ones. No desk or drink event
+  is written for that day, on purpose: Habits counts from those, and the demo night's numbers must stay what they
+  are (so the look memory reads "at the desk" from the owner's own windows there, as it does on any box whose desk
+  zone has no record). The remembered moment, its outcome ("ten minutes away from the desk helped") and the callback
+  sentence are the look memory's own, and the weekday it names is whatever day that really was. The demo owner
+  (`m-demo`, made-up vectors marked as demo data: contexts/demo/people.py) is written to the identity store, so the
+  People screen lists "Looks Atlas remembers".
+
+`--onto` adds the afternoon to a directory that already holds the demo night (`python -m contexts.demo circle`):
+its log is replayed, the earlier days are appended to it, and the afternoon is published live from after the
+night's last event. `end` then has to leave room for the sitting after that event; the command says so if not.
+
 At `end` the Day loop's tick looks at the rule once: it raises `day.checkin.raised` with all six signals, the
 narrator says it, and "Move the block" is offered because the re-plan really can move the block to after dinner.
 `end` defaults to now when it is afternoon, else to today 15:40 local, so "since two" and "after dinner" read
@@ -36,7 +51,7 @@ from zoneinfo import ZoneInfo
 
 from bus import EventBus
 from contexts.connectors.domain.health import Night, to_item
-from contexts.demo.seed import SeedRefused, build_app, settle
+from contexts.demo.seed import SeedRefused, build_app, settle  # noqa: F401  (SeedRefused is this command's refusal too)
 from contexts.demo.story import ZONES
 from contexts.gateway.bootstrap import Atlas
 from contexts.perception.domain.scenes import bounding_box, scene
@@ -54,6 +69,16 @@ SIT_MIN, DRINK_MIN, STRAINED_MIN = 105, 100, 21
 EVERY_S = 2  # under the zone engine's 3 s exit: one unbroken stay
 LIKE_THIS = (6, 4, 2)  # days back that had a short night with the resting heart rate up
 FELL_AT = {6: time(15, 0), 4: time(15, 30), 2: time(16, 0)}  # when that day's afternoon block began
+STRAINED = {"sad": 0.36, "angry": 0.28, "neutral": 0.36}
+CALMER = {"neutral": 0.7, "happy": 0.2, "sad": 0.1}
+# The earlier afternoon the look memory calls back to (`earlier`): days back, and when the owner sat down. Not one of
+# the LIKE_THIS days (those afternoons fell apart: nobody stayed at the desk), and clear of the hours the demo people's
+# week of looks covers on an ordinary day (contexts/demo/people.py MORNING, and AFTERNOON from 15:00 on).
+THEN_BACK, THEN_SAT = 3, time(12, 44)
+THEN_SIT_MIN = 120  # the look had held for the rule's twenty minutes two hours after sitting down
+THEN_UP_MIN, THEN_AWAY_MIN = 6, 10  # the last look before getting up came six minutes after that; then ten minutes away
+WINDOW_MIN = 3  # a window of looks
+ONTO_GUARD = timedelta(minutes=45)  # `--onto`: stay this clear of a fixed block of the night (the rule's own guard is 30, plus a walk)
 
 
 def default_end(now: datetime) -> datetime:
@@ -62,13 +87,32 @@ def default_end(now: datetime) -> datetime:
     return local if time(13, 30) <= local.time() < time(19, 0) else local.replace(hour=15, minute=40, second=0)
 
 
+def onto_end(data_dir: str | Path, now: datetime) -> datetime:
+    """For `--onto` with no `--end`: the first afternoon time after the seeded night's last event at which the night's
+    own plan has nothing fixed on or about to start (the rule stays quiet in a class and before a time to leave).
+    `default_end` when the directory has no log, or when that time is already clear."""
+    log = list(EventBus(Path(data_dir) / "events").read_log())
+    if not log:
+        return default_end(now)
+    last = max(e.ts for e in log).astimezone(LOCAL)
+    fixed = [(m.start - ONTO_GUARD, m.end) for e in log if e.type in ("day.plan.proposed", "day.replan.proposed") for m in e.moves if m.fixed]
+    first = default_end(now)
+    for day in (first.date() + timedelta(days=n) for n in range(3)):
+        t = max(first if day == first.date() else datetime.combine(day, time(15, 40), LOCAL), datetime.combine(day, time(13, 30), LOCAL))
+        while t.date() == day and t.time() < time(19, 0):
+            if t - timedelta(minutes=SIT_MIN + 5) >= last and not any(a <= t < b for a, b in fixed):
+                return t
+            t = (t + timedelta(minutes=10)).replace(minute=(t.minute // 10 * 10 + 10) % 60) if t.minute % 10 else t + timedelta(minutes=10)
+    return first
+
+
 def _box(x: float, bottom: float, w: float, h: float) -> Box:
     return Box(x1=round(x - w / 2, 3), y1=round(bottom - h, 3), x2=round(x + w / 2, 3), y2=round(bottom, 3))
 
 
-def nights(end: datetime) -> list[ItemSynced]:
+def nights(end: datetime, synced: datetime | None = None) -> list[ItemSynced]:
     """Ten invented nights as the health connector would sync them in the morning: one item per night."""
-    day, synced = end.astimezone(LOCAL).date(), datetime.combine(end.astimezone(LOCAL).date(), time(8, 6), LOCAL)
+    day, synced = end.astimezone(LOCAL).date(), synced or datetime.combine(end.astimezone(LOCAL).date(), time(8, 6), LOCAL)
     out = []
     for back in range(9, -1, -1):
         d = day - timedelta(days=back)
@@ -82,9 +126,9 @@ def nights(end: datetime) -> list[ItemSynced]:
     return out
 
 
-def calendar(end: datetime) -> list[ItemSynced]:
+def calendar(end: datetime, synced: datetime | None = None) -> list[ItemSynced]:
     day = end.astimezone(LOCAL).date()
-    synced, lecture = datetime.combine(day, time(8, 5), LOCAL), datetime.combine(day, time(10, 40), LOCAL)
+    synced, lecture = synced or datetime.combine(day, time(8, 5), LOCAL), datetime.combine(day, time(10, 40), LOCAL)
     due = datetime.combine(day + timedelta(days=1), time(23, 59), LOCAL)
     return [
         ItemSynced(event_id=f"demo-checkin-lecture-{day}", ts=synced, connector="calendar", kind="calendar_event",
@@ -114,6 +158,31 @@ def history(end: datetime) -> list[Event]:
             out.append(DayCoachNoted(event_id=f"day-coach-{plan_id}-{block_id}", ts=done, day=d, plan_id=plan_id, block_id=block_id,
                                      text=session.text, session=session))
     return sorted(out, key=lambda e: e.ts)
+
+
+def _looks(start: datetime, minutes: int, shares: dict[str, float], name: str) -> list[ExpressionObserved]:
+    """`minutes` of the demo owner's looks from `start`, in three-minute windows."""
+    out = []
+    for m in range(0, minutes, WINDOW_MIN):
+        a, b = start + timedelta(minutes=m), start + timedelta(minutes=m + WINDOW_MIN)
+        out.append(ExpressionObserved(event_id=f"demo-checkin-{name}-{int(b.timestamp())}", ts=b, camera_id=DESK_CAM, member_id=MEMBER,
+                                      window_start=a, window_end=b, dominant=max(shares, key=shares.get), samples=40, confidence=0.82,
+                                      looks=52, shares=dict(shares)))
+    return out
+
+
+def earlier(end: datetime) -> list[ExpressionObserved]:
+    """An earlier afternoon, THEN_BACK days before `end`, as the log of a box that had been running would hold the
+    owner's looks: calm from sitting down, strained for the twenty minutes up to the two-hour mark and six more, none
+    for ten minutes, calmer after. What the look memory makes of them is the look memory's."""
+    sat = datetime.combine(end.astimezone(LOCAL).date() - timedelta(days=THEN_BACK), THEN_SAT, LOCAL)
+    held = sat + timedelta(minutes=THEN_SIT_MIN)  # the rule's twenty minutes hold from here
+    strained = held - timedelta(minutes=18)  # ... because by then six of its seven windows are strained ones
+    up = held + timedelta(minutes=THEN_UP_MIN)
+    back = up + timedelta(minutes=THEN_AWAY_MIN)
+    return [*_looks(sat, int((strained - sat).total_seconds() // 60), CALMER, "then-looks"),
+            *_looks(strained, int((up - strained).total_seconds() // 60), STRAINED, "then-looks"),
+            *_looks(back, 18, CALMER, "then-looks")]
 
 
 def afternoon(end: datetime, zones: str | Path = ZONES) -> list[Event]:
@@ -158,20 +227,48 @@ class Shown:
     published: int
 
 
-async def show(data_dir: str | Path, end: datetime, config_dir: Path | None = None) -> Shown:
-    """Publish the story into an empty `data_dir`, ending at `end`. Refuses a directory that already has a log."""
+async def show(data_dir: str | Path, end: datetime, config_dir: Path | None = None, onto: bool = False) -> Shown:
+    """Publish the story into an empty `data_dir`, ending at `end`. Refuses a directory that already has a log, unless
+    `onto`: then the directory is one the demo night was seeded into (`python -m contexts.demo circle`), its log is
+    replayed first and the afternoon is added after its last event."""
     data_dir = Path(data_dir)
-    if list((data_dir / "events").glob("*.jsonl")) or (data_dir / "memory.sqlite").exists():
-        raise SeedRefused(f"{data_dir} already has an event log or a memory file. The check-in demo wants an empty directory.")
+    log_files = sorted((data_dir / "events").glob("*.jsonl"))
+    if (log_files or (data_dir / "memory.sqlite").exists()) and not onto:
+        raise SeedRefused(f"{data_dir} already has an event log or a memory file. The check-in demo wants an empty directory "
+                          "(or --onto, to add the afternoon to a directory seeded with `python -m contexts.demo circle`).")
+    if onto and not log_files:
+        raise SeedRefused(f"{data_dir} has no event log to add the afternoon to. Seed it first: python -m contexts.demo circle --data-dir {data_dir}")
+    if onto and config_dir is None and (data_dir / "config").is_dir():
+        config_dir = data_dir / "config"  # the Circle demo's own copy
+    last, known, taken = None, set(), []
+    if onto:
+        before = list(EventBus(data_dir / "events").read_log())
+        last, known = max(e.ts for e in before), {e.event_id for e in before}
+        taken = [(e.window_start, e.window_end) for e in before if isinstance(e, ExpressionObserved) and e.member_id == MEMBER]
+        if end - timedelta(minutes=SIT_MIN + 5) < last:
+            raise SeedRefused(f"The night in {data_dir} ends at {last.astimezone(LOCAL):%a %H:%M}: the afternoon needs {SIT_MIN + 5} minutes "
+                              f"after that. Pass --end with a later afternoon time (it is {end.astimezone(LOCAL):%a %H:%M}), or leave "
+                              "--end out and one is picked.")
     started = clocktime.perf_counter()
     # The earlier days go into the log first and are replayed: state, with nothing said or pushed about them.
-    await EventBus(data_dir / "events").publish_all(history(end))
+    # Onto a night that has the demo people's week of looks, a window of the earlier afternoon that one of theirs
+    # already covers is left to theirs (the calmer looks after three o'clock): no stretch is in the log twice.
+    await EventBus(data_dir / "events").publish_all([e for e in history(end) + earlier(end) if e.event_id not in known
+                                                     and not any(a < e.window_end and e.window_start < b for a, b in taken
+                                                                 if isinstance(e, ExpressionObserved))])
     app = build_app(data_dir, config_dir)
     await app.bus.replay_into()
     if app.day is None:
         raise RuntimeError("this config has no Day loop (no place packs): the check-in lives there")
+    if app.identity is not None:  # the demo owner whose looks the story reads: made-up vectors, marked as demo data
+        from contexts.demo import people  # here, not at the top: it imports this module
 
-    events = sorted(calendar(end) + nights(end) + afternoon(end, app.settings.config_dir / "zones.yaml"), key=lambda e: e.ts)
+        people.write(app.identity, end, circle=app.circle is not None)
+
+    morning = datetime.combine(end.astimezone(LOCAL).date(), time(8, 5), LOCAL)
+    synced = last + timedelta(minutes=1) if last is not None and last >= morning else None  # onto a night that ends later in the day
+    events = sorted(calendar(end, synced) + nights(end, synced and synced + timedelta(minutes=1))
+                    + afternoon(end, app.settings.config_dir / "zones.yaml"), key=lambda e: e.ts)
     clock = {"now": events[0].ts}
     app.qa.clock = lambda: clock["now"]  # event time, as the seed does
     raised: list[DayCheckinRaised] = []
@@ -203,17 +300,24 @@ def summary(s: Shown) -> str:
     if not s.checkins:
         watching = s.app.day.checkin.watching(s.end)
         lines += ["", "No check-in was raised.", f"  signals: {', '.join(watching['signals']) or 'none'}", f"  held: {watching['held']}",
-                  "  (outside 08:00 to 20:00, or in the lecture, the rule stays quiet: try --end with an afternoon time)"]
+                  "  (outside 08:00 to 20:00, in a class or close to a time to leave the rule stays quiet: try --end with another "
+                  "afternoon time; with --onto, leave --end out and a clear one is picked)"]
         return "\n".join(lines)
     e = s.checkins[-1]
     said = next((n for n in s.told if n.ref == e.event_id), None)
+    back = e.callback
     lines += ["", f"Check-in raised at {e.at.astimezone(LOCAL):%H:%M} by the rule in contexts/day/domain/checkin.py:", "",
-              f"  {said.spoken if said else e.text}", "", "  chips: " + " · ".join(x.summary for x in e.signals),
+              f"  {said.spoken if said else e.text}", "",
+              "  chips: " + " · ".join([x.summary for x in e.signals] + ([back.chip] if back else [])),
+              (f"  look memory: the earlier look was on {back.day:%A %Y-%m-%d}. " + " ".join(back.lines)) if back
+              else "  look memory: no earlier look was similar enough, so nothing is said about the past",
               "  suggestions: " + "; ".join(x.text for x in e.suggestions),
               f"  \"Move the block\" offered: {'yes' if e.proposes_replan else 'no (nothing to move to after a meal at this time of day)'}"]
     missing = {"sleep", "resting_hr", "expression", "sitting", "drink", "history"} - {x.kind for x in e.signals}
     if missing:
         lines.append(f"  not in it at this time of day: {', '.join(sorted(missing))}")
-    lines += ["", "Run the app on it, then open /now/:",
-              f"  ATLAS_DATA_DIR={s.app.settings.data_dir} ATLAS_MEMORY_FIXTURE= ATLAS_CONNECTORS=0 ATLAS_CAPTURE=0 python -m contexts.gateway"]
+    own = s.app.settings.data_dir / "config"  # the Circle demo's own config, when the afternoon was added onto that night
+    config = f"ATLAS_CONFIG_DIR={own} " if s.app.settings.config_dir == own else ""
+    lines += ["", "Run the app on it, then open /now/ (the card, and its \"like <day>\" chip) and /people/ (\"Looks Atlas remembers\"):",
+              f"  ATLAS_DATA_DIR={s.app.settings.data_dir} {config}ATLAS_MEMORY_FIXTURE= ATLAS_CONNECTORS=0 ATLAS_CAPTURE=0 python -m contexts.gateway"]
     return "\n".join(lines)

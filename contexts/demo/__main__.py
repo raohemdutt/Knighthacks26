@@ -22,10 +22,13 @@
         The default is a dry run that prints every row; --remove deletes exactly what --apply wrote
         (contexts/demo/neon_seed.py).
 
-    python -m contexts.demo checkin --data-dir <empty dir> [--end ISO]
+    python -m contexts.demo checkin --data-dir <empty dir> [--end ISO] [--onto]
         The check-in (D4): one invented afternoon (a short night, resting heart rate up, strained looks, a bottle
         not picked up, three earlier days like it) published through the real app, so the Day loop's own rule
-        raises it and the narrator says it. Prints the sentence and the command to run the app on it.
+        raises it and the narrator says it. An earlier strained afternoon is in its log too, so the look memory
+        calls back to it ("That's the same look you had <that weekday> afternoon, when ..."). Prints the sentence
+        and the command to run the app on it. --onto adds the afternoon to a directory already seeded with
+        `python -m contexts.demo circle`, so one box shows the night, the Circle, the people and the check-in.
 
     python -m contexts.demo optional --data-dir <empty dir> [--day YYYY-MM-DD]
         An optional event ("Near you"), suggested and said yes to: one invented day published through the real
@@ -94,6 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     k.add_argument("--data-dir", type=Path, required=True)
     k.add_argument("--end", type=datetime.fromisoformat, help="when the check-in is raised (with a UTC offset); default: now in "
                                                              "the afternoon, else today 15:40 local")
+    k.add_argument("--onto", action="store_true", help="add the afternoon to a directory seeded with `python -m contexts.demo circle`")
     o = sub.add_parser("optional", help="an invented afternoon: an optional event suggested, said yes to and approved")
     o.add_argument("--data-dir", type=Path, required=True)
     o.add_argument("--day", type=date.fromisoformat, help="the invented day (default: today, local)")
@@ -160,7 +164,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.end and args.end.tzinfo is None:
             p.error("--end needs a UTC offset, e.g. 2026-10-10T15:40:00-04:00")
         try:
-            shown = asyncio.run(checkin.show(args.data_dir, args.end or checkin.default_end(datetime.now(UTC))))
+            now = datetime.now(UTC)
+            end = args.end or (checkin.onto_end(args.data_dir, now) if args.onto else checkin.default_end(now))
+            shown = asyncio.run(checkin.show(args.data_dir, end, onto=args.onto))
         except SeedRefused as refused:
             print(refused, file=sys.stderr)
             return 1
