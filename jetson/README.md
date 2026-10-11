@@ -148,9 +148,33 @@ While the firewall is on, `apt` and `pip` on the box are blocked: run `clear` fi
 
 ### Updating the code on the box
 
-The box has no GitHub login, so code reaches it from a laptop: `./jetson/push.sh [alexander@<ip>]` copies the working
-tree (not `.env`, `data/`, the engine or the models) and restarts `atlas-gateway`; the app rebuilds its memory from the
-event log. `--web` builds the phone app first. The default address is `alexander@ubuntu.local`.
+**The `prod` branch is what the box runs.** Merge or push to `prod` and the box deploys it within a few minutes:
+
+1. `.github/workflows/jetson-prod.yml` runs the suite, builds the phone app (the box has no node), and publishes one
+   bundle plus a `manifest.json` to the `jetson-prod` release. A red suite publishes nothing.
+2. On the box, `atlas-deploy.timer` runs `jetson/deploy-pull.sh` every minute. It reads the manifest; if the sha is new
+   it downloads and checks the bundle, saves the box's copy of every file it replaces, unpacks it, restarts
+   `atlas-gateway` (and `atlas-voice` if it runs) and waits for `/health`. No answer within two minutes: the saved files
+   go back, the gateway restarts, and that sha is not tried again until a new push (or `--force`).
+
+```bash
+git push origin main:prod                          # from a laptop: deploy what main is now (or merge a PR into prod)
+cat ~/atlas/deploy/last.json                       # on the box: the last result (deployed / rolled-back / unreachable) and sha
+journalctl -u atlas-deploy -n 30                   # what each check did
+touch ~/.atlas-deploy-paused                       # freeze deploys (do this before judging); rm it to resume
+jetson/deploy-pull.sh --dry-run                    # list the files the newest bundle would change, change nothing
+sudo ./jetson/jetson_setup.sh deploy               # one-time: install and start the timer
+```
+
+Like `push.sh` it never touches `.env`, `data/`, the engine or the models, and it keeps the box's `config/zones.yaml`.
+It does not install new pip packages or changed systemd units: run `sudo ./jetson/jetson_setup.sh` for those. The
+box pulls without a GitHub login only while the repository is public; it needs `github.com` and
+`*.githubusercontent.com` (release downloads) on 443. When it cannot reach them, nothing happens and `last.json` says so.
+
+From a laptop, `./jetson/push.sh [alexander@<ip>]` still works for a quick try of a working tree: it copies the tree
+(not `.env`, `data/`, the engine or the models) and restarts `atlas-gateway`; the app rebuilds its memory from the
+event log. `--web` builds the phone app first. The default address is `alexander@ubuntu.local`. The timer replaces
+what `push.sh` copied only at the next push to `prod`.
 
 ## 9. Voice on the box (X16)
 
