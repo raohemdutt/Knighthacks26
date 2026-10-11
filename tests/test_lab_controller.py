@@ -1396,3 +1396,20 @@ def test_an_account_name_that_the_address_quotes_is_scrubbed_in_both_forms(world
     assert "amd%20user%401" not in shown and user not in shown
     assert "<account A>" in answer["accounts"]["A"]["error"]
     assert "<account A>" in ledger.ledger_path().read_text(encoding="utf-8")
+
+
+def test_a_keep_alive_cycle_between_a_stops_delete_and_its_row_raises_no_stopped_alert(world):
+    # xcall-keepalive-lost-row-races-concurrent-stop: a server with pending == "stop" is an intended stop, not a
+    # lost pod; the keep-alive row must not be a "lost" row that alerts replays before the stop's own row.
+    world.hub.start_server("A")
+    world.hub.stop_s = 10_000.0
+    world.hub.schedule(300, lambda: world.controller._hub("A").delete(world.controller._hub("A").user_url("/server")))
+
+    answer = world.controller.keep_alive(["A"], minutes=30)
+    world.controller.stop("A", wait=False)          # the concurrent stop writes its row after the cycle saw it
+
+    assert world.hub.calls_matching("DELETE", "/server")
+    assert [row["outcome"] for row in world.rows("pod keep-alive")] == ["alive", "stopping"]
+    assert answer["accounts"]["A"]["state"] == "stopping"
+    assert answer["outcome"] == "completed"
+    assert [alert.rule for alert in alerts_for(world)] == []

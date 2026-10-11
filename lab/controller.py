@@ -1070,7 +1070,13 @@ class Controller:
         seen = self._look(watch.letter)
         if seen.ok:
             server = seen.server
-            if server is None or server.pending == "stop":
+            if server is not None and server.pending == "stop":
+                watch.active = False
+                watch.state = "stopping"
+                self._row_for(problems, POD_KEEP_ALIVE, "stopping", watch.account,
+                              note="the hub is stopping the pod (an intended stop)")
+                return
+            if server is None:
                 self._gone(watch, seen, problems)
                 return
             watch.scheduled_end = server.scheduled_end or watch.scheduled_end
