@@ -559,11 +559,7 @@ function Sources({ story }: { story: LabStory }) {
   const known = story.sources.filter((n) => n.value !== null);
   return (
     <>
-      <p className={ui.muted}>
-        {story.sample
-          ? "Every number below comes from the sample run file, not from a measurement. The ids are the sample file's own."
-          : "Every number on this screen, and the event or file it was read from. Nothing is filled in."}
-      </p>
+      <p className={ui.muted}>Every number on this screen, and the event or file it was read from. Nothing is filled in.</p>
       <div className={lab.sourceList}>
         {known.map((n, i) => (
           <div key={`${n.label}-${i}`} className={lab.sourceRow}>
@@ -747,7 +743,7 @@ export function LabRun({ story, initial, forceReduced, picker }: { story: LabSto
         <div className={lab.headTop}>
           <h1>What Atlas learned</h1>
           <span className={`${lab.status} ${good ? lab.statusGood : bad ? lab.statusBad : ""} ${running ? lab.statusLive : ""}`}>
-            {running && !story.sample ? <Running story={story} /> : STATUS_LABEL[story.status]}
+            {running ? <Running story={story} /> : STATUS_LABEL[story.status]}
           </span>
         </div>
         {isLive(story) ? <LiveStages story={story} /> : null}
@@ -775,12 +771,6 @@ export function LabRun({ story, initial, forceReduced, picker }: { story: LabSto
       </div>
 
       <div className={lab.dock}>
-        {story.sample ? (
-          <div className={lab.banner} role="note">
-            <strong>Sample run: not measured on our hardware.</strong>
-            <span>{story.sample_reason === "asked for with ?sample=1" ? "Shown because you asked for the sample." : "Shown because this box has not trained anything yet."}</span>
-          </div>
-        ) : null}
         <div className={lab.player}>
           <button type="button" className={`${ui.btn} ${ui.btnPrimary} ${lab.play}`} onClick={toggle}>
             <svg viewBox="0 0 24 24" aria-hidden="true">{playing ? <path d="M8 5v14M16 5v14" fill="none" /> : <path d="M8 5l11 7-11 7z" />}</svg>

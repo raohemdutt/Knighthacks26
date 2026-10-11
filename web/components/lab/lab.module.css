@@ -3,7 +3,7 @@
  *
  * Colours and depth come only from the tokens in app/globals.css: raised cards (--sh-raised), sunken wells for
  * the numbers and answers (--sh-inset-sm), blue (--accent, --accent-text) for progress and the selected step,
- * --ok for right answers and gains, --danger for wrong answers and regressions, --watch for the sample banner,
+ * --ok for right answers and gains, --danger for wrong answers and regressions, --watch for warnings,
  * low-confidence marks and the power trace. Nothing here names a colour of its own.
  */
 
@@ -104,7 +104,7 @@
   transform: scale(0.97);
 }
 
-/* ---------- the dock: sample banner and player, always in view ---------- */
+/* ---------- the dock: the player, always in view ---------- */
 .dock {
   position: sticky;
   top: calc(72px + var(--safe-top)); /* under the phone header */
@@ -123,22 +123,6 @@
   .dock {
     top: 14px; /* the sidebar layout has no header */
   }
-}
-
-.banner {
-  display: flex;
-  gap: 4px 10px;
-  align-items: baseline;
-  flex-wrap: wrap;
-  padding: 9px 18px;
-  background: color-mix(in srgb, var(--watch) 13%, transparent);
-  box-shadow: inset 5px 0 0 var(--watch);
-  color: var(--watch);
-  font-size: 15px;
-}
-
-.banner strong {
-  font-weight: 750;
 }
 
 .player {
