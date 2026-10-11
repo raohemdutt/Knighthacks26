@@ -265,11 +265,11 @@ class OptionalEvents:
         expires = p.expires.get(plan.action_id)
         return expires is None or now < expires
 
-    def row(self, offer: Offer, now: datetime) -> dict:
+    def row(self, offer: Offer, now: datetime, gate: Gate | None = None) -> dict:
         answer, pending = self.answers.get(offer.id), self.waiting(offer.id, now)
         said = self.suggested.get(offer.id)
         try:
-            quiet = self.held(offer, now)
+            quiet = self.held(offer, now, gate)
         except Exception:
             quiet = "unavailable"
         return {"id": offer.id, "slug": offer.slug, "title": offer.title, "start": offer.start.isoformat(), "end": offer.end.isoformat(),
@@ -281,7 +281,12 @@ class OptionalEvents:
 
     def view(self, now: datetime) -> dict:
         plan = self.plan(now)
-        return {"now": now.isoformat(), "plan_id": plan.plan_id if plan else None, "events": [self.row(o, now) for o in self.offers(now)]}
+        offers = self.offers(now)
+        try:
+            gate = self.gate(now) if offers else None  # read once for the whole list
+        except Exception:
+            gate = None
+        return {"now": now.isoformat(), "plan_id": plan.plan_id if plan else None, "events": [self.row(o, now, gate) for o in offers]}
 
     # --- the suggestion (live only: the tick) ---
 
@@ -303,8 +308,12 @@ class OptionalEvents:
         plan = self.plan(now)
         if plan is None:
             return []
+        lo, hi = timedelta(minutes=self.rule.until_min), timedelta(minutes=self.rule.from_min)
+        due = [o for o in self.offers(now) if lo <= o.start - now <= hi and not self.was_said(o.id)]
+        if not due:
+            return []  # nothing is coming up: the plan, the status and the walks are not looked at
         gate = self.gate(now)
-        for offer in self.offers(now):
+        for offer in due:
             fit = self.fit(offer, now)
             if rule.suggest_held(now, offer, fit, self.state(offer, now), replace(gate, said=self.was_said(offer.id))) is not None:
                 continue
@@ -345,13 +354,14 @@ class OptionalEvents:
         return replace(self.rule, awake=self.clock.wake_at(day) <= now < self.clock.bed_at(day), fixed=fixed, leave_by=leave_by,
                        event_start=event_start, last=max(times, default=None))
 
-    def held(self, offer: Offer, now: datetime) -> str | None:
-        """Why this event is not being suggested right now, in a few words; None when the next tick may bring it up."""
+    def held(self, offer: Offer, now: datetime, gate: Gate | None = None) -> str | None:
+        """Why this event is not being suggested right now, in a few words; None when the next tick may bring it up.
+        `gate` is `self.gate(now)` when the caller already has it."""
         if self.narrator is None or self.narrator.mode == "off":
             return "narration is off"
         if self.plan(now) is None:
             return "no plan for today yet"
-        gate = replace(self.gate(now), said=self.was_said(offer.id))
+        gate = replace(gate or self.gate(now), said=self.was_said(offer.id))
         why = rule.suggest_held(now, offer, self.fit(offer, now), self.state(offer, now), gate)
         if why is None:
             arbiter = getattr(self.narrator, "arbiter", None)

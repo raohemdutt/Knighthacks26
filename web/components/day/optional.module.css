@@ -8,7 +8,6 @@
   right: 0;
   top: calc(var(--safe-top) + 70px + var(--below, 0px));
   z-index: 35; /* over the page and the tab bar (30), under the toasts (40) */
-  transition: top var(--t) var(--ease-out);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -20,7 +19,8 @@
   color: var(--text);
   box-shadow: var(--sh-float), inset 5px 0 0 var(--accent);
   animation: suggestion-in 520ms var(--ease-spring);
-  max-height: calc(100dvh - var(--tabbar-h) - var(--safe-bottom) - var(--safe-top) - 96px - var(--below, 0px));
+  /* what is left above the tab bar; never so little that a tall toast above it squeezes the card shut */
+  max-height: max(240px, calc(100dvh - var(--tabbar-h) - var(--safe-bottom) - var(--safe-top) - 96px - var(--below, 0px)));
   overflow-y: auto;
 }
 
@@ -158,6 +158,6 @@
     right: var(--gutter);
     margin: 0;
     width: min(calc(100% - var(--side-w) - 2 * var(--gutter)), 440px);
-    max-height: calc(100dvh - 120px - var(--below, 0px));
+    max-height: max(240px, calc(100dvh - 120px - var(--below, 0px)));
   }
 }
