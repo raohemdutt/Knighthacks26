@@ -225,7 +225,7 @@ export class RoomScene {
   ) {
     this.view = opts.view;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
-    const backdrop = new THREE.Color(0xe6ebf3);
+    const backdrop = new THREE.Color(0xdbe6f8);
     try {
       backdrop.setStyle(getComputedStyle(host).backgroundColor);
     } catch {

@@ -145,7 +145,7 @@
   gap: 2px 7px;
   padding: 6px 14px;
   border-radius: var(--radius-sm);
-  background: rgba(238, 242, 248, 0.94);
+  background: rgba(234, 241, 252, 0.94);
   box-shadow: var(--sh-raised-sm);
   font-size: 14px;
   font-weight: 650;
@@ -175,7 +175,7 @@
   gap: 4px;
   padding: 4px;
   border-radius: var(--radius-sm);
-  background: rgba(238, 242, 248, 0.94);
+  background: rgba(234, 241, 252, 0.94);
   box-shadow: var(--sh-inset-sm);
   pointer-events: auto;
 }
@@ -246,7 +246,7 @@
   width: min(100%, 520px);
   padding: 14px 18px;
   border-radius: var(--radius-sm);
-  background: rgba(238, 242, 248, 0.96);
+  background: rgba(234, 241, 252, 0.96);
   box-shadow: var(--sh-raised);
   pointer-events: auto;
 }

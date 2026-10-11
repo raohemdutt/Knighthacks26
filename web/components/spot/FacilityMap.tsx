@@ -132,7 +132,7 @@ export function FacilityMap({ data, assets, live }: { data: Locations; assets: A
           {geo.image ? (
             <>
               <image href={geo.image} x="0" y="0" width={geo.w} height={geo.h} preserveAspectRatio="none" />
-              <rect x="0" y="0" width={geo.w} height={geo.h} fill="#eef2f8" opacity="0.35" />
+              <rect x="0" y="0" width={geo.w} height={geo.h} fill="#eaf1fc" opacity="0.35" />
             </>
           ) : (
             Object.entries(geo.panels).map(([f, p]) => (
@@ -222,7 +222,7 @@ export function FacilityMap({ data, assets, live }: { data: Locations; assets: A
                   </g>
                 ) : null}
                 {!geo.image ? (
-                  <text x={p.x} y={p.y + r + 13 * u} textAnchor="middle" fontSize={11 * u} fontWeight="700" fill="var(--text)" stroke="#eef2f8" strokeWidth={3 * u} paintOrder="stroke">
+                  <text x={p.x} y={p.y + r + 13 * u} textAnchor="middle" fontSize={11 * u} fontWeight="700" fill="var(--text)" stroke="#eaf1fc" strokeWidth={3 * u} paintOrder="stroke">
                     {l.location_id}
                   </text>
                 ) : null}

@@ -4,7 +4,7 @@
 # without a file its feature reports itself unavailable (GET /identity/settings).
 #
 #     ./jetson/face-fetch.sh                          # alexander@ubuntu.local, ~/Knighthacks26
-#     ./jetson/face-fetch.sh alexander@192.168.1.126
+#     ./jetson/face-fetch.sh alexander@172.20.10.6
 #     ./jetson/face-fetch.sh --local                  # only into this checkout's contexts/perception/models/ (for a laptop)
 #
 # What lands in contexts/perception/models/ (both from OpenCV Zoo, Apache 2.0; YuNet is already in the repo):

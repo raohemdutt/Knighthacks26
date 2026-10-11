@@ -2,7 +2,7 @@
 # Run on a laptop WITH internet (the Jetson's firewall blocks GitHub, Hugging Face and PyPI, on purpose). Downloads the
 # speech tools for voice on the box (X16), copies them to the Jetson over the LAN and builds whisper.cpp there.
 #
-#     ./jetson/voice-fetch.sh                          # alexander@192.168.1.126
+#     ./jetson/voice-fetch.sh                          # alexander@172.20.10.6
 #     ./jetson/voice-fetch.sh alexander@ubuntu.local
 #
 # What lands in ~/atlas/voice on the box (about 120 MB on disk, nothing loaded until someone speaks):
@@ -13,7 +13,7 @@
 #     debs/pulseaudio-module-bluetooth_arm64.deb     lets PulseAudio use a Bluetooth speaker; install it with sudo (jetson/README.md)
 set -euo pipefail
 
-target="${1:-alexander@192.168.1.126}"
+target="${1:-alexander@172.20.10.6}"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 cd "$work"
