@@ -351,7 +351,7 @@ def circle_work(db: NeonDb) -> dict:
 # More than one number: the work reads an answer in between, and each request commits by itself.
 REQUESTS = {
     "store.post": [3], "store.since": [1], "store.thread": [1],
-    "store.record_event": [4, 2],  # circle, two members and the event; then, after `rowcount`, the two RSVPs
+    "store.record_event": [4],  # circle, two members, then the event and its RSVPs as one statement
     "shares.push habit_summary": [4], "shares.push impact_count": [4], "shares.push game_score": [4],
     "board.habit_leaderboard": [1], "board.impact_leaderboard": [1], "board.top_scores": [1],
     "board.habit_summaries": [1], "board.impact_counters": [1], "board.upcoming_events": [1],
@@ -392,6 +392,87 @@ def test_the_awkward_parameters_arrive_as_the_server_needs_them():
     assert "now() + ($6::timestamptz - $7::timestamptz)" in neon.requests[-1][1]["queries"][-1]["query"]
     work["shares.push habit_summary"]()
     assert neon.requests[-1][1]["queries"][-1]["params"][2:] == ["sleep", "2026-10-09", "true", "7.5", "3"]
+
+
+def array_items(text: str) -> list[str | None]:
+    """A one-dimensional Postgres array literal read back the way the server reads it (array_in): elements split
+    at commas outside quotes; inside quotes a backslash takes the next character as it is; unquoted NULL is null."""
+    assert text[0] == "{" and text[-1] == "}"
+    items, item, quoted, was_quoted, at = [], "", False, False, 1
+    while at < len(text) - 1:
+        ch = text[at]
+        if quoted and ch == "\\":
+            at += 1
+            item += text[at]
+        elif ch == '"':
+            quoted, was_quoted = not quoted, True
+        elif ch == "," and not quoted:
+            items.append(item if was_quoted else None if item == "NULL" else item)
+            item, was_quoted = "", False
+        else:
+            item += ch
+        at += 1
+    assert not quoted
+    return items + ([item if was_quoted else None if item == "NULL" else item] if item or was_quoted else [])
+
+
+AWKWARD_NAMES = ["dom", "Lee, Ana", 'the "boss"', "{curly}", "}{", "back\\slash", "\\", '\\"', "Zoë 日本 🙂", "NULL", "null", "",
+                 " spaced ", "it's", 'a,b,"c"', "tab\there", "new\nline", "$1", "%s"]
+
+
+def test_a_list_of_names_goes_in_as_one_array_parameter_and_reads_back_the_same():
+    """What record_event sends for its attendees. Commas, quotes, braces, backslashes and non-ASCII in a member
+    id must arrive as that id and never split the list or end it early."""
+    assert array_items(to_text(AWKWARD_NAMES)) == AWKWARD_NAMES
+    assert array_items(to_text(["a", None, "b"])) == ["a", None, "b"] and to_text([]) == "{}"
+    sql, params = to_dollar("SELECT m FROM unnest(%s::text[]) AS m", [AWKWARD_NAMES])
+    assert sql == "SELECT m FROM unnest($1::text[]) AS m" and array_items(params[0]) == AWKWARD_NAMES
+    body = json.loads(neon_wire.request(FAKE_URL, [(sql, params)])[1])  # and through the JSON of the request itself
+    assert array_items(body["params"][0]) == AWKWARD_NAMES
+
+
+def test_an_agreed_event_and_everyone_in_it_are_one_statement_in_one_request():
+    neon = FakeNeon(transport="https")
+    names = ["dom", "Lee, Ana", 'the "boss"']
+    NeonCircleStore(NeonDb(neon.connect)).record_event("team", "t1", EVENT.model_copy(update={"invitees": names[1:]}), "dom")
+    [(_, body)] = neon.requests  # one request: one transaction
+    *ensured, record = body["queries"]
+    assert [q["query"].split()[2] for q in ensured] == ["circles", "members", "members", "members"]
+    assert record["query"].startswith("WITH new_event AS (INSERT INTO events ") and "INSERT INTO rsvps " in record["query"]
+    assert "unnest($11::text[])" in record["query"] and array_items(record["params"][10]) == sorted(names)
+    assert record["params"][:3] == ["t1", "team", "t1"] and record["params"][8:10] == ["t1", "team"]
+
+
+def test_a_lost_request_can_no_longer_leave_an_event_with_nobody_listed():
+    """Before, record_event was two requests over https: the event (committed), then its RSVPs. Losing the second
+    left the event on the calendar with nobody listed. Play exactly that: every request after the first is lost."""
+    neon = FakeNeon(transport="https")
+    conn = neon.connect()
+    answers, lost = conn._post, []
+
+    def only_the_first_arrives(endpoint, headers, body, timeout):
+        if neon.requests:
+            lost.append(json.loads(body))
+            raise ConnectionResetError("the second request never arrived")
+        return answers(endpoint, headers, body, timeout)
+
+    conn._post = only_the_first_arrives
+    NeonCircleStore(NeonDb(lambda: conn)).record_event("team", "t1", EVENT, "dom")  # nothing raised: nothing was lost
+    assert lost == [] and len(neon.requests) == 1  # there is no second request to lose
+    written = [sql for sql, _ in neon.statements]
+    with_event, with_rsvps = ([sql for sql in written if f"INSERT INTO {t}" in sql] for t in ("events", "rsvps"))
+    assert len(with_event) == 1 and with_event == with_rsvps  # the same statement holds both
+
+    # and when the one request is the one that is lost, nothing at all was written: the repeat starts from nothing
+    neon = FakeNeon(transport="https")
+    neon.down = True
+    store = NeonCircleStore(NeonDb(neon.connect, retry_s=0))
+    with pytest.raises(CircleOffline):
+        store.record_event("team", "t1", EVENT, "dom")
+    assert neon.statements == [] and neon.requests == []
+    neon.down = False
+    store.record_event("team", "t1", EVENT, "dom")
+    assert len(neon.requests) == 1 and "INSERT INTO rsvps" in neon.statements[-1][0]
 
 
 # --- failures: offline is CircleOffline, a refused statement is an error, and neither hangs ---

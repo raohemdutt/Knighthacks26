@@ -107,10 +107,14 @@ What is different over HTTPS:
 
 - **Transactions.** There is no open transaction over HTTP. Statements wait until the code needs an answer or
   finishes, and go as one request that commits as a whole. A write that only inserts (a share, a place, a plan
-  message, a sealed message, a League row) is as atomic as over TCP. Two calls read an answer in between and so
-  commit in two steps: recording an agreed event (the event first, its RSVP rows second: if the second request is
-  lost the calendar shows that event with nobody listed, and a repeat does not add them) and the daily cleanup
-  (three independent deletes; a half-finished sweep is finished by the next one).
+  message, a sealed message, a League row) is as atomic as over TCP. So is recording an agreed event: the event
+  and its RSVP rows are one statement (`RECORD_EVENT` in `infrastructure/neon.py`), written together or not at
+  all on either transport. One call still reads an answer in between and so commits in steps: the daily cleanup
+  (independent deletes; a half-finished sweep is finished by the next one).
+  Until October 2026 the event and its RSVPs were two requests over HTTPS, and losing the second left an event
+  on the calendar with nobody listed. Such a record repairs itself: when the proposer's box records that thread
+  again (it does after a restart), an event with no RSVP row at all gets its attendees. A record that has any is
+  never added to, and the first title, time and place always stay.
 - **Offline is the same.** A refused connection, a timeout, an HTTP error or a sign-in page instead of an answer
   all count as "the database cannot be reached": the outbox and the place queue wait and the tick carries on. A
   request gives up after 10 s.

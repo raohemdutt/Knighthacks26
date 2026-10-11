@@ -138,7 +138,7 @@ class NeonDb:
 
     Over https "one transaction per `run`" holds for work that is one statement, or several writes with nothing
     read in between (they are sent together at the end). Work that reads an answer and then writes again is two
-    transactions there; the two places that do it, record_event and NeonCleanup.sweep, say what that costs."""
+    transactions there; the one place that does it, NeonCleanup.sweep, says what that costs."""
 
     def __init__(self, connect: Callable[[], object] | None = None, names: dict[str, str] | None = None,
                  retry_s: float = RETRY_S, busy_timeout_s: float = BUSY_TIMEOUT_S,
@@ -263,31 +263,41 @@ class NeonCircleStore:
     def record_event(self, circle_id: str, thread_id: str, proposal: Proposal, created_by: str) -> None:
         """The agreed event goes on the shared calendar once; the first record for a thread wins.
 
-        Over https this is two transactions, because `rowcount` is read between the event and its RSVPs: the
-        circle, member and event rows are committed first, the RSVP rows after. If the second request is lost,
-        the event stays without RSVP rows, and a repeat does not add them (the event is "already recorded").
-        The calendar then shows that event with nobody listed (upcoming_events returns it once, answer None).
-        Over tcp it is one transaction and this cannot happen."""
-        attendees = sorted({*proposal.invitees, created_by})
+        The event and its RSVP rows are ONE statement (RECORD_EVENT), so on either transport they are written
+        together or not at all: no request can be lost between them. Over https the circle and member rows before
+        it travel in the same request, which is one transaction, as over tcp.
+
+        A repeat for a thread that is already recorded changes nothing, with one exception: an event that has no
+        RSVP row at all gets this call's attendees. That is the half-written record the https transport could
+        leave before this was one statement (the event committed, the request with its RSVPs lost). It is safe
+        because nothing else writes RSVP rows and a complete record always has at least the proposer's, so "none"
+        only ever means "never written"; and it is idempotent, because once the rows are there the next repeat
+        finds them and adds nothing. The title, times and place of the first record are never touched."""
+        attendees = sorted({*proposal.invitees, created_by})  # agreement means every invitee answered free
 
         def work(cur):
             self.db.ensure(cur, circle_id, *attendees)
-            cur.execute(
-                "INSERT INTO events (id, circle_id, thread_id, title, starts_at, ends_at, location, created_by)"
-                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
-                (thread_id, circle_id, thread_id, proposal.title, proposal.start, proposal.end, proposal.location,
-                 created_by),
-            )
-            if cur.rowcount != 1:
-                return  # already recorded
-            for m in attendees:  # agreement means every invitee answered free
-                cur.execute(
-                    "INSERT INTO rsvps (event_id, member_id, answer) VALUES (%s, %s, 'free')"
-                    " ON CONFLICT (event_id, member_id) DO NOTHING",
-                    (thread_id, m),
-                )
+            cur.execute(RECORD_EVENT, (thread_id, circle_id, thread_id, proposal.title, proposal.start, proposal.end,
+                                       proposal.location, created_by, thread_id, circle_id, attendees))
 
         self.db.run(work)
+
+
+# The event, and an RSVP row per attendee for it, in one statement. `listed` is the event to list people for: the
+# one just inserted, or one recorded earlier that has nobody listed (see record_event). The two cannot both be
+# there: a statement does not see the rows it inserts itself, so `unlisted` never finds the new event.
+RECORD_EVENT = (
+    "WITH new_event AS ("
+    "INSERT INTO events (id, circle_id, thread_id, title, starts_at, ends_at, location, created_by)"
+    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING RETURNING id"
+    "), unlisted AS ("
+    "SELECT e.id FROM events e WHERE e.id = %s AND e.circle_id = %s"
+    " AND NOT EXISTS (SELECT 1 FROM rsvps r WHERE r.event_id = e.id)"
+    "), listed AS (SELECT id FROM new_event UNION SELECT id FROM unlisted)"
+    " INSERT INTO rsvps (event_id, member_id, answer)"
+    " SELECT listed.id, m.id, 'free' FROM listed, unnest(%s::text[]) AS m(id)"
+    " ON CONFLICT (event_id, member_id) DO NOTHING"
+)
 
 
 class NeonShares:
