@@ -7,7 +7,7 @@ import { api, getToken, setToken } from "@/lib/api";
 import { useAtlas, type LinkState } from "@/lib/atlas";
 import { modelShort } from "@/lib/lab";
 import { useProfileState } from "@/lib/profile";
-import { SPOT_MENU, useSpotView, type SpotView } from "@/lib/spotView";
+import { SPOT_MENU, isSpotApproval, useSpotView, type SpotView } from "@/lib/spotView";
 import { useTheme } from "@/lib/theme";
 import { useFetch } from "@/lib/useFetch";
 import { CommandPalette, type Command } from "./Command";
@@ -296,8 +296,6 @@ const SPOT_ICON: Record<SpotView, ReactNode> = {
   ),
 };
 const BACK_ICON = <path d="M10.5 6l-6 6 6 6M5 12h14.5" />;
-/** Where a menu item goes. Approvals is the Atlas screen until Inspection has its own list. */
-const spotHref = (m: (typeof SPOT_MENU)[number]) => (m.view === "approvals" ? "/approvals" : m.href);
 
 /** How the screens are grouped, in the sidebar, the phone's More sheet and the palette. URLs are unchanged. */
 const SECTIONS: { title: string; hrefs: string[]; collapsible?: boolean }[] = [
@@ -375,6 +373,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const inMore = !BAR.some((t) => t.href === path);
   useEffect(() => setMore(false), [path]); // the sheet closes once its link has been followed
   const pending = approvals.items.length;
+  const spotPending = approvals.items.filter(isSpotApproval).length; // Inspection's own cards, for its menu
   const inspection = useShowInspection(path);
   const inSpot = path === INSPECTION;
   const spotView = useSpotView();
@@ -406,7 +405,7 @@ export function Shell({ children }: { children: ReactNode }) {
         return { href: t.href, label: t.label, group: g.title, icon: t.icon, keywords: t.keywords };
       }),
   );
-  if (inSpot) commands.push(...SPOT_MENU.filter((m) => m.view !== "shift" && m.view !== "approvals").map((m) => ({ href: m.href, label: m.label, group: "Inspection", icon: SPOT_ICON[m.view], keywords: m.keywords })));
+  if (inSpot) commands.push(...SPOT_MENU.filter((m) => m.view !== "shift").map((m) => ({ href: m.href, label: m.label, group: "Inspection", icon: SPOT_ICON[m.view], keywords: m.keywords })));
 
   // The pill under the current tab: the index of the tab that is on, or of More when the screen is behind it.
   const barIndex = BAR.findIndex((t) => t.href === path);
@@ -450,11 +449,16 @@ export function Shell({ children }: { children: ReactNode }) {
                 {SPOT_MENU.map((m) => {
                   const on = spotView === m.view;
                   return (
-                    <Link key={m.view} href={spotHref(m)} className={`${ui.sideLink} ${on ? ui.sideLinkOn : ""}`} aria-current={on ? "page" : undefined}>
+                    <Link key={m.view} href={m.href} className={`${ui.sideLink} ${on ? ui.sideLinkOn : ""}`} aria-current={on ? "page" : undefined}>
                       <svg className={ui.sideIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         {SPOT_ICON[m.view]}
                       </svg>
                       <span>{m.label}</span>
+                      {m.view === "approvals" && spotPending > 0 ? (
+                        <span className={ui.sideBadge} aria-label={`${spotPending} waiting`}>
+                          {spotPending}
+                        </span>
+                      ) : null}
                     </Link>
                   );
                 })}
@@ -635,7 +639,7 @@ function MoreSheet({ path, onClose }: { path: string; onClose: () => void }) {
                 const on = spotView === m.view;
                 return (
                   <li key={m.view}>
-                    <Link href={spotHref(m)} className={`${ui.moreLink} ${on ? ui.moreLinkOn : ""}`} aria-current={on ? "page" : undefined} onClick={onClose}>
+                    <Link href={m.href} className={`${ui.moreLink} ${on ? ui.moreLinkOn : ""}`} aria-current={on ? "page" : undefined} onClick={onClose}>
                       <svg className={ui.tabIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         {SPOT_ICON[m.view]}
                       </svg>

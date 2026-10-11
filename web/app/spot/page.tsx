@@ -8,6 +8,7 @@ import { FloorMap } from "@/components/spot/FloorMap";
 import o from "@/components/spot/op.module.css";
 import { OperatorAsk } from "@/components/spot/OperatorAsk";
 import { Round } from "@/components/spot/Round";
+import { SpotApprovals } from "@/components/spot/SpotApprovals";
 import { ShiftRun, type RunLink } from "@/components/spot/ShiftRun";
 import { AssetSheet, DoFirst, LooksFine, StatusLine, TrustLine, WatchOut } from "@/components/spot/Shift";
 import type { Replay, Target } from "@/components/spot/types";
@@ -34,7 +35,7 @@ import { useFetch } from "@/lib/useFetch";
  * The Shift Run tab is a training game on the same plan: plan a round, run it through a toy model, compare with Atlas's.
  *
  * Inspection is a workspace of views (lib/spotView.ts; the sidebar lists them): My shift, Equipment, Rounds, Training
- * (Shift Run), Analysis and Handoff. The address names the view and the page renders only that view's sections. The three
+ * (Shift Run), Analysis, Handoff and Approvals (Inspection's own cards). The address names the view and the page renders only that view's sections. The three
  * buttons at the top stay for the look guide, which reveals things by pressing them.
  *
  * Deep links: ?tab=run&route=last&turn=40&show=result opens Shift Run with a plan already run, ?asset=HX-202 opens that equipment's panel, ?round=M017&step=6 puts that round, at that step, at the top of the page, ?why=battery plays that finding's explainer (&at=end or &at=mid draws it at that step), ?numbers=battery opens its rows, ?tab=analysis opens the analysis, ?floor=2 picks the floor, ?all=1 lists all equipment.
@@ -207,7 +208,7 @@ export default function SpotPage() {
         </div>
       </div>
 
-      {view === "shift" || view === "approvals" ? (
+      {view === "shift" ? (
         <>
           {d.trust ? <TrustLine trust={d.trust} onWhy={why} /> : null}
 
@@ -325,6 +326,8 @@ export default function SpotPage() {
       ) : null}
 
       {view === "equipment" ? <EquipmentList shift={d} onPick={setAsset} /> : null}
+
+      {view === "approvals" ? <SpotApprovals /> : null}
 
       {view === "rounds" ? (
         <div id="round" data-guide="round" className={link.round ? o.roundFirst : undefined}>

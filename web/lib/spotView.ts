@@ -20,6 +20,9 @@ export const SPOT_MENU: { view: SpotView; label: string; href: string; keywords:
   { view: "handoff", label: "Handoff", href: "/spot?view=handoff", keywords: "inspection shift handoff note" },
 ];
 
+/** Inspection's approval cards: spot.reinspect, spot.work_order, spot.mission_request. */
+export const isSpotApproval = (r: { target: string }): boolean => r.target.startsWith("spot.");
+
 const VIEWS = new Set<string>(SPOT_MENU.map((m) => m.view));
 
 export function viewOf(search: string): SpotView {
