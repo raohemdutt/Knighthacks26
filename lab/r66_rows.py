@@ -3,8 +3,11 @@
     python lab/r66_rows.py           print the rows
     python lab/r66_rows.py --write   append the ones not yet in lab/refine/metrics.jsonl
 
-The vLLM pair's bench rows are written by `python -m lab bench attach` itself (prefix pair_*). These rows carry
-node pod-a+pod-b like R65's split rows, so the single-pod figures stay single-pod.
+The vLLM pair's bench rows are written by `python -m lab bench attach` itself (prefix pair_pp122b); their watts_avg,
+watts_peak and joules_per_token are pod C's meter only (the harness reads one sampler). pair_rows_both() adds the
+pair as a whole from the same recorded windows: pod D's T6 sampler over each bench window (R66PWIN lines in
+fixtures/lab/r66-2026-10-11/pair-122b.txt) summed with pod C's from the bench rows. These rows carry node
+pod-a+pod-b like R65's split rows, so the single-pod figures stay single-pod.
 """
 from __future__ import annotations
 
@@ -60,8 +63,60 @@ def rows() -> list[dict]:
     ]
 
 
+BENCH = [REPO / FIX / "bench-pp122b-1_4-rows.jsonl", REPO / FIX / "bench-pp122b-16-rows.jsonl"]
+PWIN = REPO / FIX / "pair-122b.txt"
+BOTH_NOTE = ("both pods summed: pod C's T6 sampler (the harness's own watts) plus pod D's T6 sampler over the same "
+             "window (pod D's clock 4 s ahead of the workstation's request times); the pair_pp122b.watts_avg, "
+             "watts_peak and joules_per_token rows of the same session are pod C's meter only")
+
+
+def _pod_d_windows() -> dict[tuple[str, str], dict]:
+    out = {}
+    for line in PWIN.read_text(encoding="utf-8").splitlines():
+        if line.startswith("R66PWIN "):
+            w = json.loads(line[len("R66PWIN "):])
+            if w["node"] == "gpu-b":
+                out[(w["from"], w["to"])] = w
+    return out
+
+
+def pair_rows_both() -> list[dict]:
+    """The pair's watts and joules per token for both pods, per bench session, computed from the recorded windows."""
+    d_windows = _pod_d_windows()
+    out = []
+    for path in BENCH:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            r = json.loads(line)
+            measured = [q for q in r["requests"] if q["role"] == "measure"]
+            window = (min(q["sent"] for q in measured), max(q["last_token"] for q in measured))
+            d = d_windows[window]
+            c = r["watts"]
+            energy = c["energy_j"] + d["avg_w"] * r["window_s"]
+            cond = {"batch_size": r["batch_size"], "session": r["session"], "window_s": r["window_s"],
+                    "tokens_generated": r["tokens_generated"], "pod_d_samples": d["n"], "pod_c_samples": c["samples"],
+                    "note": BOTH_NOTE}
+            src, ts = f"lab/bench.py 1 {r['session']}", r["requests"][-1]["last_token"][:19] + "Z"
+            def one(metric, value, unit, extra=None):
+                return {"metric": metric, "value": round(value, 4), "unit": unit, "node": "pod-a+pod-b",
+                        "conditions": {**cond, **(extra or {}), "low_confidence_reason": "one repeat per setting"},
+                        "source": src, "ts": ts, "low_confidence": True}
+            out += [one("pair_pp122b.watts_avg_pod_d", d["avg_w"], "W"),
+                    one("pair_pp122b.watts_avg_both", c["avg_w"] + d["avg_w"], "W"),
+                    one("pair_pp122b.watts_peak_both", c["peak_w"] + d["peak_w"], "W",
+                        {"peak_note": "sum of each pod's peak in the window: an upper bound on the pair's peak"}),
+                    one("pair_pp122b.joules_per_token_both", energy / r["tokens_generated"], "J/token",
+                        {"energy_j_both": round(energy, 1)})]
+    return out
+
+
+def all_rows() -> list[dict]:
+    return rows() + pair_rows_both()
+
+
 def main() -> int:
-    new = rows()
+    new = all_rows()
     if "--write" not in sys.argv:
         for r in new:
             print(json.dumps(r))
