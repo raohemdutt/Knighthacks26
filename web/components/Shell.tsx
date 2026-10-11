@@ -73,6 +73,17 @@ const TABS: Tab[] = [
       </>
     ),
   },
+  {
+    href: "/approvals",
+    label: "Approvals",
+    keywords: "approve deny actions pending",
+    icon: (
+      <>
+        <path d="M12 3l7.5 3v5.5c0 4.5-3.2 8-7.5 9.5-4.3-1.5-7.5-5-7.5-9.5V6z" />
+        <path d="M8.5 12l2.5 2.5 4.5-5" />
+      </>
+    ),
+  },
 ];
 
 type MoreTab = Tab & { group: string };
@@ -250,7 +261,7 @@ const ALL = [...TABS, ...MORE];
 /** How the screens are grouped, in the sidebar, the phone's More sheet and the palette. URLs are unchanged. */
 const SECTIONS: { title: string; hrefs: string[]; collapsible?: boolean }[] = [
   { title: "Everyday", hrefs: ["/home", "/", "/now", "/dayrun"] },
-  { title: "The room", hrefs: ["/live", "/map", "/people"] },
+  { title: "The room", hrefs: ["/live", "/map", "/people", "/approvals"] },
   { title: "Plan", hrefs: ["/today", "/impact", "/spot"] },
   { title: "Other", hrefs: ["/timeline", "/play", "/circle", "/teach", "/lab", "/zones", "/privacy"], collapsible: true },
 ];
@@ -315,13 +326,14 @@ function useSpotlight() {
 
 export function Shell({ children }: { children: ReactNode }) {
   const path = normalize(usePathname() || "/");
-  const { link, model, toasts, dismissToast } = useAtlas();
+  const { link, model, toasts, dismissToast, approvals } = useAtlas();
   const [settings, setSettings] = useState(false);
   const [more, setMore] = useState(false);
   const [palette, setPalette] = useState(false);
   const [otherOpen, setOtherOpen] = useState(false); // the sidebar's collapsed group; a screen inside it keeps it open
   const inMore = !BAR.some((t) => t.href === path);
   useEffect(() => setMore(false), [path]); // the sheet closes once its link has been followed
+  const pending = approvals.items.length;
   const inspection = useShowInspection(path);
   useSpotlight();
 
@@ -400,6 +412,11 @@ export function Shell({ children }: { children: ReactNode }) {
                       {t.icon}
                     </svg>
                     <span>{t.label}</span>
+                    {t.href === "/approvals" && pending > 0 ? (
+                      <span className={ui.sideBadge} aria-label={`${pending} waiting`}>
+                        {pending}
+                      </span>
+                    ) : null}
                   </Link>
                 );
               })}
@@ -479,6 +496,11 @@ export function Shell({ children }: { children: ReactNode }) {
                   {t.icon}
                 </svg>
                 <span>{t.label}</span>
+                {t.href === "/approvals" && pending > 0 ? (
+                  <span className={ui.badge} aria-label={`${pending} waiting`}>
+                    {pending}
+                  </span>
+                ) : null}
               </Link>
             );
           })}
@@ -495,6 +517,11 @@ export function Shell({ children }: { children: ReactNode }) {
               <circle cx="18.5" cy="12" r="1.9" />
             </svg>
             <span>More</span>
+            {pending > 0 ? (
+              <span className={ui.badge} aria-label={`${pending} approvals waiting`}>
+                {pending}
+              </span>
+            ) : null}
           </button>
         </div>
       </nav>
