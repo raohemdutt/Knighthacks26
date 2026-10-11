@@ -75,8 +75,8 @@ AWAITED = (
      "where": f"{DATA_DIR}/decode-profile-gfx1151-<date>.json", "sections": ["step"],
      "glob": "decode-profile-gfx1151-*.json"},
     {"task": "L16", "what": "the first real fine-tune's step telemetry (loss and step time per step)",
-     "where": f"rows in {METRICS} named telemetry.train.* or trainer.* with conditions.step", "sections": ["finetune"],
-     "glob": None},
+     "where": f"rows in {METRICS} named telemetry.train.* or trainer.* with conditions.step; fixtures/demo/l16-run.json",
+     "sections": ["finetune"], "glob": None, "path": "fixtures/demo/l16-run.json"},
 )
 
 
@@ -92,24 +92,42 @@ def _num(value: Any) -> float | None:
     return float(value) if math.isfinite(value) else None
 
 
-def other_chip(row: dict[str, Any]) -> bool:
-    """True for a pod row from the R9700s: tagged gfx1201 or R9700, or untagged and measured before the move.
+PODS = ("pod-a", "pod-b", "pod-c", "pod-d")  # the lab's Strix Halo pods, by role and by account
 
-    The rule is lab/slide_numbers.py's `_old_chip` (the one the Learning lab's bench reader imports); the Jetson
-    is not one of the lab's cards, so its rows never are."""
+
+def chip_of(row: dict[str, Any]) -> str:
+    """Which chip a row describes: "gfx1151" (the lab today), "R9700 (gfx1201)", the GPU the row names, or "Jetson".
+
+    A row naming gfx1151, Strix Halo or the Radeon 8060S is the lab's. A row naming gfx1201 or the R9700, or an
+    untagged pod row measured before the move, is the old chip (lab/slide_numbers.py's `_old_chip`, the rule the
+    Learning lab's bench reader imports). Any other GPU the row names (the A100 reference, say) is its own chip, and
+    so is a row whose conditions.other_chip is true. An untagged row is the lab's only when it comes from a pod."""
     if row.get("node") == STUDENT_NODE:
-        return False
+        return "Jetson"
+    c = row.get("conditions") or {}
+    named = " ".join(str(c.get(k) or "") for k in ("gpu", "chip"))
+    if any(word in named for word in ("gfx1151", "Strix", "8060S")) and c.get("other_chip") is not True:
+        return CHIP
     try:
         from lab.slide_numbers import _old_chip
     except ImportError:  # httpx missing: the same rule, restated
-        c = row.get("conditions") or {}
-        gpu = str(c.get("gpu", ""))
-        if "gfx1151" in gpu or "Strix" in gpu:
-            return False
-        if "gfx1201" in gpu or "R9700" in gpu:
-            return True
-        return bool(_ts(row.get("ts"))) and str(row["ts"]) < LAB_MOVED_AT
-    return bool(_old_chip(row))
+        def _old_chip(rec: dict) -> bool:
+            gpu = str((rec.get("conditions") or {}).get("gpu", ""))
+            if "gfx1201" in gpu or "R9700" in gpu:
+                return True
+            return bool(_ts(rec.get("ts"))) and str(rec["ts"]) < LAB_MOVED_AT
+    if "gfx1201" in named or "R9700" in named:
+        return "R9700 (gfx1201)"
+    if named.strip():
+        return named.strip().split(",")[0]
+    if _old_chip(row):
+        return "another chip (the row says so)" if c.get("other_chip") is True else "R9700 (gfx1201)"
+    return CHIP if row.get("node") in PODS else f"not recorded (node {row.get('node')})"
+
+
+def other_chip(row: dict[str, Any]) -> bool:
+    """True for a row from any chip but the lab's Strix Halo (gfx1151); the Jetson is not one of the lab's cards."""
+    return chip_of(row) not in (CHIP, "Jetson")
 
 
 def read_metrics(path: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -190,6 +208,7 @@ def from_row(row: dict[str, Any], label: str) -> dict[str, Any]:
         "gpu": c.get("gpu"), "chip": c.get("chip"), "node": row.get("node"), "metric": row["metric"],
         "conditions": c, "ts": row.get("ts"), "low_confidence": low,
         "reason": c.get("low_confidence_reason") if low else None, "other_chip": other_chip(row),
+        "chip_label": chip_of(row),
     }
 
 
@@ -505,7 +524,7 @@ def section_dropped(root: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
                           "gpu": (rec.get("conditions") or {}).get("gpu"), "task": rec.get("task")})
     slide = root / "lab" / "slide_numbers.py"
     moved_line = line_of(slide, "LAB_MOVED_AT =")
-    old = [r for r in rows if other_chip(r)]
+    old = [r for r in rows if chip_of(r) == "R9700 (gfx1201)"]
     if moved_line and old:
         items.append({"what": "the R9700 cards (gfx1201, DUB hub) as the lab",
                       "verdict": "left for the Strix Halo pods (gfx1151, SJC) on 2026-10-10",
@@ -565,19 +584,22 @@ def build_pack(root: Path = REPO) -> dict[str, Any]:
             if n["id"] not in seen:
                 seen.add(n["id"])
                 numbers.append(n)
-    present = {a["task"]: bool(a["glob"] and list((root / DATA_DIR).glob(a["glob"]))) for a in AWAITED}
+    present = {a["task"]: bool(a["glob"] and list((root / DATA_DIR).glob(a["glob"])))
+               or bool(a.get("path") and (root / a["path"]).is_file()) for a in AWAITED}
     times = sorted(t for t in (_ts(r.get("ts")) for r in rows) if t)
     return {
         "format": FORMAT,
         "title": "Under the hood: the Atlas lab on the Strix Halo",
-        "chip": {"current": CHIP, "name": "Radeon 8060S (Strix Halo)", "other": "R9700 (gfx1201), the lab until "
-                 "2026-10-10, shown apart", "rule": "lab/slide_numbers.py _old_chip"},
+        "chip": {"current": CHIP, "name": "Radeon 8060S (Strix Halo)",
+                 "other": "every other chip, shown apart by name: the R9700 (gfx1201, the lab until 2026-10-10), the "
+                          "A100 reference and any GPU a row names",
+                 "rule": "lab/report.py chip_of, on top of lab/slide_numbers.py _old_chip"},
         "data_as_of": times[-1] if times else None,
         "sources": _sources(root),
         "skipped": skipped,
         "sections": sections,
         "numbers": numbers,
-        "awaited": [{k: v for k, v in a.items() if k != "glob"} | {"file_present": present[a["task"]]}
+        "awaited": [{k: v for k, v in a.items() if k not in ("glob", "path")} | {"file_present": present[a["task"]]}
                     for a in AWAITED],
     }
 
@@ -811,10 +833,13 @@ def render_html(pack: dict[str, Any], root: Path = REPO, page_dir: Path | None =
         return f'<details><summary>Runs that fill this section when their rows land</summary><ul>{lis}</ul></details>'
 
     def apart(numbers: list[dict[str, Any]], what: str) -> str:
-        if not numbers:
-            return ""
-        return (f'<div class="apart"><h3>Other chip, shown apart: {esc(what)}</h3><div class="stats">'
-                + "".join(page.stat(n) for n in numbers) + "</div></div>")
+        """One dashed panel per other chip, named, so its rows never sit on a Strix Halo chart."""
+        chips: dict[str, list[dict[str, Any]]] = {}
+        for n in numbers:
+            chips.setdefault(n.get("chip_label") or "other chip", []).append(n)
+        return "".join(f'<div class="apart"><h3>Other chip, shown apart: {esc(chip)}, {esc(what)}</h3>'
+                       '<div class="stats">' + "".join(page.stat(n) for n in items) + "</div></div>"
+                       for chip, items in chips.items())
 
     # 1
     s = secs["ceiling"]
@@ -828,7 +853,7 @@ def render_html(pack: dict[str, Any], root: Path = REPO, page_dir: Path | None =
         body.append(f'<p class="empty">{NOT_MEASURED}: no batch-1 decode row and no chip sheet on main.</p>')
     body.append('<div class="stats">' + "".join(page.stat(n) for n in [*s["inputs"], s["ceiling"], *s["shares"],
                                                                        *s["achieved"], *s["priors"]]) + "</div>")
-    body.append(apart(s["other_chip"], "teacher decode on the R9700 (gfx1201), a different card and memory"))
+    body.append(apart(s["other_chip"], "teacher decode at batch 1 on a different card and memory"))
     body.append(awaiting(s) + "</section>")
 
     # 2
@@ -852,7 +877,7 @@ def render_html(pack: dict[str, Any], root: Path = REPO, page_dir: Path | None =
         body.append(f'<p class="empty">{NOT_MEASURED}: no stream-count sweep with joules per token on main.</p>')
     if s["pending_files"]:
         body.append(f'<p class="cite">Committed but not charted yet: {esc(", ".join(s["pending_files"]))}</p>')
-    body.append(apart([p["number"] for o in s["other_chip"] for p in o["points"]], "batching rows from the R9700"))
+    body.append(apart([p["number"] for o in s["other_chip"] for p in o["points"]], "the same sweep on that chip"))
     body.append(awaiting(s) + "</section>")
 
     # 3
@@ -890,7 +915,7 @@ def render_html(pack: dict[str, Any], root: Path = REPO, page_dir: Path | None =
         body.append(f'<p class="empty">{NOT_MEASURED}: no per-step loss or step time from the Strix Halo on main.</p>')
     if s["numbers"]:
         body.append('<div class="stats">' + "".join(page.stat(n) for n in s["numbers"]) + "</div>")
-    body.append(apart(s["other_chip"], "the 20-step LoRA smoke run on one R9700"))
+    body.append(apart(s["other_chip"], "trainer rows"))
     body.append(awaiting(s) + "</section>")
 
     # 6

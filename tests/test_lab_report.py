@@ -47,7 +47,9 @@ def test_the_fixture_builds_every_section_from_its_rows():
     assert (gb["value"], gb["source"]) == (10.0, {"file": "lab/public_prior.py", "line": 4, "ref": gb["source"]["ref"]})
     assert ceiling["ceiling"]["value"] == 20.0 and ceiling["ceiling"]["kind"] == "derived"
     assert [a["value"] for a in ceiling["achieved"]] == [3.0]
-    assert [a["value"] for a in ceiling["other_chip"]] == [7.5]  # the R9700 row is kept apart, never on the chart
+    # the R9700 row and the A100 reference are kept apart, each under its own chip, never on the chart
+    assert [(a["value"], a["chip_label"]) for a in ceiling["other_chip"]] == [
+        (7.5, "R9700 (gfx1201)"), (50.0, "NVIDIA A100-SXM4-40GB")]
     assert ceiling["shares"][0]["value"] == 15.0
     assert ceiling["priors"] == [] and ceiling["prior_gap"]
     assert ceiling["state"] == "measured" and "20 tokens" in ceiling["reading"]
@@ -96,7 +98,8 @@ def test_the_page_has_no_external_reference_and_its_links_resolve(tmp_path):
     for h in hrefs:
         assert (tmp_path / "out" / h).resolve().is_file(), h
     assert "metrics.jsonl:2" in page and "metrics.jsonl:1" in page  # the old-chip row is shown, apart
-    assert page.index("metrics.jsonl:1<") > page.index("Other chip, shown apart")
+    assert page.index("metrics.jsonl:1<") > page.index("Other chip, shown apart: R9700 (gfx1201)")
+    assert page.index("metrics.jsonl:8<") > page.index("Other chip, shown apart: NVIDIA A100-SXM4-40GB")
     pack = json.loads(Path(result["pack"]).read_text(encoding="utf-8"))
     assert pack == json.loads(json.dumps(report.build_pack(FIXTURE)))
 

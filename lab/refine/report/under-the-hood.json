@@ -4,15 +4,15 @@
  "chip": {
   "current": "gfx1151",
   "name": "Radeon 8060S (Strix Halo)",
-  "other": "R9700 (gfx1201), the lab until 2026-10-10, shown apart",
-  "rule": "lab/slide_numbers.py _old_chip"
+  "other": "every other chip, shown apart by name: the R9700 (gfx1201, the lab until 2026-10-10), the A100 reference and any GPU a row names",
+  "rule": "lab/report.py chip_of, on top of lab/slide_numbers.py _old_chip"
  },
- "data_as_of": "2026-10-11T01:04:21Z",
+ "data_as_of": "2026-10-11T01:52:01Z",
  "sources": [
   {
    "file": "lab/refine/metrics.jsonl",
-   "sha256": "d65ef80b26d7559e1ac627621abc4bd463e10bfcc0b1c516a0ba88095d56082e",
-   "lines": 98
+   "sha256": "aca9c48558106c5f305629b28b5a7a09057e16abc9b08237684a0cc4f469550b",
+   "lines": 129
   },
   {
    "file": "lab/refine/research/kernels/data/chipsheet-gfx1151-2026-10-11.json",
@@ -31,8 +31,8 @@
   },
   {
    "file": "lab/slide_numbers.py",
-   "sha256": "a2e54960e8a74368263053d0b70d078b7f8bcf42476b24ed650b7aa1ef966f1f",
-   "lines": 259
+   "sha256": "27734020633478d348ba9b70e999890ac03fa6dcea485231db8898cdfd394ce6",
+   "lines": 263
   }
  ],
  "skipped": [],
@@ -155,7 +155,8 @@
      "ts": "2026-10-10T19:58:39Z",
      "low_confidence": false,
      "reason": null,
-     "other_chip": false
+     "other_chip": false,
+     "chip_label": "gfx1151"
     },
     {
      "id": "metrics:26",
@@ -191,7 +192,8 @@
      "ts": "2026-10-10T19:59:08Z",
      "low_confidence": false,
      "reason": null,
-     "other_chip": false
+     "other_chip": false,
+     "chip_label": "gfx1151"
     },
     {
      "id": "metrics:67",
@@ -270,7 +272,8 @@
      "ts": "2026-10-11T00:23:20Z",
      "low_confidence": true,
      "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-     "other_chip": false
+     "other_chip": false,
+     "chip_label": "gfx1151"
     }
    ],
    "shares": [
@@ -448,7 +451,8 @@
      "ts": "2026-10-10T10:22:13Z",
      "low_confidence": false,
      "reason": null,
-     "other_chip": true
+     "other_chip": true,
+     "chip_label": "R9700 (gfx1201)"
     },
     {
      "id": "metrics:2",
@@ -477,7 +481,8 @@
      "ts": "2026-10-10T10:22:13Z",
      "low_confidence": false,
      "reason": null,
-     "other_chip": true
+     "other_chip": true,
+     "chip_label": "R9700 (gfx1201)"
     },
     {
      "id": "metrics:3",
@@ -506,7 +511,62 @@
      "ts": "2026-10-10T10:22:13Z",
      "low_confidence": false,
      "reason": null,
-     "other_chip": true
+     "other_chip": true,
+     "chip_label": "R9700 (gfx1201)"
+    },
+    {
+     "id": "metrics:99",
+     "label": "vllm, prompt not recorded (line 99)",
+     "value": 64.956,
+     "unit": "tok/s",
+     "kind": "measured",
+     "source": {
+      "file": "lab/refine/metrics.jsonl",
+      "line": 99,
+      "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
+     },
+     "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+     "chip": null,
+     "node": "a100",
+     "metric": "teacher.decode_tok_s",
+     "conditions": {
+      "hub": "colab",
+      "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
+      "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+      "engine": "vllm",
+      "vllm": "0.31.0",
+      "vllm_source": "stock wheel from PyPI, no build, no patch",
+      "torch": "2.13.0+cu130",
+      "cuda": "13.0",
+      "driver": "580.82.07",
+      "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
+      "served_model_name": "teacher",
+      "max_model_len": 16384,
+      "gpu_memory_utilization": 0.9,
+      "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
+      "kv_cache_tokens": 288165,
+      "thinking": "off",
+      "max_tokens": 128,
+      "ignore_eos": true,
+      "prompt_set": "bench-v1",
+      "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+      "session": "bench-20261011T005700Z-d9c3",
+      "other_chip": true,
+      "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
+      "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+      "batch_size": 1,
+      "statistic": "median of 3 spawns",
+      "per_spawn": [
+       64.741,
+       64.956,
+       64.9722
+      ]
+     },
+     "ts": "2026-10-11T01:52:01Z",
+     "low_confidence": true,
+     "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+     "other_chip": true,
+     "chip_label": "NVIDIA A100-SXM4-40GB"
     }
    ],
    "awaiting": [
@@ -607,7 +667,8 @@
         "ts": "2026-10-11T00:23:20Z",
         "low_confidence": true,
         "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-        "other_chip": false
+        "other_chip": false,
+        "chip_label": "gfx1151"
        }
       },
       {
@@ -689,7 +750,8 @@
         "ts": "2026-10-11T00:23:20Z",
         "low_confidence": true,
         "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-        "other_chip": false
+        "other_chip": false,
+        "chip_label": "gfx1151"
        }
       },
       {
@@ -771,7 +833,8 @@
         "ts": "2026-10-11T00:23:20Z",
         "low_confidence": true,
         "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-        "other_chip": false
+        "other_chip": false,
+        "chip_label": "gfx1151"
        }
       },
       {
@@ -853,7 +916,8 @@
         "ts": "2026-10-11T00:23:20Z",
         "low_confidence": true,
         "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-        "other_chip": false
+        "other_chip": false,
+        "chip_label": "gfx1151"
        }
       },
       {
@@ -935,7 +999,8 @@
         "ts": "2026-10-11T00:23:20Z",
         "low_confidence": true,
         "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-        "other_chip": false
+        "other_chip": false,
+        "chip_label": "gfx1151"
        }
       }
      ]
@@ -1028,7 +1093,8 @@
         "ts": "2026-10-11T00:23:20Z",
         "low_confidence": true,
         "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-        "other_chip": false
+        "other_chip": false,
+        "chip_label": "gfx1151"
        }
       },
       {
@@ -1110,7 +1176,8 @@
         "ts": "2026-10-11T00:23:20Z",
         "low_confidence": true,
         "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-        "other_chip": false
+        "other_chip": false,
+        "chip_label": "gfx1151"
        }
       },
       {
@@ -1192,7 +1259,8 @@
         "ts": "2026-10-11T00:23:20Z",
         "low_confidence": true,
         "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-        "other_chip": false
+        "other_chip": false,
+        "chip_label": "gfx1151"
        }
       },
       {
@@ -1274,7 +1342,8 @@
         "ts": "2026-10-11T00:23:20Z",
         "low_confidence": true,
         "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-        "other_chip": false
+        "other_chip": false,
+        "chip_label": "gfx1151"
        }
       },
       {
@@ -1356,7 +1425,8 @@
         "ts": "2026-10-11T00:23:20Z",
         "low_confidence": true,
         "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-        "other_chip": false
+        "other_chip": false,
+        "chip_label": "gfx1151"
        }
       }
      ]
@@ -1388,7 +1458,591 @@
      "other_chip": false
     }
    ],
-   "other_chip": [],
+   "other_chip": [
+    {
+     "metric": "teacher.joules_per_token",
+     "node": "a100",
+     "build": "vllm",
+     "session": "bench-20261011T005700Z-d9c3",
+     "other_chip": true,
+     "points": [
+      {
+       "batch": 1.0,
+       "number": {
+        "id": "metrics:104",
+        "label": "teacher.joules_per_token at 1 streams",
+        "value": 5.0174,
+        "unit": "J/token",
+        "kind": "measured",
+        "source": {
+         "file": "lab/refine/metrics.jsonl",
+         "line": 104,
+         "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
+        },
+        "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+        "chip": null,
+        "node": "a100",
+        "metric": "teacher.joules_per_token",
+        "conditions": {
+         "hub": "colab",
+         "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
+         "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+         "engine": "vllm",
+         "vllm": "0.31.0",
+         "vllm_source": "stock wheel from PyPI, no build, no patch",
+         "torch": "2.13.0+cu130",
+         "cuda": "13.0",
+         "driver": "580.82.07",
+         "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
+         "served_model_name": "teacher",
+         "max_model_len": 16384,
+         "gpu_memory_utilization": 0.9,
+         "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
+         "kv_cache_tokens": 288165,
+         "thinking": "off",
+         "max_tokens": 128,
+         "ignore_eos": true,
+         "prompt_set": "bench-v1",
+         "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+         "session": "bench-20261011T005700Z-d9c3",
+         "other_chip": true,
+         "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
+         "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+         "batch_size": 1,
+         "statistic": "median of 3 spawns",
+         "power_source": "nvidia-smi power.draw (board power), sampled once a second beside the harness",
+         "power_method": "the harness reads amd-smi only, so it ran without watts; energy is the trapezoid over each run's decode window (first token of the first request to last token of the last) with the edges interpolated, joules per token gross with nothing subtracted",
+         "idle_watts_no_server": 46.14,
+         "per_spawn": [
+          5.0174,
+          4.9831,
+          5.0677
+         ],
+         "joules_per_token_above_idle": 4.2609
+        },
+        "ts": "2026-10-11T01:52:01Z",
+        "low_confidence": true,
+        "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+        "other_chip": true,
+        "chip_label": "NVIDIA A100-SXM4-40GB"
+       }
+      },
+      {
+       "batch": 4.0,
+       "number": {
+        "id": "metrics:110",
+        "label": "teacher.joules_per_token at 4 streams",
+        "value": 1.5234,
+        "unit": "J/token",
+        "kind": "measured",
+        "source": {
+         "file": "lab/refine/metrics.jsonl",
+         "line": 110,
+         "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
+        },
+        "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+        "chip": null,
+        "node": "a100",
+        "metric": "teacher.joules_per_token",
+        "conditions": {
+         "hub": "colab",
+         "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
+         "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+         "engine": "vllm",
+         "vllm": "0.31.0",
+         "vllm_source": "stock wheel from PyPI, no build, no patch",
+         "torch": "2.13.0+cu130",
+         "cuda": "13.0",
+         "driver": "580.82.07",
+         "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
+         "served_model_name": "teacher",
+         "max_model_len": 16384,
+         "gpu_memory_utilization": 0.9,
+         "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
+         "kv_cache_tokens": 288165,
+         "thinking": "off",
+         "max_tokens": 128,
+         "ignore_eos": true,
+         "prompt_set": "bench-v1",
+         "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+         "session": "bench-20261011T005700Z-d9c3",
+         "other_chip": true,
+         "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
+         "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+         "batch_size": 4,
+         "statistic": "median of 3 spawns",
+         "power_source": "nvidia-smi power.draw (board power), sampled once a second beside the harness",
+         "power_method": "the harness reads amd-smi only, so it ran without watts; energy is the trapezoid over each run's decode window (first token of the first request to last token of the last) with the edges interpolated, joules per token gross with nothing subtracted",
+         "idle_watts_no_server": 46.14,
+         "per_spawn": [
+          1.5234,
+          1.4874,
+          1.5254
+         ],
+         "joules_per_token_above_idle": 1.2912
+        },
+        "ts": "2026-10-11T01:52:01Z",
+        "low_confidence": true,
+        "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+        "other_chip": true,
+        "chip_label": "NVIDIA A100-SXM4-40GB"
+       }
+      },
+      {
+       "batch": 8.0,
+       "number": {
+        "id": "metrics:116",
+        "label": "teacher.joules_per_token at 8 streams",
+        "value": 0.999,
+        "unit": "J/token",
+        "kind": "measured",
+        "source": {
+         "file": "lab/refine/metrics.jsonl",
+         "line": 116,
+         "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
+        },
+        "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+        "chip": null,
+        "node": "a100",
+        "metric": "teacher.joules_per_token",
+        "conditions": {
+         "hub": "colab",
+         "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
+         "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+         "engine": "vllm",
+         "vllm": "0.31.0",
+         "vllm_source": "stock wheel from PyPI, no build, no patch",
+         "torch": "2.13.0+cu130",
+         "cuda": "13.0",
+         "driver": "580.82.07",
+         "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
+         "served_model_name": "teacher",
+         "max_model_len": 16384,
+         "gpu_memory_utilization": 0.9,
+         "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
+         "kv_cache_tokens": 288165,
+         "thinking": "off",
+         "max_tokens": 128,
+         "ignore_eos": true,
+         "prompt_set": "bench-v1",
+         "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+         "session": "bench-20261011T005700Z-d9c3",
+         "other_chip": true,
+         "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
+         "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+         "batch_size": 8,
+         "statistic": "median of 3 spawns",
+         "power_source": "nvidia-smi power.draw (board power), sampled once a second beside the harness",
+         "power_method": "the harness reads amd-smi only, so it ran without watts; energy is the trapezoid over each run's decode window (first token of the first request to last token of the last) with the edges interpolated, joules per token gross with nothing subtracted",
+         "idle_watts_no_server": 46.14,
+         "per_spawn": [
+          0.999,
+          0.9759,
+          1.0048
+         ],
+         "joules_per_token_above_idle": 0.8554
+        },
+        "ts": "2026-10-11T01:52:01Z",
+        "low_confidence": true,
+        "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+        "other_chip": true,
+        "chip_label": "NVIDIA A100-SXM4-40GB"
+       }
+      },
+      {
+       "batch": 16.0,
+       "number": {
+        "id": "metrics:122",
+        "label": "teacher.joules_per_token at 16 streams",
+        "value": 0.7743,
+        "unit": "J/token",
+        "kind": "measured",
+        "source": {
+         "file": "lab/refine/metrics.jsonl",
+         "line": 122,
+         "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
+        },
+        "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+        "chip": null,
+        "node": "a100",
+        "metric": "teacher.joules_per_token",
+        "conditions": {
+         "hub": "colab",
+         "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
+         "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+         "engine": "vllm",
+         "vllm": "0.31.0",
+         "vllm_source": "stock wheel from PyPI, no build, no patch",
+         "torch": "2.13.0+cu130",
+         "cuda": "13.0",
+         "driver": "580.82.07",
+         "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
+         "served_model_name": "teacher",
+         "max_model_len": 16384,
+         "gpu_memory_utilization": 0.9,
+         "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
+         "kv_cache_tokens": 288165,
+         "thinking": "off",
+         "max_tokens": 128,
+         "ignore_eos": true,
+         "prompt_set": "bench-v1",
+         "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+         "session": "bench-20261011T005700Z-d9c3",
+         "other_chip": true,
+         "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
+         "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+         "batch_size": 16,
+         "statistic": "median of 3 spawns",
+         "power_source": "nvidia-smi power.draw (board power), sampled once a second beside the harness",
+         "power_method": "the harness reads amd-smi only, so it ran without watts; energy is the trapezoid over each run's decode window (first token of the first request to last token of the last) with the edges interpolated, joules per token gross with nothing subtracted",
+         "idle_watts_no_server": 46.14,
+         "per_spawn": [
+          0.7743,
+          0.7636,
+          0.778
+         ],
+         "joules_per_token_above_idle": 0.6739
+        },
+        "ts": "2026-10-11T01:52:01Z",
+        "low_confidence": true,
+        "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+        "other_chip": true,
+        "chip_label": "NVIDIA A100-SXM4-40GB"
+       }
+      },
+      {
+       "batch": 64.0,
+       "number": {
+        "id": "metrics:128",
+        "label": "teacher.joules_per_token at 64 streams",
+        "value": 0.6003,
+        "unit": "J/token",
+        "kind": "measured",
+        "source": {
+         "file": "lab/refine/metrics.jsonl",
+         "line": 128,
+         "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
+        },
+        "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+        "chip": null,
+        "node": "a100",
+        "metric": "teacher.joules_per_token",
+        "conditions": {
+         "hub": "colab",
+         "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
+         "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+         "engine": "vllm",
+         "vllm": "0.31.0",
+         "vllm_source": "stock wheel from PyPI, no build, no patch",
+         "torch": "2.13.0+cu130",
+         "cuda": "13.0",
+         "driver": "580.82.07",
+         "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
+         "served_model_name": "teacher",
+         "max_model_len": 16384,
+         "gpu_memory_utilization": 0.9,
+         "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
+         "kv_cache_tokens": 288165,
+         "thinking": "off",
+         "max_tokens": 128,
+         "ignore_eos": true,
+         "prompt_set": "bench-v1",
+         "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+         "session": "bench-20261011T005700Z-d9c3",
+         "other_chip": true,
+         "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
+         "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+         "batch_size": 64,
+         "statistic": "median of 3 spawns",
+         "power_source": "nvidia-smi power.draw (board power), sampled once a second beside the harness",
+         "power_method": "the harness reads amd-smi only, so it ran without watts; energy is the trapezoid over each run's decode window (first token of the first request to last token of the last) with the edges interpolated, joules per token gross with nothing subtracted",
+         "idle_watts_no_server": 46.14,
+         "per_spawn": [
+          0.5968,
+          0.6003,
+          0.6035
+         ],
+         "joules_per_token_above_idle": 0.5278
+        },
+        "ts": "2026-10-11T01:52:01Z",
+        "low_confidence": true,
+        "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+        "other_chip": true,
+        "chip_label": "NVIDIA A100-SXM4-40GB"
+       }
+      }
+     ]
+    },
+    {
+     "metric": "teacher.decode_tok_s_total",
+     "node": "a100",
+     "build": "vllm",
+     "session": "bench-20261011T005700Z-d9c3",
+     "other_chip": true,
+     "points": [
+      {
+       "batch": 1.0,
+       "number": {
+        "id": "metrics:100",
+        "label": "teacher.decode_tok_s_total at 1 streams",
+        "value": 61.2077,
+        "unit": "tok/s",
+        "kind": "measured",
+        "source": {
+         "file": "lab/refine/metrics.jsonl",
+         "line": 100,
+         "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
+        },
+        "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+        "chip": null,
+        "node": "a100",
+        "metric": "teacher.decode_tok_s_total",
+        "conditions": {
+         "hub": "colab",
+         "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
+         "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+         "engine": "vllm",
+         "vllm": "0.31.0",
+         "vllm_source": "stock wheel from PyPI, no build, no patch",
+         "torch": "2.13.0+cu130",
+         "cuda": "13.0",
+         "driver": "580.82.07",
+         "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
+         "served_model_name": "teacher",
+         "max_model_len": 16384,
+         "gpu_memory_utilization": 0.9,
+         "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
+         "kv_cache_tokens": 288165,
+         "thinking": "off",
+         "max_tokens": 128,
+         "ignore_eos": true,
+         "prompt_set": "bench-v1",
+         "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+         "session": "bench-20261011T005700Z-d9c3",
+         "other_chip": true,
+         "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
+         "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+         "batch_size": 1,
+         "statistic": "median of 3 spawns"
+        },
+        "ts": "2026-10-11T01:52:01Z",
+        "low_confidence": true,
+        "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+        "other_chip": true,
+        "chip_label": "NVIDIA A100-SXM4-40GB"
+       }
+      },
+      {
+       "batch": 4.0,
+       "number": {
+        "id": "metrics:106",
+        "label": "teacher.decode_tok_s_total at 4 streams",
+        "value": 198.933,
+        "unit": "tok/s",
+        "kind": "measured",
+        "source": {
+         "file": "lab/refine/metrics.jsonl",
+         "line": 106,
+         "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
+        },
+        "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+        "chip": null,
+        "node": "a100",
+        "metric": "teacher.decode_tok_s_total",
+        "conditions": {
+         "hub": "colab",
+         "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
+         "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+         "engine": "vllm",
+         "vllm": "0.31.0",
+         "vllm_source": "stock wheel from PyPI, no build, no patch",
+         "torch": "2.13.0+cu130",
+         "cuda": "13.0",
+         "driver": "580.82.07",
+         "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
+         "served_model_name": "teacher",
+         "max_model_len": 16384,
+         "gpu_memory_utilization": 0.9,
+         "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
+         "kv_cache_tokens": 288165,
+         "thinking": "off",
+         "max_tokens": 128,
+         "ignore_eos": true,
+         "prompt_set": "bench-v1",
+         "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+         "session": "bench-20261011T005700Z-d9c3",
+         "other_chip": true,
+         "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
+         "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+         "batch_size": 4,
+         "statistic": "median of 3 spawns"
+        },
+        "ts": "2026-10-11T01:52:01Z",
+        "low_confidence": true,
+        "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+        "other_chip": true,
+        "chip_label": "NVIDIA A100-SXM4-40GB"
+       }
+      },
+      {
+       "batch": 8.0,
+       "number": {
+        "id": "metrics:112",
+        "label": "teacher.decode_tok_s_total at 8 streams",
+        "value": 321.3743,
+        "unit": "tok/s",
+        "kind": "measured",
+        "source": {
+         "file": "lab/refine/metrics.jsonl",
+         "line": 112,
+         "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
+        },
+        "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+        "chip": null,
+        "node": "a100",
+        "metric": "teacher.decode_tok_s_total",
+        "conditions": {
+         "hub": "colab",
+         "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
+         "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+         "engine": "vllm",
+         "vllm": "0.31.0",
+         "vllm_source": "stock wheel from PyPI, no build, no patch",
+         "torch": "2.13.0+cu130",
+         "cuda": "13.0",
+         "driver": "580.82.07",
+         "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
+         "served_model_name": "teacher",
+         "max_model_len": 16384,
+         "gpu_memory_utilization": 0.9,
+         "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
+         "kv_cache_tokens": 288165,
+         "thinking": "off",
+         "max_tokens": 128,
+         "ignore_eos": true,
+         "prompt_set": "bench-v1",
+         "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+         "session": "bench-20261011T005700Z-d9c3",
+         "other_chip": true,
+         "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
+         "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+         "batch_size": 8,
+         "statistic": "median of 3 spawns"
+        },
+        "ts": "2026-10-11T01:52:01Z",
+        "low_confidence": true,
+        "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+        "other_chip": true,
+        "chip_label": "NVIDIA A100-SXM4-40GB"
+       }
+      },
+      {
+       "batch": 16.0,
+       "number": {
+        "id": "metrics:118",
+        "label": "teacher.decode_tok_s_total at 16 streams",
+        "value": 462.3296,
+        "unit": "tok/s",
+        "kind": "measured",
+        "source": {
+         "file": "lab/refine/metrics.jsonl",
+         "line": 118,
+         "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
+        },
+        "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+        "chip": null,
+        "node": "a100",
+        "metric": "teacher.decode_tok_s_total",
+        "conditions": {
+         "hub": "colab",
+         "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
+         "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+         "engine": "vllm",
+         "vllm": "0.31.0",
+         "vllm_source": "stock wheel from PyPI, no build, no patch",
+         "torch": "2.13.0+cu130",
+         "cuda": "13.0",
+         "driver": "580.82.07",
+         "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
+         "served_model_name": "teacher",
+         "max_model_len": 16384,
+         "gpu_memory_utilization": 0.9,
+         "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
+         "kv_cache_tokens": 288165,
+         "thinking": "off",
+         "max_tokens": 128,
+         "ignore_eos": true,
+         "prompt_set": "bench-v1",
+         "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+         "session": "bench-20261011T005700Z-d9c3",
+         "other_chip": true,
+         "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
+         "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+         "batch_size": 16,
+         "statistic": "median of 3 spawns"
+        },
+        "ts": "2026-10-11T01:52:01Z",
+        "low_confidence": true,
+        "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+        "other_chip": true,
+        "chip_label": "NVIDIA A100-SXM4-40GB"
+       }
+      },
+      {
+       "batch": 64.0,
+       "number": {
+        "id": "metrics:124",
+        "label": "teacher.decode_tok_s_total at 64 streams",
+        "value": 636.3307,
+        "unit": "tok/s",
+        "kind": "measured",
+        "source": {
+         "file": "lab/refine/metrics.jsonl",
+         "line": 124,
+         "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
+        },
+        "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+        "chip": null,
+        "node": "a100",
+        "metric": "teacher.decode_tok_s_total",
+        "conditions": {
+         "hub": "colab",
+         "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
+         "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+         "engine": "vllm",
+         "vllm": "0.31.0",
+         "vllm_source": "stock wheel from PyPI, no build, no patch",
+         "torch": "2.13.0+cu130",
+         "cuda": "13.0",
+         "driver": "580.82.07",
+         "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
+         "served_model_name": "teacher",
+         "max_model_len": 16384,
+         "gpu_memory_utilization": 0.9,
+         "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
+         "kv_cache_tokens": 288165,
+         "thinking": "off",
+         "max_tokens": 128,
+         "ignore_eos": true,
+         "prompt_set": "bench-v1",
+         "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+         "session": "bench-20261011T005700Z-d9c3",
+         "other_chip": true,
+         "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
+         "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+         "batch_size": 64,
+         "statistic": "median of 3 spawns"
+        },
+        "ts": "2026-10-11T01:52:01Z",
+        "low_confidence": true,
+        "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+        "other_chip": true,
+        "chip_label": "NVIDIA A100-SXM4-40GB"
+       }
+      }
+     ]
+    }
+   ],
    "pending_files": [],
    "awaiting": [
     "R52"
@@ -1446,7 +2100,8 @@
       "ts": "2026-10-10T19:58:39Z",
       "low_confidence": false,
       "reason": null,
-      "other_chip": false
+      "other_chip": false,
+      "chip_label": "gfx1151"
      },
      "rows": [
       {
@@ -1481,7 +2136,8 @@
        "ts": "2026-10-10T19:58:39Z",
        "low_confidence": false,
        "reason": null,
-       "other_chip": false
+       "other_chip": false,
+       "chip_label": "gfx1151"
       },
       {
        "id": "metrics:26",
@@ -1517,7 +2173,8 @@
        "ts": "2026-10-10T19:59:08Z",
        "low_confidence": false,
        "reason": null,
-       "other_chip": false
+       "other_chip": false,
+       "chip_label": "gfx1151"
       },
       {
        "id": "metrics:67",
@@ -1596,7 +2253,8 @@
        "ts": "2026-10-11T00:23:20Z",
        "low_confidence": true,
        "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-       "other_chip": false
+       "other_chip": false,
+       "chip_label": "gfx1151"
       }
      ]
     }
@@ -1704,7 +2362,8 @@
      "ts": "2026-10-10T10:22:13Z",
      "low_confidence": false,
      "reason": null,
-     "other_chip": true
+     "other_chip": true,
+     "chip_label": "R9700 (gfx1201)"
     },
     {
      "id": "metrics:2",
@@ -1733,7 +2392,8 @@
      "ts": "2026-10-10T10:22:13Z",
      "low_confidence": false,
      "reason": null,
-     "other_chip": true
+     "other_chip": true,
+     "chip_label": "R9700 (gfx1201)"
     },
     {
      "id": "metrics:3",
@@ -1762,7 +2422,62 @@
      "ts": "2026-10-10T10:22:13Z",
      "low_confidence": false,
      "reason": null,
-     "other_chip": true
+     "other_chip": true,
+     "chip_label": "R9700 (gfx1201)"
+    },
+    {
+     "id": "metrics:99",
+     "label": "vllm, prompt not recorded (line 99)",
+     "value": 64.956,
+     "unit": "tok/s",
+     "kind": "measured",
+     "source": {
+      "file": "lab/refine/metrics.jsonl",
+      "line": 99,
+      "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
+     },
+     "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+     "chip": null,
+     "node": "a100",
+     "metric": "teacher.decode_tok_s",
+     "conditions": {
+      "hub": "colab",
+      "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
+      "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+      "engine": "vllm",
+      "vllm": "0.31.0",
+      "vllm_source": "stock wheel from PyPI, no build, no patch",
+      "torch": "2.13.0+cu130",
+      "cuda": "13.0",
+      "driver": "580.82.07",
+      "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
+      "served_model_name": "teacher",
+      "max_model_len": 16384,
+      "gpu_memory_utilization": 0.9,
+      "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
+      "kv_cache_tokens": 288165,
+      "thinking": "off",
+      "max_tokens": 128,
+      "ignore_eos": true,
+      "prompt_set": "bench-v1",
+      "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+      "session": "bench-20261011T005700Z-d9c3",
+      "other_chip": true,
+      "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
+      "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+      "batch_size": 1,
+      "statistic": "median of 3 spawns",
+      "per_spawn": [
+       64.741,
+       64.956,
+       64.9722
+      ]
+     },
+     "ts": "2026-10-11T01:52:01Z",
+     "low_confidence": true,
+     "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+     "other_chip": true,
+     "chip_label": "NVIDIA A100-SXM4-40GB"
     }
    ],
    "awaiting": [
@@ -1810,7 +2525,8 @@
      "ts": "2026-10-10T10:23:23Z",
      "low_confidence": false,
      "reason": null,
-     "other_chip": true
+     "other_chip": true,
+     "chip_label": "R9700 (gfx1201)"
     },
     {
      "id": "metrics:14",
@@ -1842,7 +2558,8 @@
      "ts": "2026-10-10T10:23:23Z",
      "low_confidence": false,
      "reason": null,
-     "other_chip": true
+     "other_chip": true,
+     "chip_label": "R9700 (gfx1201)"
     },
     {
      "id": "metrics:15",
@@ -1874,7 +2591,8 @@
      "ts": "2026-10-10T10:23:23Z",
      "low_confidence": false,
      "reason": null,
-     "other_chip": true
+     "other_chip": true,
+     "chip_label": "R9700 (gfx1201)"
     },
     {
      "id": "metrics:16",
@@ -1906,7 +2624,8 @@
      "ts": "2026-10-10T10:23:23Z",
      "low_confidence": false,
      "reason": null,
-     "other_chip": true
+     "other_chip": true,
+     "chip_label": "R9700 (gfx1201)"
     }
    ],
    "awaiting": [
@@ -2048,7 +2767,8 @@
    "ts": "2026-10-10T19:58:39Z",
    "low_confidence": false,
    "reason": null,
-   "other_chip": false
+   "other_chip": false,
+   "chip_label": "gfx1151"
   },
   {
    "id": "metrics:26",
@@ -2084,7 +2804,8 @@
    "ts": "2026-10-10T19:59:08Z",
    "low_confidence": false,
    "reason": null,
-   "other_chip": false
+   "other_chip": false,
+   "chip_label": "gfx1151"
   },
   {
    "id": "metrics:67",
@@ -2163,7 +2884,8 @@
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
    "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-   "other_chip": false
+   "other_chip": false,
+   "chip_label": "gfx1151"
   },
   {
    "id": "derived:share:metrics:24",
@@ -2334,7 +3056,8 @@
    "ts": "2026-10-10T10:22:13Z",
    "low_confidence": false,
    "reason": null,
-   "other_chip": true
+   "other_chip": true,
+   "chip_label": "R9700 (gfx1201)"
   },
   {
    "id": "metrics:2",
@@ -2363,7 +3086,8 @@
    "ts": "2026-10-10T10:22:13Z",
    "low_confidence": false,
    "reason": null,
-   "other_chip": true
+   "other_chip": true,
+   "chip_label": "R9700 (gfx1201)"
   },
   {
    "id": "metrics:3",
@@ -2392,7 +3116,62 @@
    "ts": "2026-10-10T10:22:13Z",
    "low_confidence": false,
    "reason": null,
-   "other_chip": true
+   "other_chip": true,
+   "chip_label": "R9700 (gfx1201)"
+  },
+  {
+   "id": "metrics:99",
+   "label": "vllm, prompt not recorded (line 99)",
+   "value": 64.956,
+   "unit": "tok/s",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 99,
+    "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
+   },
+   "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+   "chip": null,
+   "node": "a100",
+   "metric": "teacher.decode_tok_s",
+   "conditions": {
+    "hub": "colab",
+    "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
+    "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+    "engine": "vllm",
+    "vllm": "0.31.0",
+    "vllm_source": "stock wheel from PyPI, no build, no patch",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "driver": "580.82.07",
+    "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
+    "served_model_name": "teacher",
+    "max_model_len": 16384,
+    "gpu_memory_utilization": 0.9,
+    "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
+    "kv_cache_tokens": 288165,
+    "thinking": "off",
+    "max_tokens": 128,
+    "ignore_eos": true,
+    "prompt_set": "bench-v1",
+    "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+    "session": "bench-20261011T005700Z-d9c3",
+    "other_chip": true,
+    "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
+    "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+    "batch_size": 1,
+    "statistic": "median of 3 spawns",
+    "per_spawn": [
+     64.741,
+     64.956,
+     64.9722
+    ]
+   },
+   "ts": "2026-10-11T01:52:01Z",
+   "low_confidence": true,
+   "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+   "other_chip": true,
+   "chip_label": "NVIDIA A100-SXM4-40GB"
   },
   {
    "id": "metrics:70",
@@ -2471,7 +3250,8 @@
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
    "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-   "other_chip": false
+   "other_chip": false,
+   "chip_label": "gfx1151"
   },
   {
    "id": "metrics:76",
@@ -2550,7 +3330,8 @@
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
    "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-   "other_chip": false
+   "other_chip": false,
+   "chip_label": "gfx1151"
   },
   {
    "id": "metrics:82",
@@ -2629,7 +3410,8 @@
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
    "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-   "other_chip": false
+   "other_chip": false,
+   "chip_label": "gfx1151"
   },
   {
    "id": "metrics:88",
@@ -2708,7 +3490,8 @@
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
    "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-   "other_chip": false
+   "other_chip": false,
+   "chip_label": "gfx1151"
   },
   {
    "id": "metrics:94",
@@ -2787,7 +3570,8 @@
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
    "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-   "other_chip": false
+   "other_chip": false,
+   "chip_label": "gfx1151"
   },
   {
    "id": "metrics:68",
@@ -2866,7 +3650,8 @@
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
    "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-   "other_chip": false
+   "other_chip": false,
+   "chip_label": "gfx1151"
   },
   {
    "id": "metrics:74",
@@ -2945,7 +3730,8 @@
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
    "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-   "other_chip": false
+   "other_chip": false,
+   "chip_label": "gfx1151"
   },
   {
    "id": "metrics:80",
@@ -3024,7 +3810,8 @@
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
    "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-   "other_chip": false
+   "other_chip": false,
+   "chip_label": "gfx1151"
   },
   {
    "id": "metrics:86",
@@ -3103,7 +3890,8 @@
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
    "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-   "other_chip": false
+   "other_chip": false,
+   "chip_label": "gfx1151"
   },
   {
    "id": "metrics:92",
@@ -3182,7 +3970,8 @@
    "ts": "2026-10-11T00:23:20Z",
    "low_confidence": true,
    "reason": "3 spawn(s), under the 5 that verdict() needs to call a difference",
-   "other_chip": false
+   "other_chip": false,
+   "chip_label": "gfx1151"
   },
   {
    "id": "derived:ratio:teacher_batching.joules_per_token:bench-20261010T215122Z-2c65",
@@ -3207,6 +3996,541 @@
    "low_confidence": true,
    "reason": null,
    "other_chip": false
+  },
+  {
+   "id": "metrics:104",
+   "label": "teacher.joules_per_token at 1 streams",
+   "value": 5.0174,
+   "unit": "J/token",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 104,
+    "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
+   },
+   "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+   "chip": null,
+   "node": "a100",
+   "metric": "teacher.joules_per_token",
+   "conditions": {
+    "hub": "colab",
+    "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
+    "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+    "engine": "vllm",
+    "vllm": "0.31.0",
+    "vllm_source": "stock wheel from PyPI, no build, no patch",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "driver": "580.82.07",
+    "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
+    "served_model_name": "teacher",
+    "max_model_len": 16384,
+    "gpu_memory_utilization": 0.9,
+    "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
+    "kv_cache_tokens": 288165,
+    "thinking": "off",
+    "max_tokens": 128,
+    "ignore_eos": true,
+    "prompt_set": "bench-v1",
+    "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+    "session": "bench-20261011T005700Z-d9c3",
+    "other_chip": true,
+    "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
+    "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+    "batch_size": 1,
+    "statistic": "median of 3 spawns",
+    "power_source": "nvidia-smi power.draw (board power), sampled once a second beside the harness",
+    "power_method": "the harness reads amd-smi only, so it ran without watts; energy is the trapezoid over each run's decode window (first token of the first request to last token of the last) with the edges interpolated, joules per token gross with nothing subtracted",
+    "idle_watts_no_server": 46.14,
+    "per_spawn": [
+     5.0174,
+     4.9831,
+     5.0677
+    ],
+    "joules_per_token_above_idle": 4.2609
+   },
+   "ts": "2026-10-11T01:52:01Z",
+   "low_confidence": true,
+   "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+   "other_chip": true,
+   "chip_label": "NVIDIA A100-SXM4-40GB"
+  },
+  {
+   "id": "metrics:110",
+   "label": "teacher.joules_per_token at 4 streams",
+   "value": 1.5234,
+   "unit": "J/token",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 110,
+    "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
+   },
+   "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+   "chip": null,
+   "node": "a100",
+   "metric": "teacher.joules_per_token",
+   "conditions": {
+    "hub": "colab",
+    "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
+    "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+    "engine": "vllm",
+    "vllm": "0.31.0",
+    "vllm_source": "stock wheel from PyPI, no build, no patch",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "driver": "580.82.07",
+    "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
+    "served_model_name": "teacher",
+    "max_model_len": 16384,
+    "gpu_memory_utilization": 0.9,
+    "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
+    "kv_cache_tokens": 288165,
+    "thinking": "off",
+    "max_tokens": 128,
+    "ignore_eos": true,
+    "prompt_set": "bench-v1",
+    "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+    "session": "bench-20261011T005700Z-d9c3",
+    "other_chip": true,
+    "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
+    "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+    "batch_size": 4,
+    "statistic": "median of 3 spawns",
+    "power_source": "nvidia-smi power.draw (board power), sampled once a second beside the harness",
+    "power_method": "the harness reads amd-smi only, so it ran without watts; energy is the trapezoid over each run's decode window (first token of the first request to last token of the last) with the edges interpolated, joules per token gross with nothing subtracted",
+    "idle_watts_no_server": 46.14,
+    "per_spawn": [
+     1.5234,
+     1.4874,
+     1.5254
+    ],
+    "joules_per_token_above_idle": 1.2912
+   },
+   "ts": "2026-10-11T01:52:01Z",
+   "low_confidence": true,
+   "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+   "other_chip": true,
+   "chip_label": "NVIDIA A100-SXM4-40GB"
+  },
+  {
+   "id": "metrics:116",
+   "label": "teacher.joules_per_token at 8 streams",
+   "value": 0.999,
+   "unit": "J/token",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 116,
+    "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
+   },
+   "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+   "chip": null,
+   "node": "a100",
+   "metric": "teacher.joules_per_token",
+   "conditions": {
+    "hub": "colab",
+    "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
+    "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+    "engine": "vllm",
+    "vllm": "0.31.0",
+    "vllm_source": "stock wheel from PyPI, no build, no patch",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "driver": "580.82.07",
+    "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
+    "served_model_name": "teacher",
+    "max_model_len": 16384,
+    "gpu_memory_utilization": 0.9,
+    "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
+    "kv_cache_tokens": 288165,
+    "thinking": "off",
+    "max_tokens": 128,
+    "ignore_eos": true,
+    "prompt_set": "bench-v1",
+    "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+    "session": "bench-20261011T005700Z-d9c3",
+    "other_chip": true,
+    "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
+    "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+    "batch_size": 8,
+    "statistic": "median of 3 spawns",
+    "power_source": "nvidia-smi power.draw (board power), sampled once a second beside the harness",
+    "power_method": "the harness reads amd-smi only, so it ran without watts; energy is the trapezoid over each run's decode window (first token of the first request to last token of the last) with the edges interpolated, joules per token gross with nothing subtracted",
+    "idle_watts_no_server": 46.14,
+    "per_spawn": [
+     0.999,
+     0.9759,
+     1.0048
+    ],
+    "joules_per_token_above_idle": 0.8554
+   },
+   "ts": "2026-10-11T01:52:01Z",
+   "low_confidence": true,
+   "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+   "other_chip": true,
+   "chip_label": "NVIDIA A100-SXM4-40GB"
+  },
+  {
+   "id": "metrics:122",
+   "label": "teacher.joules_per_token at 16 streams",
+   "value": 0.7743,
+   "unit": "J/token",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 122,
+    "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
+   },
+   "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+   "chip": null,
+   "node": "a100",
+   "metric": "teacher.joules_per_token",
+   "conditions": {
+    "hub": "colab",
+    "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
+    "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+    "engine": "vllm",
+    "vllm": "0.31.0",
+    "vllm_source": "stock wheel from PyPI, no build, no patch",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "driver": "580.82.07",
+    "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
+    "served_model_name": "teacher",
+    "max_model_len": 16384,
+    "gpu_memory_utilization": 0.9,
+    "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
+    "kv_cache_tokens": 288165,
+    "thinking": "off",
+    "max_tokens": 128,
+    "ignore_eos": true,
+    "prompt_set": "bench-v1",
+    "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+    "session": "bench-20261011T005700Z-d9c3",
+    "other_chip": true,
+    "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
+    "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+    "batch_size": 16,
+    "statistic": "median of 3 spawns",
+    "power_source": "nvidia-smi power.draw (board power), sampled once a second beside the harness",
+    "power_method": "the harness reads amd-smi only, so it ran without watts; energy is the trapezoid over each run's decode window (first token of the first request to last token of the last) with the edges interpolated, joules per token gross with nothing subtracted",
+    "idle_watts_no_server": 46.14,
+    "per_spawn": [
+     0.7743,
+     0.7636,
+     0.778
+    ],
+    "joules_per_token_above_idle": 0.6739
+   },
+   "ts": "2026-10-11T01:52:01Z",
+   "low_confidence": true,
+   "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+   "other_chip": true,
+   "chip_label": "NVIDIA A100-SXM4-40GB"
+  },
+  {
+   "id": "metrics:128",
+   "label": "teacher.joules_per_token at 64 streams",
+   "value": 0.6003,
+   "unit": "J/token",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 128,
+    "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
+   },
+   "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+   "chip": null,
+   "node": "a100",
+   "metric": "teacher.joules_per_token",
+   "conditions": {
+    "hub": "colab",
+    "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
+    "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+    "engine": "vllm",
+    "vllm": "0.31.0",
+    "vllm_source": "stock wheel from PyPI, no build, no patch",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "driver": "580.82.07",
+    "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
+    "served_model_name": "teacher",
+    "max_model_len": 16384,
+    "gpu_memory_utilization": 0.9,
+    "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
+    "kv_cache_tokens": 288165,
+    "thinking": "off",
+    "max_tokens": 128,
+    "ignore_eos": true,
+    "prompt_set": "bench-v1",
+    "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+    "session": "bench-20261011T005700Z-d9c3",
+    "other_chip": true,
+    "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
+    "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+    "batch_size": 64,
+    "statistic": "median of 3 spawns",
+    "power_source": "nvidia-smi power.draw (board power), sampled once a second beside the harness",
+    "power_method": "the harness reads amd-smi only, so it ran without watts; energy is the trapezoid over each run's decode window (first token of the first request to last token of the last) with the edges interpolated, joules per token gross with nothing subtracted",
+    "idle_watts_no_server": 46.14,
+    "per_spawn": [
+     0.5968,
+     0.6003,
+     0.6035
+    ],
+    "joules_per_token_above_idle": 0.5278
+   },
+   "ts": "2026-10-11T01:52:01Z",
+   "low_confidence": true,
+   "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+   "other_chip": true,
+   "chip_label": "NVIDIA A100-SXM4-40GB"
+  },
+  {
+   "id": "metrics:100",
+   "label": "teacher.decode_tok_s_total at 1 streams",
+   "value": 61.2077,
+   "unit": "tok/s",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 100,
+    "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
+   },
+   "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+   "chip": null,
+   "node": "a100",
+   "metric": "teacher.decode_tok_s_total",
+   "conditions": {
+    "hub": "colab",
+    "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
+    "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+    "engine": "vllm",
+    "vllm": "0.31.0",
+    "vllm_source": "stock wheel from PyPI, no build, no patch",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "driver": "580.82.07",
+    "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
+    "served_model_name": "teacher",
+    "max_model_len": 16384,
+    "gpu_memory_utilization": 0.9,
+    "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
+    "kv_cache_tokens": 288165,
+    "thinking": "off",
+    "max_tokens": 128,
+    "ignore_eos": true,
+    "prompt_set": "bench-v1",
+    "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+    "session": "bench-20261011T005700Z-d9c3",
+    "other_chip": true,
+    "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
+    "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+    "batch_size": 1,
+    "statistic": "median of 3 spawns"
+   },
+   "ts": "2026-10-11T01:52:01Z",
+   "low_confidence": true,
+   "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+   "other_chip": true,
+   "chip_label": "NVIDIA A100-SXM4-40GB"
+  },
+  {
+   "id": "metrics:106",
+   "label": "teacher.decode_tok_s_total at 4 streams",
+   "value": 198.933,
+   "unit": "tok/s",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 106,
+    "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
+   },
+   "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+   "chip": null,
+   "node": "a100",
+   "metric": "teacher.decode_tok_s_total",
+   "conditions": {
+    "hub": "colab",
+    "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
+    "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+    "engine": "vllm",
+    "vllm": "0.31.0",
+    "vllm_source": "stock wheel from PyPI, no build, no patch",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "driver": "580.82.07",
+    "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
+    "served_model_name": "teacher",
+    "max_model_len": 16384,
+    "gpu_memory_utilization": 0.9,
+    "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
+    "kv_cache_tokens": 288165,
+    "thinking": "off",
+    "max_tokens": 128,
+    "ignore_eos": true,
+    "prompt_set": "bench-v1",
+    "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+    "session": "bench-20261011T005700Z-d9c3",
+    "other_chip": true,
+    "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
+    "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+    "batch_size": 4,
+    "statistic": "median of 3 spawns"
+   },
+   "ts": "2026-10-11T01:52:01Z",
+   "low_confidence": true,
+   "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+   "other_chip": true,
+   "chip_label": "NVIDIA A100-SXM4-40GB"
+  },
+  {
+   "id": "metrics:112",
+   "label": "teacher.decode_tok_s_total at 8 streams",
+   "value": 321.3743,
+   "unit": "tok/s",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 112,
+    "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
+   },
+   "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+   "chip": null,
+   "node": "a100",
+   "metric": "teacher.decode_tok_s_total",
+   "conditions": {
+    "hub": "colab",
+    "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
+    "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+    "engine": "vllm",
+    "vllm": "0.31.0",
+    "vllm_source": "stock wheel from PyPI, no build, no patch",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "driver": "580.82.07",
+    "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
+    "served_model_name": "teacher",
+    "max_model_len": 16384,
+    "gpu_memory_utilization": 0.9,
+    "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
+    "kv_cache_tokens": 288165,
+    "thinking": "off",
+    "max_tokens": 128,
+    "ignore_eos": true,
+    "prompt_set": "bench-v1",
+    "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+    "session": "bench-20261011T005700Z-d9c3",
+    "other_chip": true,
+    "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
+    "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+    "batch_size": 8,
+    "statistic": "median of 3 spawns"
+   },
+   "ts": "2026-10-11T01:52:01Z",
+   "low_confidence": true,
+   "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+   "other_chip": true,
+   "chip_label": "NVIDIA A100-SXM4-40GB"
+  },
+  {
+   "id": "metrics:118",
+   "label": "teacher.decode_tok_s_total at 16 streams",
+   "value": 462.3296,
+   "unit": "tok/s",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 118,
+    "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
+   },
+   "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+   "chip": null,
+   "node": "a100",
+   "metric": "teacher.decode_tok_s_total",
+   "conditions": {
+    "hub": "colab",
+    "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
+    "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+    "engine": "vllm",
+    "vllm": "0.31.0",
+    "vllm_source": "stock wheel from PyPI, no build, no patch",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "driver": "580.82.07",
+    "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
+    "served_model_name": "teacher",
+    "max_model_len": 16384,
+    "gpu_memory_utilization": 0.9,
+    "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
+    "kv_cache_tokens": 288165,
+    "thinking": "off",
+    "max_tokens": 128,
+    "ignore_eos": true,
+    "prompt_set": "bench-v1",
+    "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+    "session": "bench-20261011T005700Z-d9c3",
+    "other_chip": true,
+    "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
+    "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+    "batch_size": 16,
+    "statistic": "median of 3 spawns"
+   },
+   "ts": "2026-10-11T01:52:01Z",
+   "low_confidence": true,
+   "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+   "other_chip": true,
+   "chip_label": "NVIDIA A100-SXM4-40GB"
+  },
+  {
+   "id": "metrics:124",
+   "label": "teacher.decode_tok_s_total at 64 streams",
+   "value": 636.3307,
+   "unit": "tok/s",
+   "kind": "measured",
+   "source": {
+    "file": "lab/refine/metrics.jsonl",
+    "line": 124,
+    "ref": "R57 Colab A100 run, lab/bench.py session bench-20261011T005700Z-d9c3; fixtures/lab/bench/a100-2026-10-10/"
+   },
+   "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+   "chip": null,
+   "node": "a100",
+   "metric": "teacher.decode_tok_s_total",
+   "conditions": {
+    "hub": "colab",
+    "runtime": "Colab GPU runtime, A100 (colab CLI new --gpu A100), Python 3.13, 83 GB RAM, 12 vCPU",
+    "gpu": "NVIDIA A100-SXM4-40GB, 400 W power limit",
+    "engine": "vllm",
+    "vllm": "0.31.0",
+    "vllm_source": "stock wheel from PyPI, no build, no patch",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "driver": "580.82.07",
+    "checkpoint": "RedHatAI/Qwen3.8-27B-INT4",
+    "served_model_name": "teacher",
+    "max_model_len": 16384,
+    "gpu_memory_utilization": 0.9,
+    "kv_cache_dtype": "auto (vLLM resolved it to fp8_e4m3)",
+    "kv_cache_tokens": 288165,
+    "thinking": "off",
+    "max_tokens": 128,
+    "ignore_eos": true,
+    "prompt_set": "bench-v1",
+    "harness": "lab/bench.py 1 run, one cold spawn per run, warm-ups discarded",
+    "session": "bench-20261011T005700Z-d9c3",
+    "other_chip": true,
+    "other_chip_note": "a reference on an NVIDIA A100, not the lab's chip; the lab's teacher numbers are the Strix Halo rows",
+    "low_confidence_reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+    "batch_size": 64,
+    "statistic": "median of 3 spawns"
+   },
+   "ts": "2026-10-11T01:52:01Z",
+   "low_confidence": true,
+   "reason": "3 spawns per batch size, under the 5 that verdict() needs to call a difference",
+   "other_chip": true,
+   "chip_label": "NVIDIA A100-SXM4-40GB"
   },
   {
    "id": "metrics:13",
@@ -3238,7 +4562,8 @@
    "ts": "2026-10-10T10:23:23Z",
    "low_confidence": false,
    "reason": null,
-   "other_chip": true
+   "other_chip": true,
+   "chip_label": "R9700 (gfx1201)"
   },
   {
    "id": "metrics:14",
@@ -3270,7 +4595,8 @@
    "ts": "2026-10-10T10:23:23Z",
    "low_confidence": false,
    "reason": null,
-   "other_chip": true
+   "other_chip": true,
+   "chip_label": "R9700 (gfx1201)"
   },
   {
    "id": "metrics:15",
@@ -3302,7 +4628,8 @@
    "ts": "2026-10-10T10:23:23Z",
    "low_confidence": false,
    "reason": null,
-   "other_chip": true
+   "other_chip": true,
+   "chip_label": "R9700 (gfx1201)"
   },
   {
    "id": "metrics:16",
@@ -3334,7 +4661,8 @@
    "ts": "2026-10-10T10:23:23Z",
    "low_confidence": false,
    "reason": null,
-   "other_chip": true
+   "other_chip": true,
+   "chip_label": "R9700 (gfx1201)"
   }
  ],
  "awaited": [
@@ -3389,7 +4717,7 @@
   {
    "task": "L16",
    "what": "the first real fine-tune's step telemetry (loss and step time per step)",
-   "where": "rows in lab/refine/metrics.jsonl named telemetry.train.* or trainer.* with conditions.step",
+   "where": "rows in lab/refine/metrics.jsonl named telemetry.train.* or trainer.* with conditions.step; fixtures/demo/l16-run.json",
    "sections": [
     "finetune"
    ],
