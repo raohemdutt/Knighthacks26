@@ -1044,8 +1044,9 @@ def _settings(config: Any, plan: Plan) -> dict[str, Any]:
     }
 
 
-def train(plan: Plan) -> Trained:
-    """Load the base in bfloat16, put LoRA on its language model, train on the rows, save the adapter."""
+def train(plan: Plan, callbacks: Sequence[Any] = ()) -> Trained:
+    """Load the base in bfloat16, put LoRA on its language model, train on the rows, save the adapter. callbacks
+    are more TrainerCallbacks for the trainer, after the step log's (lab/profile_train.py steps its profiler so)."""
     import torch
     from datasets import Dataset
     from peft import LoraConfig
@@ -1147,7 +1148,7 @@ def train(plan: Plan) -> Trained:
     config = SFTConfig(**settings)
     steps = StepLog(plan.out / "telemetry.jsonl", plan.run_id, plan.node, plan.power)
     trainer = SFTTrainer(model=model, args=config, train_dataset=data, processing_class=processing,
-                         peft_config=lora, data_collator=collator, callbacks=[_callback(steps)])
+                         peft_config=lora, data_collator=collator, callbacks=[_callback(steps), *callbacks])
     trainable, total = _check_frozen(trainer.model)
     if config.torch_compile or config.packing:
         raise TrainError(["torch.compile or packing is on; both stay off (R36: packing needs fla and a varlen "
@@ -1350,8 +1351,9 @@ def _env_of(args: argparse.Namespace) -> dict[str, str | None]:
 
 @recorded(VERB)
 @stop.guarded
-def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
-    """LoRA SFT of the student on the training rows of an approved export (see the module docstring)."""
+def main(argv: Sequence[str] | None = None, callbacks: Sequence[Any] = ()) -> dict[str, Any]:
+    """LoRA SFT of the student on the training rows of an approved export (see the module docstring). callbacks go
+    to train() unchanged."""
     args = _parser().parse_args(argv)
     run_id = args.run_id or _run_id()
     mode = "cpu" if args.cpu else "pod"
@@ -1369,7 +1371,7 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
     try:
         with contextlib.redirect_stdout(sys.stderr):   # the one JSON line is the only thing on stdout
             plan = _prepare(args, run_id, refs, CPU_NODE if args.cpu else POD_NODE)
-            trained = train(plan)
+            trained = train(plan, callbacks)
         refs.update(trained.refs)
         answer = _answer("trained", refs, trained.metrics)
     except TrainError as err:

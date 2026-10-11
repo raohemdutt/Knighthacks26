@@ -335,3 +335,20 @@ def test_the_verb_is_registered_in_its_alphabetical_place():
     names = list(lab_cli.VERBS)
     assert lab_cli.VERBS["profile-train"] == "lab.profile_train:main"
     assert names == sorted(names)
+
+
+def test_train_main_hands_its_callbacks_to_the_trainer(monkeypatch, tmp_path):
+    from lab import train
+
+    seen = {}
+    monkeypatch.setattr(train, "_prepare", lambda args, run_id, refs, node: "plan")
+
+    def fake_train(plan, callbacks=()):
+        seen["callbacks"] = list(callbacks)
+        return train.Trained({"trainer.steps": 1.0}, {})
+
+    monkeypatch.setattr(train, "train", fake_train)
+    marker = object()
+    answer = train.main(["--cpu", "--dataset", str(tmp_path), "--rows", str(tmp_path / "rows.jsonl"),
+                         "--model", str(tmp_path)], callbacks=[marker])
+    assert answer["outcome"] == "trained" and seen["callbacks"] == [marker]
