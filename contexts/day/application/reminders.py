@@ -55,7 +55,7 @@ class Reminders:
         seen = self.tracker.where(now)
         awake = self.clock.wake_at(day) <= now < self.clock.bed_at(day)
         d = rule.due(plan.moves, plan.plan_id, plan.plan_id in self.planner.committed, now, seen[0] if seen else None,
-                     self.walk, self.said, self.clock.tz, awake=awake)
+                     self.walk, self.said, self.clock.tz, awake=awake, seen_at=seen[2] if seen else None)
         if d is None:
             return []
         return self.narrator.tell("start", self.facts(d, now), now, day, plan.plan_id, d.ref, about=[m.id for m in d.run])

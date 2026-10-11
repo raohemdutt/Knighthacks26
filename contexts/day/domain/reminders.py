@@ -7,6 +7,9 @@ The rule (contexts/day/application/reminders.py feeds it, the arbiter decides wh
   walk of 3 minutes or more, which therefore gets no start line here.
 - When: at the block's start, or at `start - walk` when the person is (or the plan has them) somewhere else and
   the walk is 3 minutes or more. Said while `trigger <= now < trigger + 5 min`.
+- A lead time that falls inside a fixed event is not lost and is never said during the event: the reminder waits
+  for the event to end when that is before the block starts, and for the block's start otherwise. Unless the
+  cameras saw the person since the event began, the plan has them at the event, and the walk is counted from there.
 - Already there: seen at the block's place, the line ends "You're at the desk already." Continuing (the block
   before ended within 5 minutes, same kind, same place, and the person is there): nothing is said.
 - Batching: consecutive blocks of one kind, each 30 minutes or less, with rests of 30 minutes or less between
@@ -101,10 +104,15 @@ def run_from(moves: list[PlanMove], i: int) -> tuple[PlanMove, ...]:
     return tuple(run)
 
 
+def fixed_at(blocks: list[PlanMove], t: datetime, but: PlanMove) -> PlanMove | None:
+    """The fixed block that is running at `t`, other than `but` itself."""
+    return next((b for b in blocks if b.fixed and b is not but and b.start <= t < b.end), None)
+
+
 def due(moves: list[PlanMove], plan_id: str, committed: bool, now: datetime, seen: str | None, walk, said: Said,
-        tz: tzinfo, awake: bool = True) -> Due | None:
-    """The start to say at `now`, or None. `seen` is the place the person was last seen ("pack.place"), `walk(a, b)`
-    the walk in minutes."""
+        tz: tzinfo, awake: bool = True, seen_at: datetime | None = None) -> Due | None:
+    """The start to say at `now`, or None. `seen` is the place the person was last seen ("pack.place") and `seen_at`
+    when (None: not known), `walk(a, b)` the walk in minutes."""
     if not awake or (said.last is not None and timedelta(0) <= now - said.last < GAP):
         return None
     blocks = sorted(moves, key=lambda m: m.start)
@@ -119,12 +127,23 @@ def due(moves: list[PlanMove], plan_id: str, committed: bool, now: datetime, see
         origin = seen or (before[-1].place if before else None)
         minutes = walk(origin, m.place) if origin and m.place and origin != m.place else 0
         minutes = minutes if minutes >= WALK_MIN else 0
+        trigger = m.start - timedelta(minutes=minutes)
+        event = fixed_at(blocks, trigger, m)
+        away = False
+        if event is not None:  # the lead time falls inside a fixed event: not during it, and not lost
+            away = bool(event.place) and not (seen_at is not None and seen_at >= event.start)
+            if away and m.place:  # not seen since it began: the plan has the person there, so the walk is from there
+                minutes = walk(event.place, m.place) if event.place != m.place else 0
+                minutes = minutes if minutes >= WALK_MIN else 0
+            trigger = max(m.start - timedelta(minutes=minutes), event.end)
+            while trigger < m.start and (after := fixed_at(blocks, trigger, m)) is not None:
+                trigger = after.end  # another fixed event straight behind it
+            trigger = min(trigger, m.start)  # an event that runs up to the block: at the block's start
         if m.origin == ORIGIN and minutes:
             continue  # the tracker's leave-now line is its reminder
-        trigger = m.start - timedelta(minutes=minutes)
         if not trigger <= now < trigger + WINDOW:
             continue
-        there = bool(seen) and seen == m.place
+        there = bool(seen) and seen == m.place and not away
         prev = blocks[i - 1] if i else None
         if there and prev is not None and prev.kind == m.kind and prev.place == m.place and m.start - prev.end <= CONTINUING:
             continue  # carrying on with the same thing: nothing to say

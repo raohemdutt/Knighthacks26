@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 
 from fastapi.testclient import TestClient
 
+from contexts.day.domain import narration as words
 from contexts.day.domain import reminders as rule
 from contexts.day.tests.test_day import CLOCK, TZ, items, places  # noqa: F401 (fixtures)
 from contexts.day.tests.test_narration import FakeNtfy, api, build, settle
@@ -171,6 +172,53 @@ def test_block_reminders_off_and_narration_off_say_nothing(items, places, tmp_pa
             return await tick(loop, bus, at(14))
 
         assert not [e for e in asyncio.run(scenario()) if e.moment == "start"]
+
+
+def test_a_block_start_whose_lead_time_falls_inside_a_fixed_event_is_said_when_that_event_ends(items, places, tmp_path):  # noqa: F811
+    """A lecture until 4:50 PM, then a study block at the library at 5:00 PM. The cameras last saw the person at the desk,
+    before the lecture, and from the desk the lead time for the walk is inside the lecture. The reminder is not lost and
+    is never said during the lecture: it comes when the lecture ends, with the walk from where the plan has the person."""
+    before = at(15, 30)  # the cameras' last sighting: at the desk, before the lecture
+    lecture = move("lec", "class", at(16), 50, place=UNION, fixed=True, title="COP4533 lecture")
+    moves = [lecture, move("s", "study", at(17), 60, place=LIBRARY)]
+
+    def late(now, moves=moves, seen_at=before):
+        return rule.due(moves, "p1", True, now, DESK, walk, rule.Said(set(), set()), TZ, seen_at=seen_at)
+
+    assert [late(at(16, m)) for m in (40, 48, 49)] == [None, None, None]  # 4:48 PM is the lead time: the lecture is running
+    d = late(at(16, 50))  # "you're out at 4:50": said as the lecture ends, ten minutes before the block
+    assert (d.first.id, d.walk, d.there, d.ref) == ("s", 12, False, "p1:s@17:00")
+    assert late(at(16, 54)).first.id == "s" and late(at(16, 55)) is None  # for five minutes from then, and once
+    # a fixed event that runs right up to the block: at the block's start, not a minute before
+    tight = [lecture.model_copy(update={"end": at(17), "minutes": 60}), moves[1]]
+    assert late(at(16, 59), tight) is None and late(at(17), tight).first.id == "s"
+    # two fixed events back to back: after the second one
+    office = move("oh", "class", at(16, 50), 5, place=UNION, fixed=True, title="Office hours")
+    assert late(at(16, 50), [lecture, office, moves[1]]) is None and late(at(16, 55), [lecture, office, moves[1]]).first.id == "s"
+    # seen at the desk during the lecture (the person never went): still not during it, and the walk is from the desk
+    home = late(at(16, 50), seen_at=at(16, 20))
+    assert (home.first.id, home.walk) == ("s", 12) and late(at(16, 49), seen_at=at(16, 20)) is None
+
+    # through the loop: one line, at the lecture's end, in the narrator's own "start" words (no wording of its own)
+    loop, bus, _ = build(items, places, tmp_path, runtime=FakeRuntime())
+    real = [move("lec", "class", at(16), 50, place="ucf.cb1", fixed=True, title="COP4533 lecture"),
+            move("s", "study", at(16, 55), 60, place=LIBRARY)]  # thirteen minutes from the desk, five from the classroom
+
+    async def afternoon():
+        await committed(loop, bus, real)
+        told = []
+        for minute in range(40, 58):
+            loop.tracker.seen = (DESK, "desk camera", before)
+            out = loop.tick(at(16, minute))
+            await bus.publish_all(out)
+            await settle()
+            told += [e for e in out if isinstance(e, DayNarrated) and e.moment == "start"]
+        return told
+
+    [said] = asyncio.run(afternoon())
+    assert (said.ts, said.ref) == (at(16, 50), "p1:s@16:55")
+    facts = {"moment": "start", "block": "your study block", "kind": "study", "at": "16:55", "min": 60, "place": "John C. Hitt Library", "walk_min": 5}
+    assert said.spoken == words.render(facts, loop.narrator.words).spoken and said.display == words.render(facts, loop.narrator.words).display
 
 
 # --- the busy quarter hour ---
