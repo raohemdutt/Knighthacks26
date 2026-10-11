@@ -192,12 +192,37 @@ def _strings(value: Any) -> Iterable[str]:
             yield from _strings(inner)
 
 
+def _pytest_stand_in() -> None:
+    """Where pytest is not installed (a box runs the app, not the tests), give the scanner's module the two decorators
+    it uses at import time, as pass-throughs. Nothing is replaced where pytest exists."""
+    import importlib.util
+    import sys
+    import types
+
+    if "pytest" in sys.modules or importlib.util.find_spec("pytest") is not None:
+        return
+
+    def passthrough(*args: Any, **kwargs: Any) -> Any:
+        if len(args) == 1 and callable(args[0]) and not kwargs:
+            return args[0]
+        return lambda fn: fn
+
+    stand_in = types.ModuleType("pytest")
+    stand_in.fixture = passthrough  # type: ignore[attr-defined]
+    stand_in.mark = types.SimpleNamespace(parametrize=passthrough)  # type: ignore[attr-defined]
+    stand_in.param = lambda *a, **k: a  # type: ignore[attr-defined]
+    stand_in.skip = lambda *a, **k: None  # type: ignore[attr-defined]
+    stand_in.raises = None  # type: ignore[attr-defined]
+    sys.modules["pytest"] = stand_in
+
+
 def _secret_scan() -> Callable[[str], list[str]]:
     """The repo's own credential scan as text -> labels. ImportRefused where it cannot be loaded: a ledger carries
     free text, so it is not stored unchecked."""
     try:
-        from tests.test_no_secrets import scan_text  # the one scanner the repo has; it needs pytest to import
-    except Exception as err:  # noqa: BLE001 - no pytest, or not run from the repo root
+        _pytest_stand_in()  # the scanner lives in a test module; a box without pytest still needs the scan
+        from tests.test_no_secrets import scan_text  # the one scanner the repo has
+    except Exception as err:  # noqa: BLE001 - not run from the repo root
         raise ImportRefused([f"the credential check could not be loaded here ({type(err).__name__}), so no ledger is stored"]) from None
     return lambda text: sorted({hit.label for hit in scan_text("ledger", text)})
 
