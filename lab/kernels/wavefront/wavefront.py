@@ -8,8 +8,10 @@ class, results as rows with their spread, the compile facts of every Triton kern
 
 On the pod it runs from the Jupyter root next to wavefront_format.py, chipsheet_format.py and the class files
 (gdn.py, conv.py, launch.py, tile.py, lora.py), which lab.controller run-script --with uploads; pod_wavefront.sh is
-the script it runs, and `pod-script` prints the one-line controller command for a class. In the repo it also runs as
-`python -m lab.kernels.wavefront.wavefront`.
+the script it runs, and `pod-script` prints the one-line controller command for a class. That script runs this file
+with the trainer's own Python when the pod has it (the venv L16 left, ~/venvs/atlas-train, without the user site), so
+the kernels are timed on the stack the training step runs on; else with the image's python3. In the repo it also
+runs as `python -m lab.kernels.wavefront.wavefront`.
 
 The classes, each in its own file with its lever:
 

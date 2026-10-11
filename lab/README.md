@@ -1193,7 +1193,9 @@ python -m lab.controller run-script --account D --timeout 1200 --with lab/kernel
 The run refuses (exit 2) unless `--node` is pod-a or pod-b, the machine is x86_64 and rocminfo names gfx1151. A full
 run of one class stays inside 900 s of GPU time and `--quick` inside 240 s; a case past the budget, or whose package
 is missing (fla is not in the stock image, so the fla arms of `gdn` and `conv` are skipped with the reason until it
-is installed into the user site), is written as skipped. The sheet lands in `~/wavefront/wavefront-gfx1151-<date>.json`
+is installed into the training venv), is written as skipped. The pod script runs the harness with the trainer's own
+Python when the pod has it (`~/venvs/atlas-train`, the venv L16 left, without the user site) and with the image's
+`python3` otherwise; it installs nothing. The sheet lands in `~/wavefront/wavefront-gfx1151-<date>.json`
 and `.md` on the pod. The fixtures in `fixtures/lab/wavefront/` are synthetic; occupancy from LDS assumes four SIMDs
 per WGP, which no opened source states.
 

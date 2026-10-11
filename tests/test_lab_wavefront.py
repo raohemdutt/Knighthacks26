@@ -62,7 +62,7 @@ def test_compile_record_reads_triton_names_and_ours():
 
 
 def test_remark_occupancy_reads_the_chipsheet_remarks_beside_the_compilers_own_figure():
-    remarks = cf.parse_resource_remarks((REPO / "fixtures/lab/chipsheet/remarks_w32_synthetic.txt").read_text())
+    remarks = cf.parse_resource_remarks((REPO / "fixtures/lab/chipsheet/remarks_w32_synthetic.txt").read_text(encoding="utf-8"))
     found = wf.remark_occupancy(remarks)
     assert found["occ_vgpr_4"]["waves_per_simd_by_vgpr"] == 16
     assert found["occ_vgpr_240"]["vgprs"] == 245
@@ -73,7 +73,7 @@ def test_remark_occupancy_reads_the_chipsheet_remarks_beside_the_compilers_own_f
 # --- rocprofv3 trace --------------------------------------------------------------------------------------------
 
 def test_trace_kernels_parses_the_rocprofv3_columns():
-    kernels = wf.trace_kernels(TRACE.read_text())
+    kernels = wf.trace_kernels(TRACE.read_text(encoding="utf-8"))
     assert len(kernels) == 57
     first = kernels[0]
     assert first["name"] == "Cijk_Alik_Bljk_BBS_BH_MT128x128x32_MI16x16x16_SN"  # .kd dropped
@@ -95,7 +95,7 @@ def test_trace_kernels_skips_rows_without_times_and_reads_older_column_names():
 
 
 def test_trace_occupancy_ranks_kernels_by_total_time_with_launch_counts():
-    found = wf.trace_occupancy(wf.trace_kernels(TRACE.read_text()), top=10)
+    found = wf.trace_occupancy(wf.trace_kernels(TRACE.read_text(encoding="utf-8")), top=10)
     assert found["launches"] == 57 and found["names"] == 4
     names = [row["name"] for row in found["top"]]
     assert names[0].startswith("Cijk_") and names[1].startswith("miopenSp3AsmConv")
@@ -105,7 +105,7 @@ def test_trace_occupancy_ranks_kernels_by_total_time_with_launch_counts():
     assert gemm["occupancy"]["waves_per_simd_by_vgpr"] == 10  # 128 VGPRs round to 144
     elementwise = next(r for r in found["top"] if "elementwise" in r["name"])
     assert elementwise["launches"] == 36 and elementwise["median_us"] == pytest.approx(9.0)
-    assert wf.trace_occupancy(wf.trace_kernels(TRACE.read_text()), top=1)["top"][0]["name"] == names[0]
+    assert wf.trace_occupancy(wf.trace_kernels(TRACE.read_text(encoding="utf-8")), top=1)["top"][0]["name"] == names[0]
 
 
 # --- sheet format -----------------------------------------------------------------------------------------------
@@ -159,7 +159,7 @@ def test_write_and_read_round_trip_and_the_markdown_has_every_row(tmp_path):
     json_path, md_path = wf.write(s, tmp_path)
     assert json_path.name.endswith("-selfcheck.json") and json_path.name.startswith("wavefront-gfx1151-")
     assert wf.read(json_path) == json.loads(json.dumps(s))
-    text = md_path.read_text()
+    text = md_path.read_text(encoding="utf-8")
     for row in s["rows"]:
         assert f"| {row['id']} |" in text
     for klass in wf.CLASSES:
@@ -264,6 +264,17 @@ def test_run_refuses_here_before_touching_a_gpu(monkeypatch, capsys):
     assert answer["ok"] is False and answer["outcome"] == "refused" and "gfx1151" in answer["error"]
 
 
+def test_the_pod_script_runs_the_trainer_s_python_when_the_pod_has_it_and_installs_nothing():
+    text = (REPO / wv.POD_SCRIPT).read_text(encoding="utf-8")
+    assert "\r" not in text and text.startswith("#!/bin/bash\n")
+    assert 'PY="${WAVEFRONT_PYTHON:-$HOME/venvs/atlas-train/bin/python}"' in text
+    assert 'if [ -x "$PY" ]; then export PYTHONNOUSERSITE=1; else PY=python3; fi' in text
+    assert text.rstrip().endswith('"$PY" wavefront.py "$@" --out "$HOME/wavefront"')
+    assert "pip " not in text and "install" not in text.replace("Nothing is installed", "")
+    for path in wv.POD_FILES:                       # every file the command uploads is one the script copies
+        assert Path(path).name in text
+
+
 def test_self_check_writes_and_rereads_a_sheet(tmp_path, capsys):
     assert wv.main(["self-check", "--out", str(tmp_path)]) == 0
     answer = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
@@ -297,12 +308,12 @@ def test_pod_command_sums_slot_minutes_and_rejects_unknown_classes():
 
 
 def test_the_pod_shell_script_copies_exactly_the_uploaded_files():
-    text = (REPO / wv.POD_SCRIPT).read_text()
+    text = (REPO / wv.POD_SCRIPT).read_text(encoding="utf-8")
     listed = re.search(r"for f in (.+?); do", text).group(1).split()
     assert sorted(listed) == sorted(Path(p).name for p in wv.POD_FILES)
 
 
 def test_the_note_names_the_same_pod_commands_the_harness_prints():
-    note = (REPO / "lab/refine/research/kernels/wavefront_training_gfx1151.md").read_text()
+    note = (REPO / "lab/refine/research/kernels/wavefront_training_gfx1151.md").read_text(encoding="utf-8")
     for klass in ("gdn", "conv", "launch"):
         assert wv.pod_command([klass])["command"] in note
