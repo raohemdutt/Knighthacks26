@@ -1,4 +1,4 @@
-# Atlas film v4.5: plan and tracking document
+# Atlas film v4.6: plan and tracking document
 
 Status: **PLAN, waiting for Dom's approval. Nothing is rendered until it is approved.**
 Branch `ctx/demo/video-hyperframes`. Owner: Dom (Notion task D12).
@@ -10,8 +10,10 @@ answers computed in code); the operator is Xander. The full script is in `video/
 beat notes are longer (the script was tightened to fit 5:00).
 v4.4: voice casting, time budget per beat, build order with milestones, the person-fix status, and the Notion
 handoff (sections 9 to 13).
-v4.5: two repo updates folded in (#381 outbound blur gate, #382 the real L16 run). **Hemdutt's Notion notes are not in
-yet**: this session cannot read Notion. They go in as v4.6.
+v4.5: two repo updates folded in (#381 outbound blur gate, #382 the real L16 run).
+v4.6: **Hemdutt's Notion notes (Sun 3:21 AM, agreed by him) folded in**; section 14 maps each one. The Encompass
+data-capture story is named in beat 3. Section 10's timing is corrected: **the film runs over 5:00, and Dom picks the
+cuts.** **Waiting on Hemdutt's approval** (Hemdutt ↔ Dominick, Q20).
 
 Every fact on screen or in a line comes from the repo, with the source next to it, or Dom has said so explicitly
 (section 6 lists those). Tick a box only when it has been built *and* checked in a frame.
@@ -38,50 +40,51 @@ Every fact on screen or in a line comes from the repo, with the source next to i
 6. **The person is the star.** Colour, hair, a face with expressions, real movement (section 4).
 7. **No plain mistakes.** Every set is checked from two angles before a scene is done.
 
-### 1a. Natural speech: what Hemdutt's work says, checked against the repo (#368, `contexts/day/domain/ear.py`)
+### 1a. Natural speech: Hemdutt's rule (#368, `contexts/day/domain/ear.py`, and his Notion notes, Sun 3:21 AM)
 
-I could not open Notion from this session (no Notion connector here), so I checked his merged code instead. The
-owner's rule at the top of `ear.py`, with the brief written to fit it:
+The owner's rule at the top of `ear.py`:
 
 > "Atlas talks like a person about its work for you. It answers what was asked in one or two short plain sentences,
 > then at most a brief offer. It never reads records out: no lists, no '10:40 AM to 11:30 AM' ranges, no ids, source
 > tags, brackets, camera or zone ids."
 
 - **Times said as people say them:** "9:20", "noon", "2", "Tuesday night".
-- **At most three things named, then an offer:** "You've got four things today. First is ..., then .... Want the
-  rest?" (#368).
+- **At most three things, then "Want the rest?", only for casual questions** ("what's on today?"). When the person
+  asks Atlas to walk through the day, as in the morning brief, Atlas walks through the **whole** day in the human
+  voice and ends with an offer about the plan (Hemdutt; the product is being corrected to match on
+  `ctx/agent/natural-speech-2`). So beat 2's full brief is right as written.
 - **No ranges.** So "judging runs noon to two" becomes "judging's at noon".
 - **Course codes said as a course:** "your algorithms writeup", not "COP4533".
 
-If Hemdutt's Notion page adds anything beyond `ear.py`, the brief changes to match. That check is
-**[ ] still to do on Notion**.
+Checked on Notion (v4.6): there is no separate natural-speech page; his notes above are the addition. **[x]**
 
 ---
 
 ## 2. The full order (demo and spec)
 
-About 4:50 in total (**hard cap 5:00**). **D** = demo, **S** = spec.
+**Hard cap 5:00. As written, v4.6 runs about 6:30 (section 10), so Dom picks the cuts.** The seconds below are
+speech plus action. **D** = demo, **S** = spec.
 
 | # | Beat | Type | ≈ s | Spec unchanged? | Status |
 | --- | --- | --- | --- | --- | --- |
 | 0 | The problem | narrator | 14 | new | [ ] |
 | 1 | This is Atlas, and what's inside | S | 16 | **as now** (intro: assemble, explode, x-ray) | [ ] |
 | 2 | **Wake up, good morning, the brief, the meals goal, lock the plan, where are my keys** | **D** | 70 | new | [ ] |
-| 3 | What fed the brief | S | 10 | new, short | [ ] |
-| 4 | The model on the box (42 of 42) | S | 14 | **as now** ("It learns"), one wording fix (6.E) | [ ] |
+| 3 | What fed the brief, and what the camera captures (Encompass) | S | 16 | new, short | [ ] |
+| 4 | The model on the box (48 of 48) | S | 8 | **as now** ("It learns"), wording fix (6.E), 48 of 48 | [ ] |
 | 5 | **At the desk: you look tired, the check-in** | **D** | 45 | new | [ ] |
-| 6 | Faces: expressions on the device, blur only on egress | S | 14 | new, short | [ ] |
+| 6 | Faces: expressions on the device; clear on your own screen, blurred when saved or sent | S | 14 | new, short | [ ] |
 | 7 | **Kitchen: the can, the phone, the count, the nudge** | **D** | 30 | rebuild | [ ] |
 | 8 | **Sort It round** | **D** | 15 | new | [ ] |
-| 9 | What Sort It runs on | S | 10 | new, short | [ ] |
-| 10 | The learning lab | S | 16 | **as now** | [ ] |
-| 11 | On the device: cable pull, ledger | S | 12 | **as now**, blur wording changed (6.H) | [ ] |
+| 9 | What Sort It runs on, the bin rules and sources, the look guide | S | 18 | new, short | [ ] |
+| 10 | The learning lab, then Hugging Face and the live swap | S | 21 | as now plus one line | [ ] |
+| 11 | On the device: cable pull, voice offline, your question first, ledger | S | 14 | as now plus one clause | [ ] |
 | 12 | **Friends: the league, three calendars agree, dinner with Ilan (meals goal callback)** | **D** | 55 | rebuild | [ ] |
-| 13 | How the boxes talk, the trusted group, many groups | S | 18 | rebuild (6.C) | [ ] |
+| 13 | How the boxes talk (Neon), boxes recognise each other, many groups | S | 18 | rebuild (6.C) | [ ] |
 | 14 | Same box, other lives (more) | S | 16 | rebuild; the Day Run line is gone | [ ] |
-| 15 | NextEra: one replayable log, findings computed in code (into the plant) | S | 12 | new | [ ] |
+| 15 | Same engine, different data (into the plant) | S | 22 | new (Hemdutt's version) | [ ] |
 | 16 | **NextEra: an operator's shift with SPOT** | **D** | 45 | new | [ ] |
-| 17 | End | narrator | 6 | as now | [ ] |
+| 17 | End: "It sees your day, learns you, and keeps you to itself." | narrator | 6 | new line (Hemdutt) | [ ] |
 
 ---
 
@@ -115,9 +118,9 @@ About 4:50 in total (**hard cap 5:00**). **D** = demo, **S** = spec.
      past."
    - "Submissions close at 11, and judging's at noon."
    - "Maya's study session is at the library at 2."
-   - "This week, your algorithms writeup is due Tuesday night, and the greedy quiz is Thursday."
-   - "If you want a break, Sam and Riley are going to board game night at the Union at 8, and Andria's running a
-     quiz review. Both optional."
+   - "This week, your algorithms writeup is due Tuesday night." (the greedy quiz is cut, Hemdutt)
+   - "If you want a break, Sam and Riley are going to board game night at the Union at 8." (Andria's quiz review is
+     cut, Hemdutt; board game night stays because it pays off in beat 12)
    - "Does this look good? I can lock this plan, or would you like something changed?"
 5. **P:** "Looks good. Lock it. And today, help me actually eat two real meals."
    **A:** "Done. Two meals is your goal today, and I'll keep track. Tap to approve the plan." The person taps
@@ -139,22 +142,27 @@ About 4:50 in total (**hard cap 5:00**). **D** = demo, **S** = spec.
 **App window, top right** (tabs switch as Atlas talks)
 1. **Today:** the day ribbon. Calendar blocks are solid; Atlas's suggestions are dashed.
 2. **Route:** the real UCF map, dorm → Engineering II, "Leave by 9:10", 680 m.
-3. **Day Run:** the day on fast-forward on the campus map, the figure walking it.
-4. **This week:** writeup Tue 11:59 PM, Quiz 5 Thu 5 PM.
-5. **Optional:** board game night, quiz review, with friends' names.
+3. **Today's Plan** (was Day Run, #338; its line is "Try your day before you live it."): the day on fast-forward on
+   the campus map, the figure walking it.
+4. **This week:** writeup Tue 11:59 PM.
+5. **Optional:** board game night, with friends' names.
 6. **Approve:** the approval card, plus "Goal today: 2 meals", then "Locked".
 7. **Ask:** "Where are my keys?", the frame with the keys ringed, then the room view with the pin.
 
 ### 3. What fed the brief (spec, about 10 s)
 - **Visual:** labelled particles fly into the box: Apple Watch, Outlook and Canvas calendars, GroupMe, UCF Events,
   OpenStreetMap. One line goes out to the phone: "Approve?".
-- **N:** "That brief came from your watch, your calendars, your group chats and the campus map. The model on the
-  Jetson wrote it in under three seconds, and nothing touched your calendar until you said yes."
-- Sources: `config/connectors.yaml`; "Brief me" 2.7 s (`docs/demo-run-sheet.md:109-111`).
+- **N:** the script's first line (the brief's sources, under three seconds, "nothing is booked until you say yes"),
+  then **Encompass:** "And what the camera sees becomes events, then moments it remembers, then answers, and, with
+  your OK, the examples it learns from."
+- **Visual (Encompass):** a counter inside the box, frames, then events, then episodes, then answers, from the box's
+  own totals (`python -m contexts.demo totals`; Saturday's run: about 10,700 frames, 9,738 observations, 19 episodes,
+  55 answers; refresh on Sunday before the render).
+- Sources: `config/connectors.yaml`; "Brief me" 2.7 s (`docs/demo-run-sheet.md:109-111`); the totals as above.
 
 ### 4. The model on the box (spec, as now)
-- **Visual and lines:** the current ones (the Qwen x-ray, Fast / Accurate / Private, 42 / 42, "Atlas learns the
-  tool").
+- **Visual and lines:** the current ones (the Qwen x-ray, Fast / Accurate / Private, **48 / 48** per Hemdutt,
+  `python -m contexts.agent.eval`, "Atlas learns the tool").
 - **Wording fix:** "A four-billion-parameter Qwen runs right here" instead of "It is not small" (6.E).
 
 ### 5. At the desk: you look tired, the check-in (demo, about 45 s)
@@ -182,8 +190,9 @@ About 4:50 in total (**hard cap 5:00**). **D** = demo, **S** = spec.
   - Energy drink limit 2 (`config/habits.yaml:54-60`); resting HR (`checkin.py:13-14`).
   - Notes with citations (`contexts/agent/application/planner.py:1-10`).
   - GroupMe: Jordan's line (`fixtures/groupme/class_chat.yaml`). Maya's "professor said" message is new (6.A).
-  - "Tuesday afternoon, two hours without moving" is the past-look comparison. It needs a matching seeded history
-    entry, see 6.I.
+  - "Tuesday afternoon, two hours without moving" is the **target** line (Hemdutt: keep it). It lands when his stage 1
+    is merged (Atlas remembers an expression with what was going on around it, and calls back to it). Until then the
+    script speaks the fallback "the look you get after a long stretch without moving" (6.I).
 
 **App window, top right**
 1. **Check-in card:** heart-rate line, chips "Looked tired · like Tue", "Sat 1 h 45", "No water 100 min",
@@ -191,14 +200,17 @@ About 4:50 in total (**hard cap 5:00**). **D** = demo, **S** = spec.
 2. **GroupMe:** Maya's professor message and Jordan's reply, as chat bubbles.
 3. **Notes:** a compiled outline with source tags (GroupMe, r/ucf thread, two articles).
 
-### 6. Faces: expressions on the device, blur only on egress (spec, about 14 s)
+### 6. Faces: expressions on the device; clear on your own screen, blurred when saved or sent (spec, about 14 s)
 - **Visual:**
-  - The person's face inside the privacy shell with a small "looked tired · 30 s window" tag that stays inside.
-  - A frame crossing the shell's edge, with the face blurring exactly as it crosses.
-- **N:** "Atlas reads your expressions only if you turn it on, on the device, in thirty-second windows. It uses them
-  to coach you and to train your own model. Your face stays clear on the box, and it's blurred the moment a picture
-  would leave it."
-- Dom's decisions: coaching and training both from expressions (6.B); no blur by default, only on egress (6.H).
+  - The person's face, clear, on his own phone's live view, with a small "looked tired · 30 s window" tag that stays
+    inside the privacy shell.
+  - Beside it, the saved frame of the same moment, face blurred.
+  - A frame crossing the shell's edge, with the face blurring as it crosses.
+- **N:** "If you turn it on, Atlas reads your expressions on the device, to coach you and to train your own model.
+  You see yourself clear on your own screen. Saved pictures are blurred, and so is anything that leaves." (Hemdutt's
+  exact wording.)
+- Sources: Hemdutt's locked design (Dominick ↔ Team, Sun 2:47 AM), step 1 merged as #381.
+- "Train your own model" lands with Hemdutt's stage 2 (training on expressions); keep the line (Hemdutt).
 
 ### 7. Kitchen: the can, the phone, the count, the nudge (demo, about 30 s)
 **Action**
@@ -227,19 +239,34 @@ goal tick.
 
 ### 9. What Sort It runs on (spec, about 10 s)
 - **Visual:** the bin camera view with boxes, track ids, bin zones, and a grid route bending round the person.
-- **N:** "Sort It runs a YOLO11 detector at forty-one frames a second on the Jetson, tracks every item, maps the
-  camera onto the floor, and plans the walk around you on a ten-centimetre grid. Only counts leave the box."
-- Sources: `config/models.yaml:22-25`, `README.md:84`, `contexts/play/room/grid.py`, `homography.py`.
+- **Visual, added:** the look guide: a dot follows his eyes across the room view, tagged "frames stay in the browser".
+- **N:** the script's two lines: the detector, the tracking and the walk; **OneEthos:** "The bin rules are UCF's own,
+  and every impact number cites its source."; **eye tracker:** "The look guide follows your eyes to point the way, and
+  those frames never leave the browser."
+- Sources: `config/models.yaml:22-25`, `README.md:84`, `contexts/play/room/grid.py`, `homography.py`;
+  `config/sorting.yaml`, `config/impact.yaml`; the look guide #290, #297, #327.
 
 ### 10. The learning lab (spec, as now)
 - Two AMD Strix Halo pods: your trainer, and the network's trainer with consent. The test gate. Hugging Face.
 - Dom confirms the group and network learning is built or being built (6.C), so the line stands.
+- **Added line (Hugging Face):** "A test decides if the new model ships. When one passes, it goes up on Hugging Face,
+  and the box checks it, swaps it in live, and rolls back if anything fails." (L6, #367, `python -m lab deploy`.) It
+  is worded as the mechanism, not as "our model shipped", because the real L16 gate **rejected** its candidate
+  (candidate 1.0 = current 1.0 on 24 held-out items; `fixtures/demo/l16-gate-scores.json`).
+- **AMD numbers for the overlay** (Hemdutt's candidates, from `lab/refine/metrics.jsonl`; **shown only after Ilan
+  confirms**, Ilan Q10):
+  - The teacher on a Strix Halo pod: about 11 tok/s for one request to about 51 tok/s batched, at about 96 W; energy
+    per token from 8.8 J to 1.9 J (session `bench-20261011T044643Z-6240`, lines 188-209).
+  - Idle: the pod about 10 W (line 97), the Jetson 12.6 W (line 64).
+  - L16 (#310): 18 steps in about 12 minutes on pod B, loss 0.127 to 0.010.
 - 6.E (fine-tune numbers, the Hugging Face repo name) still needs Ilan's confirmation before numbers are shown.
 
 ### 11. On the device: cable pull, ledger (spec, as now)
 - Everything live on the Jetson. Pull the cable: it keeps seeing, remembering, alerting and answering. Ledger: 13
   allowed, 13 blocked.
-- **Changed line:** "A face is blurred only when a picture leaves the box." (6.H)
+- **Face line:** none here; beat 6 carries it (Hemdutt's wording).
+- **Added (main track):** the voice runs on the box, offline (#275, #348), and a question goes ahead of the cameras
+  (GPU scheduler, #361). See the script's wording.
 
 ### 12. Friends: the league, three calendars agree, dinner with Ilan (demo, about 55 s)
 **Cast:** Hemdutt in the dorm with his Atlas; **Ilan** at '63 South on his phone; Dominick at his desk on his
@@ -276,19 +303,23 @@ computer. Three panes side by side, then two. Maya stays only as the classmate i
   - Meals target 2 (`config/habits.yaml:39-48`).
   - Board game night (`fixtures/demo/nearby.yaml`).
   - Walk time to '63 South to be computed on the real map.
+  - **Depends on** the optional-events PR (#311, Ilan1's side) for the dinner suggestion (Hemdutt).
   - Stake: driving (Dom); the app says the worst week buys the next group meal.
 
 ### 13. How the boxes talk, the trusted group, many groups (spec, about 18 s)
 - **Visual:**
   - Three shells; only one-word replies cross between them.
-  - The faces of the three friends unblur inside the group (with consent), and a soft link of learning grows between
-    their models.
+  - Inside the group the boxes **recognise each other** (a friend's name appears over them), and a soft link of
+    learning grows between their models. No faces unblur: between friends' boxes only text and face numbers travel
+    (the sealed, opt-in face share, #258), never pictures (Hemdutt).
+  - A small Neon database in the middle that holds only what each person chose to share.
   - Zoom out to many small groups across campus, each with its own network.
 - **N:**
   - "Each box checks its own calendar and answers in one word: free, busy, or another time."
-  - "In a group you trust, friends can choose to unblur their faces to each other and learn from each other, each
-    model getting better from the others' examples."
-  - "And there can be as many groups as there are friendships, each with its own network."
+  - **Neon:** "They meet in a Neon database that holds only what each person chose to share." (Presence, shared habit
+    counts, league, RSVPs, sealed face-share messages; it also works over 443 when the database port is blocked, #355.)
+  - "In a group you trust, friends can let their boxes recognise each other, and learn from each other's examples,
+    and every group runs its own network." (Hemdutt's wording.)
 - Dom: this is built or being built (6.C).
 
 ### 14. Same box, other lives (spec, about 22 s; the Day Run line is gone)
@@ -303,7 +334,23 @@ computer. Three panes side by side, then two. Maya stays only as the classmate i
   - "It's twelve watts at idle, it answers offline, and your data never has to leave."
 - Sources: `config/profiles/*`, `habits.yaml`; 12.62 W idle (`demo_numbers_2026-10-11.md:47`).
 
-### 15. NextEra: the part of the spec we haven't shown yet (spec, about 12 s)
+### 15. Same engine, different data (spec, about 22 s; Hemdutt's version, replaces the v4.5 version kept below)
+- **Why:** the old version repeated "data never leaves" right after beat 14. Hemdutt: make it "same engine, different
+  data", calling back to the film.
+- **Visual:**
+  - The morning brief's cards become a shift triage.
+  - The red pointer that found the keys walks the plant floor plan over paths SPOT has actually walked
+    (`contexts/spot/domain/walkable.py`, `fixtures/spot/floor_walkable.json`).
+  - Numbers pop up, each with its citation.
+  - The Learning lab tab shows the SPOT test: answers must cite the right rows and contain every expected number (the
+    SPOT scorer, L26 #315; the gate with its own output length, L28 #363).
+  - The Inspection screen and Shift Run.
+- **N:** "Point the same box at a plant and the same pieces line up. The brief becomes a shift triage. The pointer that
+  found your keys walks a floor plan, over paths SPOT has actually walked. Every number is computed from the inspection
+  rows and cites them. And the lab re-trains the model on the plant's own data and tests it before it's allowed on
+  the box."
+
+**Superseded v4.5 version, kept for reference:**
 The privacy points (on the box, cited, approved) are already made in beats 6, 11 and 13, so this spec shows what is
 new and true and leads into the plant.
 - **Visual:** the dorm's day as a ribbon of events (Hemdutt waking, the brief, the can) running into the box as an
@@ -331,8 +378,8 @@ me": the pointer starts from where Xander is looking (the page's opt-in gaze gui
 thread from the morning, if there's time.
 
 **The story, simply**
-1. **Start of shift.** Xander sits down with her coffee. "Morning, Atlas. What should I check first?"
-2. **Atlas gives her a short list, not a dashboard.** "Three things. First, heat exchanger 2 in the pipe gallery. It
+1. **Start of shift.** Xander sits down with a coffee. "Morning, Atlas. What should I check first?"
+2. **Atlas gives a short list, not a dashboard.** "Three things. First, heat exchanger 2 in the pipe gallery. It
    raised an alarm, but the check that raised it failed, and it hasn't had a good check in 88 hours. Send SPOT back
    before you send anyone."
    - Window: "Your shift", three cards: Do this first / Keep an eye / Looks fine. HX-202 is at the top, with a
@@ -340,14 +387,14 @@ thread from the morning, if there's time.
 3. **"Where is it?"** A red pointer drops onto HX-202 on the floor plan and walks there from the control room while
    Atlas says the way: "Turn left, take the entrance steps, and go along the west passage." Xander now knows where
    without reading a map.
-4. **Atlas tells her what the numbers hide.** "Heads up: mission status says ninety-six percent complete, but most of
+4. **Atlas says what the numbers hide.** "Heads up: mission status says ninety-six percent complete, but most of
    those rounds still had a failed check inside. And checks below forty percent battery fail about three times as
    often."
    - Window: the trust line, then the short battery animation (35% of checks fail on low battery, 12% otherwise).
-5. **She checks it herself.** "Show me round 17." The round plays back like a replay: SPOT's dot moves along the
+5. **Xander checks it directly.** "Show me round 17." The round plays back like a replay: SPOT's dot moves along the
    plan, each check pops in (tick, cross, alarm), the battery bar drains, and the failed check is marked where it
    happened.
-6. **She acts, with one yes.** "Send SPOT back to it." An approval card: "Send SPOT back to heat exchanger 2?" Yes.
+6. **Xander acts, with one yes.** "Send SPOT back to it." An approval card: "Send SPOT back to heat exchanger 2?" Yes.
    **A:** "Done. A work order was written on this box. Nothing left the building."
 7. **Anyone can learn this job.** The trainee steps in. **A:** "Want to plan the next round?" In **Shift Run**
    he drags the stops into an order and presses Run. The round plays out fast, the battery matters, and he gets two
@@ -371,7 +418,9 @@ needs attention, is it getting better), in plain words, offline, with every numb
 
 ### 17. End (as now)
 - The website's logo and splash, back on the shelf in the dorm.
-- **N:** "Atlas. The personal AI computer. It learns you, and keeps you to itself."
+- **N:** "Atlas. It sees your day, learns you, and keeps you to itself." (Hemdutt: it echoes the opening. Dom's
+  earlier line, "Atlas. The personal AI computer. It learns you, and keeps you to itself.", is the fallback if Dom
+  prefers it.)
 
 ---
 
@@ -397,8 +446,8 @@ needs attention, is it getting better), in plain words, offline, with every numb
 
 ## 5. New things to build
 
-- [ ] **5.1 App window.** Top right, website style, tabs and a cursor, reused in every demo. Panes: Today, Route, Day
-  Run, Week, Optional, Approve, Check-in, GroupMe, Notes, Sort It, Impact ring, League, Circle conversation,
+- [ ] **5.1 App window.** Top right, website style, tabs and a cursor, reused in every demo. Panes: Today, Route, Today's
+  Plan, Week, Optional, Approve, Check-in, GroupMe, Notes, Sort It, Impact ring, League, Circle conversation,
   `/spot/` (Your shift, floor plan pointer, round replay, Shift Run).
 - [ ] **5.2 Dialogue.** `film.yaml` gets `speaker:` per line and one voice per speaker; captions name the speaker; the
   lens pulses while Atlas talks; overlapping lines for the league.
@@ -408,7 +457,9 @@ needs attention, is it getting better), in plain words, offline, with every numb
 - [ ] **5.5** Problem-statement visual (scattered windows into the box).
 - [ ] **5.6** Particles for "what fed the brief".
 - [ ] **5.7** Sort It camera overlay (boxes, ids, zones, grid route).
-- [ ] **5.8** Trusted-group visual (unblur inside the group, model links, many groups zoom-out).
+- [ ] **5.8** Trusted-group visual (boxes recognise each other with a name appearing, the Neon hub, model links,
+  many groups zoom-out). No faces unblur.
+- [ ] **5.10** Encompass counter for beat 3 (frames, events, episodes, answers), from the box's own totals.
 - [ ] **5.9** A small SPOT figure for the plant spec (a stylised quadruped, or the icon from `/spot/`).
 
 ## 6. Decisions (Dom, Sun Oct 11) and what they mean
@@ -421,8 +472,9 @@ needs attention, is it getting better), in plain words, offline, with every numb
 - **6.B Expressions: coaching and training.** The film says both. The training part isn't in the code yet (expression
   history is excluded from face share today); the product team needs to land it.
 - **6.C Friends' models learning from each other, many groups, unblurring faces between friends (with consent).**
-  Dom says this is built or being built, so the film shows it as working. Who owns it, so the Build Log can point to
-  it? Not known to me: **[ ] ask on Notion**.
+  Dom says this is built or being built, so the film shows it as working. **v4.6 (Hemdutt):** nothing unblurs between
+  friends; boxes recognise each other through the sealed, opt-in face share (#258, Hemdutt); group learning is the
+  network pool (L10, #366, Ilan). Who owns the many-groups part is still asked (Hemdutt Q18).
 - **6.D "The route helps meet a goal"** (Dom asked what I meant).
   - Your earlier note had Atlas say the route "can also help meet this goal". There's no walking or steps goal in the
     app, so that line would claim something that doesn't exist.
@@ -436,7 +488,8 @@ needs attention, is it getting better), in plain words, offline, with every numb
     numbers the film may show.
 - **6.F Exam.** There's no exam in the demo day; the film uses the writeup and the greedy quiz.
 - **6.G Watch data.** Synthetic numbers only (`config/connectors.yaml:82-85`).
-- **6.H No blur by default; blur only on egress.** **Update (#381, Hemdutt, on main):** an outbound gate now blurs
+- **6.H Faces (v4.6, Hemdutt's locked design): blur on everything saved and everything that leaves; clear only on
+  your own live screen.** The film uses his wording (beat 6). The notes below are history. **Update (#381, Hemdutt, on main):** an outbound gate now blurs
   every face in any picture that leaves the box *whatever the local switch says*, and sends nothing if it fails. So
   "blurred the moment a picture leaves" is true in the product. What remains is the default of the local
   "Blur faces before saving" switch (still on). The film's "your face stays clear on the box" needs that default
@@ -448,9 +501,9 @@ needs attention, is it getting better), in plain words, offline, with every numb
     **[ ] raise on Notion.**
 - **6.I The past-look line** ("the same look you had Tuesday, after two hours without moving").
   - The coach compares expressions with your own history.
-  - The seeded history needs one Tuesday entry with a long sit and strained looks for the line to be true in the
-    demo data. That's a small fixture addition. **[ ] add, or reword to "the look you get after a long stretch
-    without moving"** (that version needs no new data). I recommend the reworded line.
+  - **v4.6 (Hemdutt): keep the Tuesday line as the target.** His team builds it in two stages: (1) Atlas remembers an
+    expression with what was going on around it and calls back to it; (2) training on it. Until stage 1 is merged,
+    the script speaks the reworded fallback ("the look you get after a long stretch without moving").
 
 ## 7. Questions still open
 
@@ -489,32 +542,52 @@ needs attention, is it getting better), in plain words, offline, with every numb
 `film.yaml` gets `speaker:` on every line; `film_build.py` picks the voice per speaker and caches by
 speaker+text. The league beat has three Atlas lines that overlap by about half a second each.
 
-## 10. Time budget per beat (from `SCRIPT.md`; speech at 1.2x plus action-only time)
+## 10. Time budget per beat (v4.6, recounted from `SCRIPT.md`)
+
+**Correction:** the v4.4 table said "≈ 4:48", but its own rows added up to 348 s (**5:48**). v4.6 recounts the speech
+from the script's words at about 3.2 words a second (edge-tts at +20%). The action-only seconds are kept from v4.4.
 
 | # | Beat | Speech | Action-only | Total |
 | --- | --- | --- | --- | --- |
-| 0 | Problem | 12 | 3 | 15 |
+| 0 | Problem | 14 | 3 | 17 |
 | 1 | What's inside | 9 | 5 | 14 |
-| 2 | Good morning, brief, meals, keys | 44 | 12 (sit up, walk, approve, find keys) | 56 |
-| 3 | What fed the brief | 8 | 2 | 10 |
-| 4 | The model | 7 | 3 | 10 |
+| 2 | Good morning, brief, meals, keys | 42 | 12 (sit up, walk, approve, find keys) | 54 |
+| 3 | What fed the brief + Encompass | 16 | 2 | 18 |
+| 4 | The model (48 of 48) | 6 | 3 | 9 |
 | 5 | At the desk | 31 | 4 | 35 |
-| 6 | Faces | 9 | 3 | 12 |
-| 7 | Kitchen | 9 | 6 (turn, drop) | 15 |
+| 6 | Faces | 12 | 3 | 15 |
+| 7 | Kitchen | 8 | 6 (turn, drop) | 14 |
 | 8 | Sort It round | 4 | 7 (hold up, walk, score) | 11 |
-| 9 | Sort It tech | 8 | 2 | 10 |
-| 10 | Lab | 13 | 3 | 16 |
-| 11 | On the device | 10 | 3 | 13 |
+| 9 | Sort It tech + bin rules + look guide | 18 | 2 | 20 |
+| 10 | Lab + Hugging Face swap | 20 | 3 | 23 |
+| 11 | On the device + voice + your question first | 12 | 3 | 15 |
 | 12 | Friends | 31 | 8 (calendars drop, dinner cut) | 39 |
-| 13 | How the boxes talk | 12 | 3 | 15 |
+| 13 | How the boxes talk + Neon | 17 | 3 | 20 |
 | 14 | Other lives | 9 | 3 | 12 |
-| 15 | One log, replayable | 13 | 2 | 15 |
-| 16 | Xander's shift | 32 | 12 (pointer walk, replay, Shift Run) | 44 |
+| 15 | Same engine, different data | 21 | 2 | 23 |
+| 16 | Xander's shift | 33 | 12 (pointer walk, replay, Shift Run) | 45 |
 | 17 | End | 4 | 2 | 6 |
-| | **Total** | | | **≈ 4:48** |
+| | **Total** | **≈ 5:07** | **≈ 1:23** | **≈ 6:30** |
 
-Trim order if the first timed build runs over 5:00: the dinner callback → "Logged: goal met"; the trainee moment in
-NextEra drops to one shot; the problem statement loses its second sentence.
+On top of this, `film_build.py` adds 0.4 s between lines and 1.7 s per scene (pad plus tail), up to about a minute
+more where it doesn't overlap the action-only time. **As written, v4.6 is about 6:30 to 7:30. The cap is 5:00.**
+
+### Cuts to reach 5:00 (Dom chooses; none applied)
+
+| Option | What goes | Saves about |
+| --- | --- | --- |
+| a | Run action under speech: the brief while he walks to the desk, the calendars dropping under the bubbles, the pointer walking under the directions. No words lost. | 20 s |
+| b | The old trim order: dinner callback becomes "Logged: goal met"; the trainee is one shot; the problem loses its second sentence | 15 s |
+| c | Beat 14 folds into 15 (15 already moves to the plant) | 12 s |
+| d | Beat 8 (the Sort It round) goes; beat 7 keeps Sort It's route and count | 11 s |
+| e | Beat 16 drops the round 17 replay (triage, pointer, approval and Shift Run stay) | 10 s |
+| f | Beat 15 keeps only Hemdutt's first and last sentences | 8 s |
+| g | Beat 12 drops the three overlapping league lines (the window shows the table) | 8 s |
+| h | Beat 4 folds into beat 1 ("a four-billion-parameter Qwen, forty-eight of forty-eight") | 6 s |
+
+All of a to h together save about 1:30, which brings 6:30 to about 5:00. That's before the build's gaps, so reaching
+the cap means taking nearly all of them, or Dom raising the cap. The sponsor-track clauses (sections 3 and 14) are
+not on this list: Hemdutt asked that they not be lost.
 
 ## 11. Build order and milestones (each milestone ends with stills and one-scene drafts for Dom)
 
@@ -548,6 +621,8 @@ NextEra drops to one shot; the problem statement loses its second sentence.
 
 ## 13. Notion handoff (for the agent that posts it)
 
+**Done for v4.4 (Sun 3:20 AM ET); v4.6 posted as a D12 subpage for Hemdutt's approval.**
+
 What to post, where, and the text. This session could not reach Notion; the posting agent needs the Notion MCP.
 
 1. **D12 task page** (find "D12" in the Task Board data source `collection://68af27b3-01c7-487d-807e-71af7d3fc536`):
@@ -574,3 +649,39 @@ What to post, where, and the text. This session could not reach Notion; the post
    - **The fixture owner:** Maya's new "professor said" GroupMe line (6.A) and an optional seeded Tuesday history
      entry (6.I).
 6. Sign every post `🤖 Dominick's agent · <Day h:mm AM/PM ET>:` (AGENTS.md 8.1).
+
+## 14. Hemdutt's notes (Notion, Sun 3:21 AM, on v4.2) and where each went (v4.6)
+
+| Note | What changed | Beat |
+| --- | --- | --- |
+| A1 "42 of 42" is now 48 of 48 | lines, card and table | 4 |
+| A2 Day Run is now "Today's Plan" | window tab 3, pane list 5.1 | 2 |
+| A3 cut Andria's review and the greedy quiz; the full brief is right; 1a corrected | brief, windows 4 and 5, section 1a | 2 |
+| A4 face wording | his exact line; 6.H rewritten; beat 11's face line removed (beat 6 carries it) | 6, 11 |
+| A5 keep the Tuesday line and "train your own model" | Tuesday line is the target after his stage 1, fallback until then; training after stage 2 | 5, 6 |
+| A6 dinner depends on #311 | dependency noted | 12 |
+| A7 "recognise each other", not unblur | line, visual 5.8, 6.C | 13 |
+| B beat 15 as "same engine, different data" | his narration and visual | 15 |
+| C AMD numbers | overlay candidates, shown only after Ilan confirms (Ilan Q10) | 10 |
+| C Hugging Face | the live swap line, worded as the mechanism (the L16 gate rejected its candidate) | 10 |
+| C Neon | "they meet in a Neon database that holds only what each person chose to share" | 13 |
+| C OneEthos | "the bin rules are UCF's own, and every impact number cites its source" | 9 |
+| C main track | voice on the box offline; your question goes first | 11 |
+| C eye tracker | the look guide line and visual | 9 |
+| D last line | "Atlas. It sees your day, learns you, and keeps you to itself." (Dom's old line is the fallback) | 17 |
+| E closed items | the public repo and how the demos get into the film: nothing to change here | n/a |
+
+### Sponsor tracks the film speaks to
+
+| Track | Where |
+| --- | --- |
+| Main, AI, Embedded | 1, 4, 11 (all on the Jetson; voice offline; your question first) |
+| **Encompass: Data Capturing Hardware** | **3**: the camera and the watch capture the day; frames become events, then episodes, then answers, and (with your OK) training examples; the counter uses the box's own totals. Also 9 (the bin camera to counts) and 15 (inspection rows to cited findings) |
+| NVIDIA | 4, 9, 11 |
+| AMD | 10 |
+| Hugging Face | 10 |
+| Neon | 13 |
+| OneEthos | 7, 9 |
+| Full Sail | 2 (Today's Plan), 8, 16 (Shift Run) |
+| NextEra | 15, 16 |
+
