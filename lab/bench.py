@@ -457,12 +457,16 @@ def run_request(endpoint: Any, body: Mapping[str, Any], *, role: str, stream: in
 
 def run_batch(endpoint: Any, prompts: PromptSet, settings: Settings, *, batch: int, per_stream: int, role: str,
               clock: WallClock, tag: str, timeout_s: float = DEFAULT_REQUEST_TIMEOUT_S,
-              grace_s: float = 60.0) -> list[RequestResult]:
+              grace_s: float = 60.0, stop_after: Callable[[RequestResult], bool] | None = None
+              ) -> list[RequestResult]:
     """batch concurrent streams, each sending per_stream requests one after another; stream s starts at prompt s.
-    Every wait is bounded: streams not finished after grace_s plus per_stream x timeout_s raise BenchError."""
+    Every wait is bounded: streams not finished after grace_s plus per_stream x timeout_s raise BenchError.
+    stop_after, when given, is asked after every finished request; True sends no further request on any stream
+    (lab/optimize_settings.py stops a hopeless trial after its first request), so fewer results come back."""
     results: list[RequestResult] = []
     lock = threading.Lock()
     barrier = threading.Barrier(batch)
+    stopped = threading.Event()
 
     def stream(s: int) -> None:
         try:
@@ -470,6 +474,8 @@ def run_batch(endpoint: Any, prompts: PromptSet, settings: Settings, *, batch: i
         except threading.BrokenBarrierError:
             return
         for k in range(per_stream):
+            if stopped.is_set():
+                return
             index = s + k
             nonce = f"{tag}-{role}-{s}-{k}-{uuid.uuid4().hex[:8]}" if settings.nonce_on else None
             body = prompts.request_body(index, settings, nonce)
@@ -477,6 +483,8 @@ def run_batch(endpoint: Any, prompts: PromptSet, settings: Settings, *, batch: i
                               clock=clock)
             with lock:
                 results.append(out)
+            if stop_after is not None and stop_after(out):
+                stopped.set()
 
     threads = [threading.Thread(target=stream, args=(s,), daemon=True) for s in range(batch)]
     for t in threads:
@@ -488,7 +496,7 @@ def run_batch(endpoint: Any, prompts: PromptSet, settings: Settings, *, batch: i
     stuck = sum(1 for t in threads if t.is_alive())
     if stuck:
         raise BenchError(f"{stuck} of {batch} {role} streams had not finished after {limit:g} s")
-    if len(results) != batch * per_stream:
+    if len(results) != batch * per_stream and not stopped.is_set():
         raise BenchError(f"{batch * per_stream - len(results)} {role} requests never started (a stream did not join)")
     return sorted(results, key=lambda r: (r.stream, r.index))
 
@@ -1023,9 +1031,10 @@ class Spawned:
 
 
 def spawn_server(argv: list[str], *, port: int, log_path: Path, env: Mapping[str, str], cwd: Path,
-                 own_log: bool) -> Spawned:
+                 own_log: bool, unset_env: Sequence[str] = ()) -> Spawned:
     """Start the server; its stdout and stderr go to the log (or beside it when the command writes its own).
-    Port 0: the server picks a free port itself and writes it to its {port_file} (see wait_port)."""
+    Port 0: the server picks a free port itself and writes it to its {port_file} (see wait_port).
+    unset_env names are removed from the inherited environment before env is laid over it."""
     if port and port_open(port):
         raise BenchError(f"something already listens on 127.0.0.1:{port}; a server spawned there would collide "
                          "with it (on pod C that is the running teacher)")
@@ -1033,7 +1042,8 @@ def spawn_server(argv: list[str], *, port: int, log_path: Path, env: Mapping[str
     handle = open(out_path, "wb")
     try:
         proc = subprocess.Popen(argv, stdout=handle, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                                env={**os.environ, **env}, cwd=str(cwd), start_new_session=os.name == "posix")
+                                env={**{k: v for k, v in os.environ.items() if k not in unset_env}, **env},
+                                cwd=str(cwd), start_new_session=os.name == "posix")
     except OSError as exc:
         handle.close()
         raise BenchError(f"could not start {argv[0]}: {exc}") from exc
@@ -1151,6 +1161,7 @@ class Config:
     engine_dir: str | None = None
     patches: list[str] = field(default_factory=list)
     launch_env: dict[str, str] = field(default_factory=dict)
+    unset_env: list[str] = field(default_factory=list)   # removed from the inherited environment of a spawn
     node: str = "pod-b"
     port: int = DEFAULT_PORT
     batches: list[int] | None = None
@@ -1179,6 +1190,7 @@ class Config:
     band_gap: float = DEFAULT_BAND_GAP
     record: bool = True
     labels: dict[str, str] = field(default_factory=dict)   # --condition NAME=VALUE: told, not measured
+    stop_measuring: Callable[[RequestResult], bool] | None = None   # see run_batch's stop_after; measured requests only
 
     def settings(self) -> Settings:
         return Settings(model=self.model, max_tokens=self.max_tokens, thinking=self.thinking,
@@ -1288,6 +1300,7 @@ class Session:
             env, queues = None, None
             why = qwhy = "attached: the server's process is not readable from here"
         cond.update({"env": env, "env_meant": dict(sorted(c.launch_env.items())) if not attached else None,
+                     **({"env_unset": sorted(c.unset_env)} if c.unset_env and not attached else {}),
                      "env_source": f"/proc/{pid}/environ" if env is not None else None, "kfd_queues": queues})
         if why:
             unavailable["env"] = why
@@ -1347,10 +1360,12 @@ class Session:
         tag = row["run_id"]
         warm: list[RequestResult] = []
 
-        def batch(size: int, per_stream: int, role: str) -> list[RequestResult]:
+        def batch(size: int, per_stream: int, role: str,
+                  stop_after: Callable[[RequestResult], bool] | None = None) -> list[RequestResult]:
             try:
                 return run_batch(endpoint, self.prompts, self.settings, batch=size, per_stream=per_stream, role=role,
-                                 clock=self.clock, tag=tag, timeout_s=c.request_timeout_s, grace_s=c.stream_grace_s)
+                                 clock=self.clock, tag=tag, timeout_s=c.request_timeout_s, grace_s=c.stream_grace_s,
+                                 stop_after=stop_after)
             except BenchError as exc:
                 row["warmup"] = {"requests": len(warm), "discarded": True, "items": [r.as_dict() for r in warm]}
                 row["outcome"], row["reason"] = "fail", str(exc)
@@ -1377,7 +1392,7 @@ class Session:
         row["warmup"] = {"requests": len(warm), "discarded": True, "items": [r.as_dict() for r in warm]}
         if probe_now:
             row["probe"] = self.run_probe(endpoint, tag)
-        measured = batch(pb.size, self.per_stream, "measure")
+        measured = batch(pb.size, self.per_stream, "measure", c.stop_measuring)
         row["requests"] = [r.as_dict() for r in measured]
         good = [r for r in measured if r.error is None and r.first is not None and r.last is not None]
         errors = [r.error for r in measured if r.error]
@@ -1495,7 +1510,8 @@ class Session:
                   "max_len": c.max_len, "model": c.model, "checkpoint": c.checkpoint}
         argv = fill_command(template, values)
         own_log = any("{log}" in str(a) for a in template)
-        spawned = spawn_server(argv, port=c.port, log_path=log_path, env=c.launch_env, cwd=self.dir, own_log=own_log)
+        spawned = spawn_server(argv, port=c.port, log_path=log_path, env=c.launch_env, cwd=self.dir, own_log=own_log,
+                               unset_env=c.unset_env)
         spawn = {"index": index, "pid": spawned.pid, "cold": True, "attached": False, "spawned": utc(spawned.spawned),
                  "spawned_t": spawned.spawned, "ready_s": None, "stopped": False, "log": str(log_path),
                  "shared": c.share_spawn, "command": argv}
@@ -1698,7 +1714,7 @@ RESERVED_CONDITIONS = frozenset({
     "temperature", "top_p", "seed", "ignore_eos", "nonce", "thinking", "prefix_caching_setting",
     "requests_per_stream", "warmup_rounds", "harness", "unavailable", "linear_kernels", "attention_backends",
     "kv_cache_tokens", "max_concurrency", "concurrency_tokens", "prefix_caching_log", "env", "env_meant",
-    "env_source", "kfd_queues", "batch_size", "share_spawn", "time_since_spawn_s", "session", "statistic", "stats",
+    "env_unset", "env_source", "kfd_queues", "batch_size", "share_spawn", "time_since_spawn_s", "session", "statistic", "stats",
     "bands", "low_confidence_reason", "run_id", "spawn"})
 
 
