@@ -5,8 +5,15 @@
 
 "hi", "how's your day", "tell me a joke", "are you gay?", "I'm stressed about my exam" and "what's 15% of 80" used
 to reach the tool loop and come back as "I didn't see that.". They are answered here instead, in one streamed
-model call: a short persona, a FACTS block built in code (the time, what the box did today, the person's day in
-the Day loop's words), and the last few turns so "why?" and "tell me another" work.
+model call: a short persona, a FACTS block built in code, and the last few turns so "why?" and "tell me another" work.
+
+OWNER'S RULE (Hemdutt): only what was asked, said like a person. "How's it going?" is answered in code, never by
+the model: "Good. I've planned your day and reminded you once so far. What else can I do for you?" (its work for
+you, from real events: `done_for_you`). It never volunteers the time, its uptime, that it is an AI, the camera log,
+or your schedule. The FACTS the model gets follow the topic of the question (`topics`): your day only when you ask
+about your day, the cameras only when you ask what it saw. "What does my day look like?" and "what's next?" are the
+calendar said like a person (`calendar`: schedule.py and the Day context's ear.py), also with no model call.
+contexts/agent/tests/test_natural_speech.py holds all of this; read it before changing what is said here.
 
 Routing is a table of patterns, never a model call. QA still runs the planner and its pre-fetch first, so every
 question they answer is answered exactly as before; `wants` is only asked about what is left, and says no to
@@ -27,8 +34,10 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from contexts.agent.application import schedule
 from contexts.agent.application.memory_port import MemoryReader
 from contexts.agent.application.qa import Answer
+from contexts.day.domain import ear
 from contracts.types import ChatMessage
 from runtime import FakeRuntime
 from runtime.interface import Runtime
@@ -50,6 +59,7 @@ class TalkConfig:
     max_history_turns: int = 6  # exchanges (you + Atlas) kept for follow-ups
     max_history_chars: int = 1500
     history_ttl_s: float = 600.0
+    names: tuple = ()  # how a course code is said: `names: {COP4533: algorithms}` -> (("COP4533", "algorithms"),)
 
     @classmethod
     def of(cls, raw: dict | None = None) -> "TalkConfig":
@@ -57,7 +67,8 @@ class TalkConfig:
         enabled = bool(raw.get("enabled", True)) and os.environ.get(ENV, "1").strip().lower() not in ("0", "false", "off", "no")
         return cls(enabled=enabled, name=str(raw.get("name") or "Atlas"), tone=str(raw.get("tone") or ""),
                    max_history_turns=int(raw.get("max_history_turns", 6)), max_history_chars=int(raw.get("max_history_chars", 1500)),
-                   history_ttl_s=float(raw.get("history_ttl_s", 600)))
+                   history_ttl_s=float(raw.get("history_ttl_s", 600)),
+                   names=tuple((str(k).replace(" ", "").upper(), str(v)) for k, v in (raw.get("names") or {}).items()))
 
 
 # ---------- routing: what is NOT conversation ----------
@@ -145,7 +156,9 @@ SYSTEM = (
     "You are {name}, a warm, quick, slightly witty AI assistant that lives on a small private box in this home. You are "
     "chatting out loud with the person who lives here, like someone who knows them. Reply in one to three short sentences, "
     "longer only when asked to explain. Plain spoken English with contractions. No lists, no markdown, no emoji.\n"
-    "Be honest about what you are: an AI running locally on this box, not a person. You have no body, age, gender, family, "
+    "Answer only what was asked. Never bring up the time, how long you have been running, that you are an AI, their "
+    "schedule or what the cameras saw unless they ask about it.\n"
+    "If they ask what you are: an AI running locally on this box, not a person. You have no body, age, gender, family, "
     "love life or sexual orientation, and no childhood. When asked about yourself, say so plainly and lightly, with some "
     "charm; never lecture and never refuse, and be glad to talk about the topic or about them. Be kind and affirming about "
     "who they are. Never judge.\n"
@@ -158,6 +171,39 @@ SYSTEM = (
 )
 DAY_LABELS = {"now": "Their day right now", "plan": "Their plan for today", "coach": "Your last coaching note to them",
               "review": "Your review of their day"}
+
+# --- what a question is about (patterns, never a model call): the FACTS follow the topic, nothing else is offered ---
+GREETING = re.compile(r"^(?:hi|hello|hey|yo|howdy|sup|good (?:morning|afternoon|evening))(?: there| again)?[!.? ]*$")
+JUST_THE_NAME = re.compile(r"^(?:(?:hey|hi|hello|yo|ok|okay)[ ,!.]*)*atlas[ ,!.?]*$")
+# "how's it going?" and its kin: answered in code with what Atlas has done for the person (ear.said_done)
+HOW_ARE_YOU = re.compile(
+    r"^(?:so |and |well )?(?:how are you|how're you|how are you (?:doing|feeling)|how you doing|how are things|what's up|whats up|what is up"
+    r"|how's it going|how is it going|hows it going|how's everything|how's life|how goes it"
+    r"|how(?:'s| is| was) your (?:day|night|morning|afternoon|evening)(?: going| been| so far)?|are you having a good day"
+    r"|what(?:'s| is) new(?: with you)?|what have you been up to|what(?:'ve| have) you been doing|what are you up to)"
+    r"(?: today| tonight| this (?:morning|afternoon|evening)| so far| then| atlas| buddy| man)*[?!. ]*$")
+ABOUT = {
+    # the person's day: their plan, what is next, being busy
+    "day": re.compile(r"\bmy (?:day|plans?|schedule|calendar|agenda|morning|afternoon|evening|night|week)\b|\bwhat(?:'s| is) next\b"
+                      r"|\bam i (?:busy|free)\b|\bwhat (?:should|do) i (?:do|be doing|have)\b|\bbrief me\b|\bplans? for (?:today|tonight|tomorrow)\b"),
+    # how they are doing with it: the coach's note and the review
+    "coach": re.compile(r"\bhow am i (?:doing|going)\b|\bhow'm i doing\b|\bam i (?:on track|on time|behind|late|ahead|slacking)\b"
+                        r"|\bhow did i do\b|\bhow(?:'s| is| was| did) my (?:day|study\w*|focus|habits?|block|session|work|progress)\b"
+                        r"|\b(?:my|the) (?:habits?|progress|focus|streak|review)\b"),
+    # what the cameras saw
+    "saw": re.compile(r"\b(?:see|saw|seen|watch(?:ed|ing)?|notic(?:e|ed)|cameras?|caught|spot(?:ted)?)\b"),
+    # the box itself: how long it has been on, how much it has answered
+    "box": re.compile(r"\bhow long have you been\b|\buptime\b|\bhow many (?:questions|moments|things|times)\b|\bsince you (?:started|booted|woke)\b"),
+    # what it has done for them
+    "done": re.compile(r"\bwhat (?:have|did) you (?:do|done)\b|\bwhat(?:'ve| have) you (?:done|been (?:up to|doing))\b|\bdone for me\b|\byour day\b"),
+    # the clock and the calendar date
+    "time": re.compile(r"\b(?:time|date|day is it|what day|today|tonight|tomorrow|o'clock|late|early|weekend|month|year)\b"),
+}
+# A calendar question simple enough to answer in one line of code; two questions in one go to the model with the facts.
+SECOND_ASK = re.compile(r"[,;]? (?:and|then|also|but|plus) (?:what|how|why|when|where|who|can|could|should|would|will|tell|explain|give|help|is|are|do|does)\b")
+YES_THE_REST = re.compile(r"^(?:yes|yeah|yep|yup|sure|ok|okay|please|go ahead|go on|and the rest|the rest|what's the rest|everything|all of it|all of them"
+                          r"|tell me(?: the rest| everything)?)(?: please| thanks)?[!.? ]*$")
+REST_TTL = timedelta(minutes=3)
 SPOKEN = "_spoken"  # a day fact's wording for the ear ("now_spoken"): what the template says; not a FACTS line of its own
 # where a sentence ends; an initial is not an end ("John C. Hitt Library")
 SENTENCE_END = re.compile(r"(?<!\b[A-Z]\.)(?<=[.!?])\s+")
@@ -236,12 +282,14 @@ class Talk:
         self.web = web  # the box has web tools: questions that need the web stay with the tool loop
         # --- set by the composition root, so this context imports no other ---
         self.day_facts: Callable[[], dict] | None = None  # the person's day in words: {"now": ..., "plan": ..., "coach": ...}
+        self.done_for_you: Callable[[], list[str]] | None = None  # what Atlas did for them today: ["planned your day", ...] (done.py)
         self.about: str = ""  # who the box is talking to (the profile's description)
         # --- live only: never logged, never replayed ---
         self.turns: deque[tuple[str, str]] = deque()  # (what they said, what Atlas said)
         self.last: datetime | None = None  # when the last turn ended
         self.started = clock()
         self.answered = 0  # answers of any kind this session (on_answer)
+        self.rest: tuple[schedule.Ask, datetime] | None = None  # a rundown that ended "Want the rest?": what "yes" then means
 
     # --- routing ---
 
@@ -277,6 +325,11 @@ class Talk:
         self.fresh()  # drops a conversation that went quiet
         if CRISIS.search(normal(question)):
             return self._done(question, CRISIS_REPLY, self.runtime.model_info().version, stream)
+        # Built in code, with or without a model (the owner's rule): a small model asked "how's it going?" recites the
+        # time and its uptime and announces it is an AI; and the calendar is said from the data, never retold.
+        said = self.hello(question) or self.calendar(question)
+        if said:
+            return self._done(question, said, self.runtime.model_info().version, stream)
         if isinstance(self.runtime, FakeRuntime) and not self.runtime.chat_replies:  # a laptop with no model: the templates
             return self._done(question, self.template(question), self.runtime.model_info().version, stream)
         sent: list[str] = []
@@ -315,24 +368,95 @@ class Talk:
         system = SYSTEM.format(name=self.config.name)
         if self.config.tone.strip():
             system += "\n" + self.config.tone.strip()
-        system += "\n\nFACTS\n" + "\n".join(f"- {line}" for line in self.facts())
+        system += "\n\nFACTS\n" + "\n".join(f"- {line}" for line in self.facts(question))
         out = [ChatMessage(role="system", content=system)]
         for said, answered in self.turns:
             out += [ChatMessage(role="user", content=said), ChatMessage(role="assistant", content=answered)]
         return out + [ChatMessage(role="user", content=question.strip())]
 
-    def facts(self) -> list[str]:
-        """What is true right now, in lines the model may repeat: the time, the box's own day, the person's day."""
-        now = self.clock()
+    def topics(self, question: str) -> set[str]:
+        """What the question is about: "day", "coach", "saw", "box", "done", "time". Empty for everything else."""
+        q = normal(question)
+        return {name for name, rx in ABOUT.items() if rx.search(q)}
+
+    def facts(self, question: str = "") -> list[str]:
+        """What is true right now, in lines the model may repeat, and only the ones the question is about: the part of
+        the day always; the clock, the box's own day, what it did for them, their day, the coach's notes each only
+        when asked. A question about none of them gets none of them, so the model has nothing to volunteer."""
+        now, about = self.clock(), self.topics(question)
         local = now.astimezone(self.tz)
-        lines = [f"It is {local:%A} {clock_words(local)}.", f"You have been running for {span_words(now - self.started)}."]
-        lines += self.seen_today(now)
-        if self.answered:
-            lines.append(f"You have answered {self.answered} question{'s' if self.answered != 1 else ''} since you started.")
-        lines += [f"{DAY_LABELS.get(k, k)}: {v}" for k, v in self.their_day().items() if v and not k.endswith(SPOKEN)]
-        if self.about:
+        part = "morning" if 4 <= local.hour < 12 else "afternoon" if local.hour < 17 and local.hour >= 12 else "evening" if 17 <= local.hour < 21 else "night"
+        lines = [f"It is {local:%A} {clock_words(local)}." if "time" in about else f"It is {local:%A} {part}."]
+        if "box" in about:
+            lines.append(f"You have been running for {span_words(now - self.started)}.")
+            if self.answered:
+                lines.append(f"You have answered {self.answered} question{'s' if self.answered != 1 else ''} since you started.")
+        if about & {"box", "saw"}:
+            lines += self.seen_today(now, caption="saw" in about)
+        if "done" in about:
+            done = self.done()
+            lines.append(f"What you have done for them today: I've {' and '.join(done[:3])}." if done else "You have done nothing for them yet today; it has been quiet.")
+        wanted = (("now", "plan") if "day" in about else ()) + (("now", "coach", "review") if "coach" in about else ())
+        lines += [f"{DAY_LABELS.get(k, k)}: {v}" for k, v in self.their_day().items() if v and k in wanted]
+        if self.about and about:  # who they are helps with a real question; a chat needs no file on them
             lines.append(f"Who you are talking to: {self.about.rstrip('.')}.")
         return [whole(line, MAX_FACT_CHARS) for line in lines]  # whole sentences: a cut-off word is not a fact
+
+    def done(self) -> list[str]:
+        if not self.done_for_you:
+            return []
+        try:
+            return [str(d) for d in self.done_for_you() or []]
+        except Exception:  # a nicety; a conversation must not fail on it
+            log.debug("no done-for-you list", exc_info=True)
+            return []
+
+    # --- answered in code: hello, and the calendar ---
+
+    def hello(self, question: str) -> str | None:
+        """A greeting or "how's it going?": one short line and an offer, or what Atlas did for them today and an offer.
+        None for anything else."""
+        q = normal(question)
+        bare = LEAD.sub("", q, count=1)
+        if GREETING.search(q) or JUST_THE_NAME.search(q):
+            return ear.said_done([], greeting=True)
+        if HOW_ARE_YOU.search(bare):
+            return ear.said_done(self.done())
+        return None
+
+    def calendar(self, question: str) -> str | None:
+        """ "What does my day look like?", "what's next?", "am I free at 3?": the calendar, said like a person from
+        the items themselves (the same words QA's calendar path says). "Yes" after "Want the rest?" gets the rest.
+        None when it is not a simple calendar question, or there is no memory to read."""
+        if self.memory is None:
+            return None
+        now, q = self.clock(), normal(question)
+        if self.rest and YES_THE_REST.search(LEAD.sub("", q, count=1) or q):
+            ask, at = self.rest
+            self.rest = None
+            if abs(now - at) <= REST_TTL:
+                return self.said(ask, now)
+        self.rest = None
+        if SECOND_ASK.search(q) or len(q.split()) > 14:
+            return None
+        ask = schedule.parse(question, now, self.tz)
+        if ask is None or ask.kind == "due":
+            return None
+        return self.said(ask, now)
+
+    def said(self, ask: schedule.Ask, now: datetime) -> str | None:
+        try:
+            text, named = schedule.said(ask, self.memory, now, self.tz, names=dict(self.config.names))
+        except Exception:
+            log.debug("no calendar for the conversation", exc_info=True)
+            return None
+        if not named and ask.kind in ("next", "day") and not ask.yes_no:  # nothing on the calendar: the Day plan's words, if it has any
+            now_said = re.sub(r"\s+", " ", str(self.their_day().get("now" + SPOKEN) or "")).strip()
+            if now_said:
+                return whole(" ".join(SENTENCE_END.split(now_said)[:2]), MAX_FACT_CHARS)
+        if text.endswith(ear.MORE):
+            self.rest = (schedule.replace(ask, everything=True), now)
+        return text
 
     def their_day(self) -> dict:
         if not self.day_facts:
@@ -361,7 +485,8 @@ class Talk:
         return {"n": len(episodes), "frames": sum(len(e.keyframe_refs) for e in episodes),
                 "at": clock_words(last.start.astimezone(self.tz)), "what": what}
 
-    def seen_today(self, now: datetime) -> list[str]:
+    def seen_today(self, now: datetime, caption: bool = True) -> list[str]:
+        """The cameras' day as a FACTS line; what the last moment showed only with `caption` (they asked what it saw)."""
         s = self.seen(now)
         if s is None:
             return []
@@ -369,7 +494,7 @@ class Talk:
             return ["Your cameras have logged nothing today."]
         n, frames = s["n"], s["frames"]
         line = f"Your cameras logged {n} moment{'s' if n != 1 else ''} today" + (f" and kept {frames} keyframe{'s' if frames != 1 else ''}" if frames else "")
-        return [f"{line}. The last one was at {s['at']}" + (f": {s['what']}." if s["what"] else ".")]
+        return [f"{line}. The last one was at {s['at']}" + (f": {s['what']}." if s["what"] and caption else ".")]
 
     # --- with no model (the fake runtime), and when the model fails ---
 
@@ -392,8 +517,14 @@ class Talk:
             return "No gender here, I'm software on a box. Call me it or they, I answer to both, and mostly to my name."
         if re.search(r"\b(?:who|what) are you\b|\byour name\b|\bare you (?:real|alive|human|a (?:person|robot|bot)|an ai)\b|\bhow old\b", q):
             return f"I'm {name}, an AI that runs right here on this box, not a person. I keep an eye on the place and I'm good company."
-        if re.search(r"\b(?:your day|you been up to|how are you|how're you|how you doing|how are things|what's up|how's it going)\b", q):
-            return self.my_day()
+        about = self.topics(question)
+        if "done" in about or re.search(r"\b(?:how are you|how're you|how you doing|how are things|what's up|how's it going)\b", q):
+            return ear.said_done(self.done())
+        if "coach" in about or "day" in about:
+            return self.their_day_said()
+        if "box" in about:
+            answered = f" and answered {self.answered} question{'s' if self.answered != 1 else ''}" if self.answered else ""
+            return f"I've been running for {span_words(self.clock() - self.started)}{answered}."
         if re.search(r"\b(?:i'm|i am|i feel|feeling|i've been|i had)\b.*\b(?:stress\w*|tired|exhausted|sad|anxious|worried|lonely|overwhelmed"
                      r"|nervous|rough|awful|bad|down)\b", q):
             return "That sounds like a lot. Take one slow breath with me, then tell me the part that's weighing on you most."
@@ -408,21 +539,14 @@ class Talk:
         return (f"I'm {name}, and on this laptop I'm running without my model, so small talk is all I've got. "
                 "Ask me how my day is, or for a joke.")
 
-    def my_day(self) -> str:
-        """Three short sentences to be said aloud: its own day, the person's (the narrator's spoken words when it
-        has them, never the screen's text with its brackets), and the question back."""
-        s = self.seen(self.clock())
-        if s is None:
-            mine = "Pretty good, all quiet here."
-        elif not s["n"]:
-            mine = "It's been quiet, the cameras haven't logged a thing today."
-        else:
-            last = f", the last at {s['at']}" + (f": {lower_first(s['what'])}" if s["what"] else "")
-            mine = f"Pretty good, my cameras logged {s['n']} moment{'s' if s['n'] != 1 else ''} today{last}."
+    def their_day_said(self) -> str:
+        """How their day stands, asked for ("how am I doing?"): the narrator's spoken words when it has them, never
+        the screen's text with its brackets. One sentence."""
         day = self.their_day()
         said = re.sub(r"\s+", " ", str(day.get("now" + SPOKEN) or day.get("now") or "")).strip()
-        theirs = whole(SENTENCE_END.split(said, maxsplit=1)[0], MAX_FACT_CHARS) if said else ""
-        return " ".join(part for part in (mine, theirs, "How's yours going?") if part)
+        if not said:
+            return "I don't have a plan for today yet, so there's nothing to be behind on."
+        return whole(SENTENCE_END.split(said, maxsplit=1)[0], MAX_FACT_CHARS)
 
     # --- live hooks (wired in the composition root) ---
 
@@ -435,3 +559,4 @@ class Talk:
     def forget(self) -> None:
         self.turns.clear()
         self.last = None
+        self.rest = None
