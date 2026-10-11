@@ -190,6 +190,19 @@ Kernel speed and model quality are out of scope.
   - Candidate experiment: the LoRA beside the pair with 1 MB queue chunks. Expected movement: the DataLoader starts
     and the step time stays near 128 s. Minimum sample size: 1 run per pod.
 
+- **[measured]** The live loop (L29, main at 955cd8e plus PRs 435 and 437) ran end to end against the vision pair:
+  the solo act (12 examples) and the duo act (24 examples, its LoRA trained as two ranks, rank 0 on pod D and rank 1
+  on pod C, both beside the pair) labeled with pictures on the pair in 3.8 and 7.4 s, trained 8 steps in 109.0 and
+  104.3 s, packaged in 105.7 and 84.1 s, and posted to the box in 228.4 s from the start; the two ranks swapped their
+  int8 deltas through the hub proxy (32.5 MB in 0.62 s) and ended with identical weights. The pods spent 833 J an
+  example on the solo act and 502 J on the duo act. While both acts packaged, the pair still decoded at 7.95 tok/s.
+  Source: `fixtures/lab/r66-2026-10-11/live-loop-run5.txt`
+  - Implication: one pair of pods now serves the 122B teacher and trains two LoRAs at once; the loop needed three
+    fixes to get there (ports below the shim's pinned range, the trainer's DataLoader in-process because RCCL holds
+    most of `/dev/shm`, and the rank runner's import path), none of them in the network itself.
+  - Candidate experiment: the same loop with 15 examples a member, three runs. Expected movement: act times near
+    233 s; duo energy per example stays near 0.6 of solo. Minimum sample size: 3 runs.
+
 ## Open questions
 
 - Would a second tunnel in the other direction (server and relay on pod C) remove the D to C stall?
