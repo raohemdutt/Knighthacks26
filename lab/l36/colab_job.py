@@ -73,7 +73,7 @@ if (ROOT / "runs" / "STARTED").exists():
         log = ROOT / "runs" / f"{run}.log"
         if log.exists():
             print("--", run)
-            print(sh(f"grep -a -i 'eval\|valid\|step 6\|error\|Traceback' {log} | tail -n 6; tail -n 3 {log} | cut -c1-300"))
+            print(sh(f"grep -a -i -E 'eval|valid|error|Traceback' {log} | tail -n 6; tail -n 3 {log} | cut -c1-300"))
             print(sh(f"cat {ROOT}/runs/{run}/validation.jsonl 2>/dev/null | cut -c1-200"))
 else:
     (ROOT / "runs").mkdir(parents=True, exist_ok=True)
