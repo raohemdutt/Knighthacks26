@@ -646,3 +646,17 @@ def test_an_account_gets_its_role_as_its_node_and_one_with_no_role_is_refused_no
     with pytest.raises(hub.PodRoleError):
         _ = Account("D", "acct-d", TOKEN).node
     assert hub.hub_of("https://sjc.test/") == "sjc.test"
+
+
+def test_lab_hub_url_in_a_dotenv_file_sets_the_address_when_the_environment_has_none(tmp_path):
+    # pods-hub-address-and-accounts-pinned-to-dub-ab, modul-hard-hub-address: LAB_HUB_URL was read from the process
+    # environment only. Order: the account's own AUP_HUB_URL_<letter>, then LAB_HUB_URL (environment, then .env).
+    dotenv = tmp_path / ".env"
+    dotenv.write_text(f"AUP_HUB_USER_A=acct-a\nAUP_HUB_TOKEN_A={OTHER_TOKEN}\nAUP_HUB_USER_B=acct-b\n"
+                      f"AUP_HUB_TOKEN_B={OTHER_TOKEN}\nAUP_HUB_URL_B=https://own.example.test\n"
+                      "LAB_HUB_URL=https://sjc.example.test\n", encoding="utf-8")
+    accounts = load_accounts(["A", "B"], environ={}, env_files=[dotenv])
+    assert Hub(accounts["A"], environ={}).base_url == "https://sjc.example.test"
+    assert Hub(accounts["B"], environ={}).base_url == "https://own.example.test"
+    from_env = load_accounts(["A"], environ={"LAB_HUB_URL": "https://env.example.test"}, env_files=[dotenv])
+    assert Hub(from_env["A"], environ={}).base_url == "https://env.example.test"
