@@ -87,7 +87,7 @@ def test_share_card_accept_card_and_then_the_friends_box_recognises_them(pair):
     assert member == {"member_id": ANA_AT_BOB, "name": TEMPLATE_NAME["ana"], "enrolled_at": T0.isoformat(),
                       "updated_at": T0.isoformat(), "photos": 5, "source": "circle", "expressions": False,
                       "circle_member_id": "ana", "shared_by": "ana", "received_at": T0.isoformat(),
-                      "expires_at": (T0 + timedelta(days=30)).isoformat()}
+                      "expires_at": (T0 + timedelta(days=30)).isoformat(), "scanned": True, "recognised": True}
     assert bob.states() == [("in", "ana", "offered"), ("in", "ana", "received")]
     changed = [e for e in bob.events if e.type == "perception.identity.changed"][-1]
     assert changed.received_from == ["ana"] and changed.members == [ANA_AT_BOB]

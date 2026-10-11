@@ -5,8 +5,9 @@
 - GET    /identity/settings         {identity_enabled, available, recognizer, everyone, expressions_available,
                                      expression_reader, photos_available[, reason]}
 - PUT    /identity/settings         {identity_enabled?: bool, everyone?: bool, confirm?: bool}; 409 when the model for it
-                                    is not on this box or recognition is off; 422 when `everyone: true` comes without
-                                    `confirm: true`
+                                    is not on this box. `everyone: true` is always refused (409): the room mode read
+                                    people who never did the face scan and is retired; `everyone` in the answer is
+                                    always false
 - POST   /identity/enroll/start     {name, consent_ack: true[, member_id][, camera_id][, circle_member_id]} -> the enrolment
                                     status; 409 while switched off; 422 without `consent_ack: true`
 - POST   /identity/enroll/scan/start   {name?, member_id?, consent_ack: true[, circle_member_id]} -> {session, count, needed,
@@ -16,23 +17,27 @@
 - POST   /identity/enroll/scan/finish  {session} -> what /identity/enroll/photos returns (the same checks and rules)
 - POST   /identity/enroll/scan/cancel  {session} -> {cancelled: true}: what was collected is dropped
 - GET    /identity/enroll/status    {state: idle|collecting|done|failed, frames_done, frames_needed, hint, error, ...}
-- POST   /identity/enroll/photos    enrol from 3 to 12 photos, or add 1 to 12 photos to a member (`member_id`). The body is
+- POST   /identity/enroll/photos    add 1 to 12 photos to a member (`member_id`), or keep 3 to 12 photos for someone new,
+                                    who is then "not yet scanned" (`scanned: false` and a `message` in the answer): kept,
+                                    but not recognised and not read until a scan of that member finishes. The body is
                                     JSON {name?, member_id?, circle_member_id?, consent_ack: true, photos: [base64 or data: URL, ...]} or
                                     multipart/form-data with the same fields and one `photos` file part per picture.
                                     -> {state: done|failed, member_id, accepted, rejected, needed, exemplars, error,
-                                        photos: [{index, accepted, reason, message}]}
+                                        scanned, message, photos: [{index, accepted, reason, message}]}
                                     409 while switched off (or without OpenCV), 413 when too large, 422 for a bad body
 - GET    /identity/members          [{member_id, name, enrolled_at, updated_at, photos, source, expressions,
-                                    circle_member_id}]: the only place a name is returned, never the template. A row a
+                                    circle_member_id, scanned, recognised}]: the only place a name is returned, never the template. A row a
                                     friend's box shared (source "circle", face share) also has {shared_by, received_at,
                                     expires_at}; it can be deleted here and not changed (409)
 - PUT    /identity/members/{id}     {expressions?: bool, name?: str, circle_member_id?: str}: "read my expressions" for this
-                                    member (409 when the expression model is not on this box); which Circle member they
+                                    member (409 when the expression model is not on this box, and 409 "Finish the face
+                                    scan first." for a member who has not scanned); which Circle member they
                                     are ("" unlinks; 422 when the Circle has no such member)
 - GET    /identity/present          {present: [{member_id, circle_member_id, cameras}]}: who a camera recognises right now
 - DELETE /identity/members/{id}     removes the template, the exemplars and the member's settings
 - GET    /identity/expressions      ?member_id=&hours=: the stretches of apparent expression for one enrolled member, or,
-                                    without member_id, the anonymous room aggregate of the "everyone" mode
+                                    without member_id, the anonymous room aggregates an older log still holds (none
+                                    are made any more)
 
 `guard` is the gateway's token check; it goes on every PUT, POST and DELETE.
 
