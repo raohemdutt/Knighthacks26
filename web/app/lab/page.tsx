@@ -186,7 +186,7 @@ export default function LabPage() {
       <>
         {tabs}
         <section id="speed" className={loop.view} aria-label="Speed and energy" data-guide="lab:speed">
-          <SpeedEnergy initialBatch={number("batch")} initialTtft={q.get("ttft") === "1"} initialPoint={q.get("point")} initialDrawer={asked === "routing" ? null : q.get("drawer")} initialCompare={q.get("compare")} initialSweep={q.get("sweep")} forceReduced={params.reduce} />
+          <SpeedEnergy initialBatch={number("batch")} initialTtft={q.get("ttft") === "1"} initialPoint={q.get("point")} initialDrawer={asked === "routing" ? null : q.get("drawer")} initialSweep={q.get("sweep")} forceReduced={params.reduce} />
         </section>
         <section id="routing" className={loop.view} aria-label="Routing" data-guide="lab:routing">
           {named("routing")}

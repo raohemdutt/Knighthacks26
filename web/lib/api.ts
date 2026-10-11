@@ -2660,3 +2660,47 @@ import type * as Spot from "@/components/spot/types";
 
 /** Full URL of a gateway path the inspection screen puts in an <img> (the floor plan, the kit's sample pictures). */
 export const spotUrl = (path: string): string => HTTP_BASE + path;
+
+/**
+ * POST /api/learning/lab/live-chat (contexts/learning/live_chat.py): the question streamed as Server-Sent Events, each
+ * event handed to `onEvent` as it arrives. Resolves when the stream ends; throws ApiError when the route refuses.
+ */
+export async function liveChatStream(
+  question: string,
+  target: import("./liveChat").ChatTarget,
+  onEvent: (e: import("./liveChat").ChatEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const { parseSse } = await import("./liveChat");
+  const headers: Record<string, string> = { "Content-Type": "application/json", Accept: "text/event-stream" };
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  let res: Response;
+  try {
+    res = await fetch(HTTP_BASE + "/api/learning/lab/live-chat", { method: "POST", headers, body: JSON.stringify({ question, target }), signal });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") throw err;
+    throw new ApiError(0, "Can't reach the Atlas box. Check that you are on the same network.");
+  }
+  if (!res.ok || !res.body) {
+    let detail = res.statusText || `HTTP ${res.status}`;
+    try {
+      const data: unknown = await res.json();
+      if (data && typeof data === "object" && typeof (data as { detail?: unknown }).detail === "string") detail = (data as { detail: string }).detail;
+    } catch {
+      /* not JSON: keep the status text */
+    }
+    throw new ApiError(res.status, detail);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (value) buffer += decoder.decode(value, { stream: !done });
+    const parsed = parseSse(done ? buffer + "\n\n" : buffer);
+    buffer = parsed.rest;
+    for (const e of parsed.events) onEvent(e);
+    if (done) return;
+  }
+}

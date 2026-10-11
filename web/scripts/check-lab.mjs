@@ -209,6 +209,21 @@ try {
   const line = LP.podLine([r0, r1, { t: 20_000, w: { "pod-a": 15 } }], "pod-a");
   is("the line breaks across a missed stretch", line.map((x) => x[1]).join(","), "10,20,-,15");
   is("kJ text", LP.kjText(54), "0.05 kJ");
+  // ---- the live chat beside the power graph (lib/liveChat.ts): SSE parsing and the footer, never a made-up joule
+  const LC = await load("liveChat");
+  const NL = String.fromCharCode(10);
+  const CR = String.fromCharCode(13);
+  const lines = (...xs) => xs.join(NL);
+  const two = LC.parseSse(lines("event: token", 'data: {"text": "Hel"}', "", "event: token", 'data: {"text": "lo"}', "", "event: do"));
+  is("sse: two whole events", two.events.length, 2);
+  is("sse: token text", two.events[1].data.text, "lo");
+  is("sse: the partial block waits", two.rest, "event: do");
+  is("sse: CRLF blocks", LC.parseSse(["event: error", 'data: {"error": "x"}', "", ""].join(CR + NL)).events[0].data.error, "x");
+  is("sse: not JSON is skipped", LC.parseSse(lines("event: token", "data: nope", "", "")).events.length, 0);
+  const done = { answer: "a", target: "pair", serving: null, tokens: 42, seconds: 3.04, tok_s: 18.2, ttft_s: 0.4, calls: [], energy: { joules: 512.6 } };
+  is("footer", LC.footerText(done), "42 tokens in 3.0 s, 18.2 tok/s, about 513 joules");
+  is("footer, meters offline", LC.footerText({ ...done, energy: null, tok_s: null, tokens: 1 }), "1 token in 3.0 s, meters offline");
+  is("keep the last three", LC.keepLast([1, 2, 3, 4]).join(","), "2,3,4");
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

@@ -47,7 +47,6 @@ import s from "./speed.module.css";
  * from today's full payload (lib/labBench.ts summaryFromFull). Sessions are picked by engine, chip and date, never
  * by a number written here.
  *
- *   /lab/?tab=speed&compare=1          the hero chart with the NVIDIA A100 reference on
  *   /lab/?tab=speed&sweep=<session>    the drawer open at that session
  *   /lab/?tab=speed&drawer=what|rows   with that sheet open
  */
@@ -157,10 +156,9 @@ function LiveStrip({ brain, fresh, box, reduced }: { brain: SharedBrainPair | nu
 
 /* ---------- 1. the chip fix ---------- */
 
-function ChipFix({ story, reduced, a100, setA100, onPick }: { story: ReturnType<typeof speedStory>; reduced: boolean; a100: boolean; setA100: (v: boolean) => void; onPick: (session: string, metric: string, batch: number) => void }) {
+function ChipFix({ story, reduced, onPick }: { story: ReturnType<typeof speedStory>; reduced: boolean; onPick: (session: string, metric: string, batch: number) => void }) {
   const t = useChartTokens();
   const { after, before, llama } = story;
-  const ref = a100 ? story.a100 : null;
 
   const a1 = at(after, 1);
   const b1 = at(before, 1);
@@ -177,7 +175,7 @@ function ChipFix({ story, reduced, a100, setA100, onPick }: { story: ReturnType<
 
   const option = useMemo<EChartsOption>(() => {
     const axis = chartAxis(t);
-    const lines = [after, llama, ref].filter(Boolean) as StoryLine[];
+    const lines = [after, llama, before].filter(Boolean) as StoryLine[];
     const maxB = Math.max(2, ...lines.flatMap((l) => l.points.map((p) => p.batch)));
     const wTop = Math.max(10, ...(after?.points ?? []).map((p) => p.watts ?? 0)); // the watts axis is the vLLM pod's own
     return {
@@ -193,7 +191,7 @@ function ChipFix({ story, reduced, a100, setA100, onPick }: { story: ReturnType<
           if (!ps.length) return "";
           const head = `<b>${streams(ps[0]!.value[0])}</b>`;
           const sessionOf = (p: { seriesId: string; value: [number, number] }) => {
-            const l = [after, llama, ref].find((x) => x && p.seriesId.startsWith(`${x.session.id}:`));
+            const l = [after, llama, before].find((x) => x && p.seriesId.startsWith(`${x.session.id}:`));
             return l?.points.find((q) => q.batch === p.value[0])?.session ?? null;
           };
           const rows = ps.map((p) => {
@@ -214,14 +212,22 @@ function ChipFix({ story, reduced, a100, setA100, onPick }: { story: ReturnType<
               series(t, `${after.session.id}:j`, "vLLM after the kernel fix", t.accent3, lineData(after, (p) => p.j_per_token), {
                 areaStyle: { color: { type: "linear", x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: `${t.accent3}33` }, { offset: 1, color: `${t.accent3}00` }] } },
               }),
-              series(t, `${after.session.id}:w`, "Pod watts (vLLM)", t.watch, lineData(after, (p) => p.watts), { yAxisIndex: 1, smooth: false, symbolSize: 6, lineStyle: { width: 2, type: "dashed", color: t.watch } }),
+              series(t, `${after.session.id}:w`, wMid !== null ? `Power drawn, stays at ${Math.round(wMid)} W` : "Power drawn", t.watch, lineData(after, (p) => p.watts), { yAxisIndex: 1, smooth: false, symbolSize: 6, lineStyle: { width: 2, type: "dashed", color: t.watch } }),
             ]
           : []),
         ...(llama ? [series(t, `${llama.session.id}:j`, "llama.cpp Vulkan, measured", t.accent2, lineData(llama, (p) => p.j_per_token))] : []),
-        ...(ref ? [series(t, `${ref.session.id}:j`, "NVIDIA A100 (reference)", t.unknown, lineData(ref, (p) => p.j_per_token), { symbol: "triangle", lineStyle: { width: 2, type: "dotted", color: t.unknown } })] : []),
+        // the pre-fix session the 4.5x tile divides by, grey, above the green line so the gap is the speedup
+        ...(before && before.session.id !== after?.session.id
+          ? [
+              series(t, `${before.session.id}:j`, "vLLM before the kernel fix", t.muted, lineData(before, (p) => p.j_per_token), {
+                lineStyle: { width: 2.5, color: t.muted },
+                label: { show: before.points.length === 1, position: "top", color: t.muted, fontSize: 12, formatter: "vLLM before the kernel fix" },
+              }),
+            ]
+          : []),
       ],
     };
-  }, [t, reduced, after, llama, ref]);
+  }, [t, reduced, after, llama, before, wMid]);
 
   return (
     <section className={s.section} aria-labelledby="speed-fix">
@@ -242,7 +248,7 @@ function ChipFix({ story, reduced, a100, setA100, onPick }: { story: ReturnType<
               onClick={(p) => {
                 const id = p.seriesId ?? "";
                 const session = id.replace(/:[jw]$/, "");
-                const l = [after, llama, ref].find((x) => x?.session.id === session);
+                const l = [after, llama, before].find((x) => x?.session.id === session);
                 const pt = l?.points.filter((q) => (id.endsWith(":w") ? q.watts : q.j_per_token) !== null)[p.dataIndex];
                 if (pt) onPick(pt.session, id.endsWith(":w") ? "watts_avg" : "joules_per_token", pt.batch);
               }}
@@ -251,10 +257,6 @@ function ChipFix({ story, reduced, a100, setA100, onPick }: { story: ReturnType<
             <p className={s.empty}>No vLLM session on a Strix Halo pod in these rows yet, so there is nothing to draw.</p>
           )}
           <div className={s.chartFoot}>
-            <label className={s.toggle}>
-              <input type="checkbox" checked={a100} disabled={!story.a100} onChange={(e) => setA100(e.target.checked)} />
-              <span>{story.a100 ? "Show the NVIDIA A100 reference" : "No A100 reference session in these rows"}</span>
-            </label>
             <span className={s.foot}>Hollow points are low confidence. Tap a point for its row.</span>
           </div>
         </div>
@@ -869,7 +871,6 @@ function Sessions({
 
 export function SpeedEnergy({
   initialDrawer,
-  initialCompare = null,
   initialSweep = null,
   forceReduced,
 }: {
@@ -877,13 +878,11 @@ export function SpeedEnergy({
   initialTtft: boolean;
   initialPoint: string | null;
   initialDrawer: string | null;
-  initialCompare?: string | null;
   initialSweep?: string | null;
   forceReduced: boolean;
 }) {
   const bench = useFetch((signal) => api.labBench(signal), "bench");
   const reduced = useReduced(forceReduced);
-  const [a100, setA100] = useState(initialCompare === "1" || /a100/i.test(initialCompare ?? ""));
   const [sheet, setSheet] = useState<"what" | "rows" | null>(initialDrawer === "what" || initialDrawer === "rows" ? initialDrawer : null);
   const [open, setOpen] = useState(initialSweep !== null || initialDrawer !== null);
   const [selected, setSelected] = useState<string | null>(initialSweep);
@@ -996,8 +995,8 @@ export function SpeedEnergy({
       {sessions.length === 0 ? <p className={b.banner}>{data.empty_reason ?? "No bench session in these rows yet."}</p> : null}
 
       <LiveStrip brain={live.brain} fresh={live.fresh} box={boxReading} reduced={reduced} />
-      <LivePower poll={live.poll} reduced={reduced} />
-      <ChipFix story={story} reduced={reduced} a100={a100} setA100={setA100} onPick={pickFromChart} />
+      <LivePower poll={live.poll} reduced={reduced} chat />
+      <ChipFix story={story} reduced={reduced} onPick={pickFromChart} />
       <BiggerBrain story={story} reduced={reduced} both={both} />
 
       <section className={s.section} aria-labelledby="speed-power">

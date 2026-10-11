@@ -50,6 +50,9 @@ POST /api/learning/lab/deploy/ask         {question}
     from the same facts; its joules are both pods' samplers over the request window (gross, idle beside). The two
     run in parallel, each with a SIDE_TIMEOUT_S timeout and an honest {error} when one fails.
     ATLAS_ASK_COMPARE=off leaves the brain out ("brain": null).
+POST /api/learning/lab/live-chat          {question, target: "pair" | "box"}
+    the same question answered as Server-Sent Events, token by token, then {answer, tokens, seconds, tok_s, ttft_s,
+    energy}: the Speed and energy tab's live chat beside the power graph (contexts/learning/live_chat.py).
     503 when the model server does not answer (it does not for about a minute of every swap).
 
 The stages come from the `STAGE <name> <start|done|failed> <unix seconds>` lines atlas_swap.py prints. The status is
@@ -75,6 +78,7 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 
 from runtime.modelstore import VERIFIED_RECORD, ModelStore, read_verified, record_vouches
 
@@ -717,5 +721,27 @@ def lab_deploy_router(runner: DeployRunner, *, guard: Callable | None = None, qu
                "calls": box.get("calls", []), "expected": box.get("expected"), "seconds": box.get("seconds", 0.0),
                "prompt": box.get("prompt", "chat"), "energy": box.get("energy")}
         return {**old, "box": box, "brain": brain}
+
+    @router.post("/api/learning/lab/live-chat", dependencies=guarded)
+    async def live_chat(request: Request, body: dict[str, Any] | None = Body(default=None)) -> StreamingResponse:
+        # the live chat beside the power graph: tokens as Server-Sent Events, then the joules (live_chat.py)
+        from contexts.learning import live_chat as chat
+
+        question = (body or {}).get("question")
+        target = (body or {}).get("target", "pair")
+        if not isinstance(question, str) or not question.strip():
+            raise HTTPException(400, "give the question: {\"question\": \"...\", \"target\": \"pair\" | \"box\"}")
+        if target not in chat.TARGETS:
+            raise HTTPException(400, "target is \"pair\" or \"box\"")
+        question = " ".join(SPECIAL_RE.sub("", question).replace("<|", "").replace("|>", "").split())[:300]
+        if not question:
+            raise HTTPException(400, "give the question: {\"question\": \"...\"}")
+        tools = qa if qa is not None else getattr(getattr(request.app.state, "atlas", None), "qa", None)
+        in_app = getattr(request.app.state, "atlas", None) is not None
+        brain_pair = (pair if pair is not None else default_pair() if in_app else None) if target == "pair" else None
+        stream = chat.event_stream(question, target, qa=tools, pair=brain_pair,
+                                   llm_url=runner.llm_url or DEFAULT_LLM_URL, transport=ask_transport, meter=meter)
+        return StreamingResponse(stream, media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     return router
