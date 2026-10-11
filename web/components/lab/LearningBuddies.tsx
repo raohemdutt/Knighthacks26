@@ -279,7 +279,7 @@ export function LearningBuddies({ state, steps, loss, joulesPerExample, friends,
           </div>
           {ratio !== null ? (
             <div className={`${css.counter} ${css.counterFriend}`}>
-              <span className={`${css.counterNum} ${css.good}`}>{Number(ratio.toFixed(2))}x</span>
+              <span className={`${css.counterNum} ${css.good}`}>{ratio.toFixed(ratio >= 1 ? 1 : 2)}x</span>
               <span className={css.counterLabel}>examples, pooled with {friends === 1 ? "a friend" : `${friends} friends`}</span>
             </div>
           ) : null}
