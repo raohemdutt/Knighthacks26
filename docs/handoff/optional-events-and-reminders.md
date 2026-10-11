@@ -934,3 +934,28 @@ yes and no on the Calendar's own list.
   event, it is lost, because nothing is said while a fixed block runs (on the scene's day: the study block at
   6:20 PM, straight after the dinner).
 - The limits listed at the end of section (h) stand.
+
+---
+
+## (j) After the report: the answers, two fixes, and main merged in
+
+- The four decisions section (i) lists as waiting were confirmed as built by this document's author (Sun 2:13 AM
+  ET, on Ilan's team page).
+- The two things section (i) lists as found are fixed on this branch:
+  - An approval ask the arbiter is holding is dropped, never said, once its card is approved, declined or has run
+    out: `Arbiter.on_card_closed` cancels it by the card's action id. Test:
+    `contexts/day/tests/test_optional_suggest.py::test_an_approval_ask_the_arbiter_is_holding_is_dropped_once_its_card_is_approved_or_declined`.
+  - A block-start reminder whose lead time for the walk falls inside a fixed event is no longer lost. It waits for
+    that event to end when that is before the block starts, and for the block's start otherwise; it is never said
+    during the event. Unless the cameras saw the person since the event began, the plan has them at the event and
+    the walk is counted from there (`contexts/day/domain/reminders.py`, `due`). The line is the existing "start"
+    wording, through `Narrator.tell`. Test:
+    `contexts/day/tests/test_reminders.py::test_a_block_start_whose_lead_time_falls_inside_a_fixed_event_is_said_when_that_event_ends`.
+- `main` was merged into the branch (`26e905b`; a merge, not a rebase). One conflict, in
+  `contexts/gateway/bootstrap.py`: `main` added `files=files` to the `Atlas(...)` call at the end of `build()`, and
+  this branch has the box speaker's `_box_say` right after that call. Both are kept. `main`'s newer work is as it
+  was: `Board.suggestions` (an accepted optional event is a fixed block of the board, so its "Near you" item falls
+  in no open slot and is not offered again), the calendar titles through `EVENT_PREFIX` (the event a yes brings in
+  keeps its own title, without the prefix), and the runtime scheduler's priority on model calls.
+- Left as it is: a re-plan's own line that the arbiter held is still said after its card was answered (only the
+  card's ask is dropped). Nothing was heard by ear and nothing ran on the Jetson.

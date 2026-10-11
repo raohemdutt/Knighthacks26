@@ -248,6 +248,7 @@ def test_a_yes_raises_a_replan_behind_the_usual_card_and_approved_it_is_a_block_
     waiting = next(r for r in c.get("/api/day/optional").json()["events"] if r["id"] == DINNER)
     assert (waiting["state"], waiting["answer"], waiting["awaiting_approval"], waiting["action_id"]) == ("suggested", "yes", True, card.id)
     assert DINNER_BLOCK not in [x.id for x in b.dayrun.board(at(16, 1)).blocks]  # not on the board yet
+    assert DINNER in [x.id for x in b.dayrun.board(at(16, 1)).suggestions]  # still only offered
 
     # approved: the re-plan is the day's plan, and the dinner is an ordinary fixed block of it
     b.approve(card.id, at(16, 2))
@@ -262,6 +263,8 @@ def test_a_yes_raises_a_replan_behind_the_usual_card_and_approved_it_is_a_block_
     done = next(r for r in c.get("/api/day/optional").json()["events"] if r["id"] == DINNER)
     assert (done["state"], done["awaiting_approval"], done["action_id"]) == ("accepted", False, None)
     assert DINNER_BLOCK in [x.id for x in b.dayrun.board(at(16, 3)).blocks]  # the Day Run board carries it from here on
+    # ... as a block, and so no longer as a "Near you" suggestion for an open slot; the one not answered is still offered
+    assert [x.id for x in b.dayrun.board(at(16, 3)).suggestions] == [REVIEW]
 
     # a second box built on the same log shows the same state and says nothing
     again = box(places, tmp_path, name="b")
