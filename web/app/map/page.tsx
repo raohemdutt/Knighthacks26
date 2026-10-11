@@ -11,7 +11,7 @@ import { Empty, ErrorBox, Loading } from "@/components/States";
 import ui from "@/components/ui.module.css";
 import { ApiError, api, type FloorTrack, type PlayRoute, type Sighting } from "@/lib/api";
 import { cameraName, dayTime, humanize, relative } from "@/lib/format";
-import { pinTarget } from "@/lib/guide";
+import { hereSentence, pinTarget, roomPrecision, spotWords } from "@/lib/guide";
 import { pointAt } from "@/lib/guideBus";
 import { CAMERAS, SORT_ITEMS, WATCH_ITEMS, cameraOfZone, placePins, routePoints, type Point, type RoomPin } from "@/lib/room";
 import { useRoomTwin, useTwinPins } from "@/lib/roomTwin";
@@ -164,7 +164,16 @@ export default function RoomMapPage() {
   const seenCount = (seen.data ?? []).filter((s) => s.sighting).length;
   const liveOn = tracks.length > 0;
 
-  const point = (label: string) => pointAt({ target: pinTarget(label) });
+  // Cameras still on the points the room file shipped with: a placeholder, not a calibration of the real camera.
+  const placeholder = Object.entries(twin.plan?.calibration ?? {}).filter(([, c]) => c.source === "default").map(([camera]) => camera);
+  // The look guide lands on the pin this screen already focuses; exact only for a projected spot from a calibrated camera.
+  const point = (label: string) => {
+    const pin = twinPins.find((p) => p.label === label);
+    const s = seen.data?.find((x) => x.label === label)?.sighting;
+    const precision = roomPrecision(Boolean(pin?.exact), s ? twin.plan?.calibration?.[s.camera_id]?.source : undefined);
+    setItem(label);
+    pointAt({ target: pinTarget(label), precision, spot: { label: spotWords(precision, /s$/.test(label)) }, arrive: hereSentence(precision, label, /s$/.test(label), s?.position ? humanize(s.position).toLowerCase() : null) });
+  };
 
   return (
     <>
@@ -208,7 +217,7 @@ export default function RoomMapPage() {
               const on = selected === s.label;
               const fresh = freshness(s.sighting, now);
               return (
-                <button key={s.label} type="button" className={`${css.thing} ${on ? css.thingOn : ""}`} aria-pressed={on} onClick={() => setItem(s.label)}>
+                <button key={s.label} type="button" data-guide={`find:${s.label}`} className={`${css.thing} ${on ? css.thingOn : ""}`} aria-pressed={on} onClick={() => setItem(s.label)}>
                   <span className={css.fresh} data-fresh={fresh} aria-hidden="true" />
                   <span className={css.thingName}>{humanize(s.label)}</span>
                   {s.sighting ? (
@@ -231,7 +240,7 @@ export default function RoomMapPage() {
           {CAMERAS.length === 0 && !hasPlan ? (
             <Empty title="No room to draw">This box has no room plan and no camera zones yet. Both come from the config when the app is built.</Empty>
           ) : (
-            <div className={`${ui.card} ${css.stageCard}`}>
+            <div className={`${ui.card} ${css.stageCard}`} data-guide="map:room">
               <div className={css.viewRow}>
                 <div className={css.seg} role="group" aria-label="View">
                   <button type="button" className={`${css.segBtn} ${view === "room" ? css.segOn : ""}`} aria-pressed={view === "room"} onClick={() => setView("room")}>
@@ -270,6 +279,12 @@ export default function RoomMapPage() {
                   ))}
                 </ol>
               ) : null}
+              {view !== "cameras" && hasPlan && placeholder.length > 0 ? (
+                <p className={`${ui.muted} ${ui.small}`} data-guide="map:calibration">
+                  Not calibrated for {placeholder.length === 1 ? "this camera" : "these cameras"} yet ({placeholder.map((c) => cameraName(c).toLowerCase()).join(", ")}): positions are approximate. To calibrate, mark
+                  four spots on the floor and send them once: <code>PUT /api/room/calibration/{placeholder[0]}</code> with the four picture points and the same four in room metres.
+                </p>
+              ) : null}
               {view !== "cameras" && hasPlan ? (
                 <p className={`${ui.muted} ${ui.small}`}>
                   Drawn from the floor plan, in metres. A person or thing stands where its camera puts it on the floor; a pin stands where its item was last seen, or in its zone when that is all the
@@ -279,7 +294,7 @@ export default function RoomMapPage() {
             </div>
           )}
 
-          <details className={css.bin} open={sort !== null}>
+          <details className={css.bin} open={sort !== null} data-guide="map:bins">
             <summary>
               <span>Which bin does it go in?</span>
               {ICON_CHEVRON}
@@ -405,7 +420,7 @@ function ThingCard({ seen, placed, now, onPoint }: { seen: Seen; placed: boolean
     );
   const fresh = freshness(s, now);
   return (
-    <div className={`${ui.card} ${css.detail}`} data-thing={s.label}>
+    <div className={`${ui.card} ${css.detail}`} data-thing={s.label} data-guide={`thing:${s.label}`}>
       <div className={css.detailHead}>
         <p className={css.detailTitle}>{humanize(s.label)}</p>
         <span className={`${ui.tag} ${fresh === "now" ? ui.tagAccent : ""}`}>{relative(s.ts, new Date(now))}</span>
@@ -476,7 +491,7 @@ function Room2D({ pins, selected, route, onPick }: { pins: RoomPin[]; selected: 
               // Every pin carries its number; its name is written here only where the zone has room for
               // every name in it. The list under the map names them all.
               return (
-                <g key={p.label} onClick={() => onPick(p.label)} style={{ cursor: "pointer" }}>
+                <g key={p.label} data-guide={`pin:${p.label}`} onClick={() => onPick(p.label)} style={{ cursor: "pointer" }}>
                   <title>{humanize(p.label)}</title>
                   <circle className={`${dr.pin} ${on ? dr.pinOn : ""}`} cx={x} cy={y} r={on ? 10.5 : 9.5} />
                   <text className={`${dr.pinNumber} ${on ? dr.pinNumberOn : ""}`} x={x} y={y + 4} textAnchor="middle">

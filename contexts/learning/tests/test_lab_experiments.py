@@ -62,7 +62,8 @@ def test_refinement_passes_and_benchmark_sessions_come_from_the_committed_record
     for c in passes:
         assert c["status"] in ("open", "converged") and c["day_only"] and c["source"]["ref"].startswith("lab/refine/")
         assert f"{c['ts']}\"" in c["source"]["ref"] and [n["unit"] for n in c["numbers"]] == ["changes", "findings", "questions"]
-    (session,) = session_cards(ROWS)
+    session, a100 = session_cards(ROWS)  # the R26 sweep on pod C, then R57's A100 reference on Colab
+    assert a100["node"] == "a100" and [n["value"] for n in a100["numbers"]] == [30, 30]
     assert session["id"] == "bench-20261010T215122Z-2c65" and session["status"] == "measured" and session["node"] == "pod-a"
     assert session["lever"] == "batch size 1, 4, 8, 16, 64" and [n["value"] for n in session["numbers"]] == [30, 30]
     assert session["source"]["ref"] == "lab/refine/metrics.jsonl:67-96" and "3 spawn(s)" in session["verdict"]
@@ -73,5 +74,5 @@ def test_the_endpoint_serves_the_timeline(tmp_path):
     app.include_router(lab_bench_router(state_dir=tmp_path))
     with TestClient(app) as client:
         body = client.get("/api/learning/lab/experiments").json()
-        assert body["experiments"]["total"] == 5 and body["passes"] >= 10 and body["sessions"] == 1
+        assert body["experiments"]["total"] == 5 and body["passes"] >= 10 and body["sessions"] == 2
         assert all(c["source"]["ref"] for c in body["cards"])
