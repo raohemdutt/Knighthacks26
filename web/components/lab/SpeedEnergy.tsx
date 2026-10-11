@@ -22,6 +22,7 @@ import {
   MACHINES,
   machineName,
   modelBillions,
+  projectNoBatching,
   speedStory,
   when,
 } from "@/lib/labBench";
@@ -108,6 +109,9 @@ function Tile({ value, label, sub, missing }: { value: string | null; label: str
 function ChipFix({ story, reduced, a100, setA100, onPick }: { story: ReturnType<typeof speedStory>; reduced: boolean; a100: boolean; setA100: (v: boolean) => void; onPick: (session: string, metric: string, batch: number) => void }) {
   const t = useChartTokens();
   const { after, before, llama } = story;
+  // llama.cpp cannot batch: past its last measured batch size its line is projected (dashed, lighter), never measured
+  const projected = useMemo(() => projectNoBatching(llama, (after?.points ?? []).map((p) => p.batch)), [llama, after]);
+  const llamaLast = last(llama);
   const ref = a100 ? story.a100 : null;
 
   const a1 = at(after, 1);
@@ -140,7 +144,10 @@ function ChipFix({ story, reduced, a100, setA100, onPick }: { story: ReturnType<
           const ps = (Array.isArray(raw) ? raw : [raw]) as { seriesName: string; value: [number, number]; color: string; seriesId: string }[];
           if (!ps.length) return "";
           const head = `<b>${streams(ps[0]!.value[0])}</b>`;
-          const rows = ps.map((p) => `<span style="color:${p.color}">&#9679;</span> ${p.seriesName}: <b>${fmt(p.value[1])}</b> ${p.seriesId.endsWith(":w") ? "W" : "J per token"}`);
+          const measuredLlama = new Set((llama?.points ?? []).map((q) => q.batch));
+          const rows = ps
+            .filter((p) => !(p.seriesId.endsWith(":p") && measuredLlama.has(p.value[0])))
+            .map((p) => `<span style="color:${p.color}">&#9679;</span> ${p.seriesName}: <b>${fmt(p.value[1])}</b> ${p.seriesId.endsWith(":w") ? "W" : "J per token"}${p.seriesId.endsWith(":p") ? ` <i style="color:${t.muted}">projected, not measured</i>` : ""}`);
           return [head, ...rows].join("<br/>");
         },
       },
@@ -159,10 +166,31 @@ function ChipFix({ story, reduced, a100, setA100, onPick }: { story: ReturnType<
             ]
           : []),
         ...(llama ? [series(t, `${llama.session.id}:j`, "llama.cpp Vulkan", t.accent2, lineData(llama, (p) => p.j_per_token))] : []),
+        ...(llama && projected.length && llamaLast?.j_per_token
+          ? [
+              {
+                id: `${llama.session.id}:p`,
+                name: `llama.cpp Vulkan, projected beyond ${streams(llamaLast.batch)}`,
+                type: "line" as const,
+                smooth: 0.25,
+                color: t.accent2,
+                symbol: "circle",
+                symbolSize: 8,
+                lineStyle: { width: 2.5, type: "dashed" as const, color: t.accent2, opacity: 0.5 },
+                itemStyle: { color: t.surface, borderColor: t.accent2, borderWidth: 2, opacity: 0.6 },
+                emphasis: { focus: "series" as const },
+                // starts at the last measured point so the dashed segment continues the solid line
+                data: [
+                  { value: [llamaLast.batch, llamaLast.j_per_token], symbol: "none" },
+                  ...projected.map((q) => ({ value: [q.batch, q.j_per_token] })),
+                ],
+              },
+            ]
+          : []),
         ...(ref ? [series(t, `${ref.session.id}:j`, "NVIDIA A100 (reference)", t.unknown, lineData(ref, (p) => p.j_per_token), { symbol: "triangle", lineStyle: { width: 2, type: "dotted", color: t.unknown } })] : []),
       ],
     };
-  }, [t, reduced, after, llama, ref]);
+  }, [t, reduced, after, llama, ref, projected, llamaLast]);
 
   return (
     <section className={s.section} aria-labelledby="speed-fix">

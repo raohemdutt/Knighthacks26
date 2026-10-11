@@ -548,3 +548,37 @@ export const MACHINES: { key: string; name: string; nodes: string[] }[] = [
   { key: "pod-d", name: "Pod D (the trainer)", nodes: ["pod-b"] },
   { key: "pair", name: "Pods C and D together", nodes: ["pod-a+pod-b"] },
 ];
+
+/** One projected point of an engine that cannot batch: worked out from its measured rows, never measured. */
+export interface ProjectedPoint {
+  batch: number;
+  tok_s_stream: number;
+  tok_s_total: number;
+  watts: number;
+  j_per_token: number;
+}
+
+/**
+ * Projects an engine that cannot batch past its last measured batch size. The per-stream speed keeps falling by the
+ * same ratio per doubling as it did between the first and the last measured batch sizes; the watts stay at the last
+ * measured level; joules per token = watts / total tokens a second. Null when fewer than two rows say enough.
+ */
+export function projectNoBatching(line: StoryLine | null, targets: number[]): ProjectedPoint[] {
+  const pts = (line?.points ?? []).filter((p) => p.tok_s_stream && p.tok_s_stream > 0);
+  if (pts.length < 2) return [];
+  const a = pts[0]!;
+  const z = pts[pts.length - 1]!;
+  const doublings = Math.log2(z.batch / a.batch);
+  if (!(doublings > 0) || !z.watts) return [];
+  const perDoubling = (z.tok_s_stream! / a.tok_s_stream!) ** (1 / doublings);
+  const totalAtZ = z.tok_s_total ?? z.tok_s_stream! * z.batch;
+  return targets
+    .filter((b) => b > z.batch)
+    .sort((x, y) => x - y)
+    .map((b) => {
+      const k = Math.log2(b / z.batch);
+      const stream = z.tok_s_stream! * perDoubling ** k;
+      const total = totalAtZ * (b / z.batch) * perDoubling ** k;
+      return { batch: b, tok_s_stream: stream, tok_s_total: total, watts: z.watts!, j_per_token: z.watts! / total };
+    });
+}
