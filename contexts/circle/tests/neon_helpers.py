@@ -11,7 +11,7 @@ from contexts.circle.infrastructure.neon import ENV_URL, NeonDb
 needs_neon = pytest.mark.skipif(not os.environ.get(ENV_URL), reason=f"{ENV_URL} is not set")
 
 OWNED_TABLES = ["members", "shares", "agent_messages", "events", "habit_summaries", "impact_counters",
-                "game_scores", "presence"]
+                "game_scores", "presence", "league_stakes", "league_weeks", "league_challenges", "sealed_messages"]
 
 
 class FakeNeon:
