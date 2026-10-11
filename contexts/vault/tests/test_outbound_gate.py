@@ -25,7 +25,7 @@ from contexts.gateway.app import create_app
 from contexts.gateway.bootstrap import Settings, build
 from contexts.learning.application.export import DatasetExporter, teach
 from contexts.memory.api import build_router
-from contexts.perception.infrastructure.face_blur import MODEL, FaceBlur
+from contexts.perception.infrastructure.face_blur import MODEL, STRICT, FaceBlur
 from contexts.vault import OutboundGate, Refused, jpeg_scrambler
 from contexts.workspace.domain.approvals import ActionRequest
 from contracts.learning import TaskSpec
@@ -125,6 +125,13 @@ def test_an_export_with_the_blur_switch_off_still_scrambles_the_face(box, tmp_pa
     result, written = export(box, tmp_path)
     assert result.startswith("exported 1 examples as desk-objects-") and "held back" not in result
     assert [f.read_bytes() for f in written] == [scrambled(STORED)]
+
+
+def test_the_wired_gate_blurs_again_while_a_face_is_still_found_with_the_strict_detector(box):
+    """One pass at the default settings left a face findable in 52 of 60 face frames from the box (#390)."""
+    [blur] = [cell.cell_contents for cell in box.outbound.scramble.__closure__ if callable(cell.cell_contents)]
+    assert blur.__func__ is FaceBlur.scrambled_until_clear
+    assert (blur.__self__.score, blur.__self__.margin) == (0.5, 0.6) == (STRICT["score"], STRICT["margin"])
 
 
 def test_an_export_leaves_out_a_picture_the_gate_refuses_and_says_so(box, tmp_path):
