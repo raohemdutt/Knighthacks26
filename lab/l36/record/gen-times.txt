@@ -1,0 +1,12 @@
+base v3_held_out n=240 seconds=160.8 adapter=base
+base v2_held_out n=228 seconds=142.5 adapter=base
+base v3_validation n=126 seconds=103.4 adapter=base
+base v2_validation n=126 seconds=97.4 adapter=base
+f2r4 v3_held_out n=240 seconds=298.6 adapter=/content/l36/f2r4/final2-t12-lr0.000428-rank4-a8-drop0.136-warm0.009/adapter
+f2r4 v2_held_out n=228 seconds=241.8 adapter=/content/l36/f2r4/final2-t12-lr0.000428-rank4-a8-drop0.136-warm0.009/adapter
+f2r4 v3_validation n=126 seconds=180.8 adapter=/content/l36/f2r4/final2-t12-lr0.000428-rank4-a8-drop0.136-warm0.009/adapter
+f2r4 v2_validation n=126 seconds=167.9 adapter=/content/l36/f2r4/final2-t12-lr0.000428-rank4-a8-drop0.136-warm0.009/adapter
+a v3_held_out n=240 seconds=245.5 adapter=/content/l36/runs/l36a-f2r4-pooled/adapter
+a v2_held_out n=228 seconds=212.0 adapter=/content/l36/runs/l36a-f2r4-pooled/adapter
+a v3_validation n=126 seconds=160.8 adapter=/content/l36/runs/l36a-f2r4-pooled/adapter
+a v2_validation n=126 seconds=155.8 adapter=/content/l36/runs/l36a-f2r4-pooled/adapter

@@ -1,0 +1,7 @@
+{"step": 8, "eval_loss": 0.014405446127057076, "examples_seen": 128, "best": true}
+{"step": 16, "eval_loss": 0.010715904645621777, "examples_seen": 256, "best": true}
+{"step": 24, "eval_loss": 0.009020878002047539, "examples_seen": 384, "best": true}
+{"step": 32, "eval_loss": 0.005811595823615789, "examples_seen": 512, "best": true}
+{"step": 40, "eval_loss": 0.005544702988117933, "examples_seen": 640, "best": true}
+{"step": 48, "eval_loss": 0.005740754771977663, "examples_seen": 768, "best": false}
+{"step": 56, "eval_loss": 0.005958095658570528, "examples_seen": 896, "best": false}

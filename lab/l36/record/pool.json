@@ -1,0 +1,22 @@
+{
+  "pooled": "tool-calling-v3v2-pooled",
+  "examples": 2281,
+  "train_ids": 1813,
+  "held_out_ids": 468,
+  "rows_train": 1561,
+  "rows_validation": 252,
+  "inputs": {
+    "v3_rows_train": "3c7945251c218afcb36eba6d840f1994ff9a992e263ce4703c740a30ceada5b9",
+    "v2_rows_train": "64e3d4222e9e007e588016a43b8914e1a3f4c9e72b1152727824d8934c135b9d",
+    "v3_rows_validation": "2561bba63b78ec48593c3a1cd27c8bbc04b07f5e138fad00dfa7ebf0c6d10fc8",
+    "v2_rows_validation": "8c9a3d3817813844f658083b2916f3e42511f777a58cee8aa6a2cae31b221f58",
+    "v3_split": "a054c84f4c204ad88be576ee80102f24f2c0a9d7f5ac980051fec3a6e3c87a56",
+    "v2_split": "4776164b103cd9af8ffb877243cb3694cc7c75b22c7e81f78e5ff64351924377"
+  },
+  "outputs": {
+    "rows_train": "1fd5a39f915b2c2877791d2b8e6915ab11bfe23f5b7b6d4f7d0c40b1abb863d3",
+    "rows_validation": "358c9adfbec3e7f1c990ea42d263574b9bb4950a8bbcc3bcc251bf4b57aaa718",
+    "split": "de00052f429dea382ad86acdc11da55c0f0aca22dd01e2976c32a1887c122655",
+    "examples": "e42ed279258fe5edf519cd6895414a3dc1bba5885129c8a55899afc8bb35e55c"
+  }
+}
