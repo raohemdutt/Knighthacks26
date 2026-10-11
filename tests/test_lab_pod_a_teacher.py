@@ -5,6 +5,7 @@ the arguments it was started with to a file and answers the readiness check, so 
 and nothing is started. What is checked is the command line the real script builds."""
 from __future__ import annotations
 
+import json
 import os
 import stat
 import subprocess
@@ -43,17 +44,27 @@ def _bash() -> str:
     return found
 
 
-def serve_arguments(tmp_path: Path, gfx: str) -> list[str]:
-    """Run `bash lab/pod_a_teacher.sh serve` with the stand-ins and return the arguments vLLM was started with."""
+def run_serve(tmp_path: Path, gfx: str, args: tuple[str, ...] = (), env_extra: dict[str, str] | None = None
+              ) -> tuple[subprocess.CompletedProcess, Path]:
+    """Run `bash lab/pod_a_teacher.sh serve <args>` with the stand-ins; the process and the stand-in home folder."""
     bin_dir, home = tmp_path / "bin", tmp_path / "home"
     bin_dir.mkdir()
-    home.mkdir()
+    home.mkdir(exist_ok=True)
     for name, text in STUBS.items():
         path = bin_dir / name
         path.write_bytes(text.encode("ascii"))
         path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    env = {**os.environ, "HOME": str(home), "PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}", "GFX": gfx}
-    done = subprocess.run([_bash(), "lab/pod_a_teacher.sh", "serve"], cwd=REPO, env=env, capture_output=True, timeout=120)
+    env = {**os.environ, "HOME": str(home), "PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}", "GFX": gfx,
+           **(env_extra or {})}
+    done = subprocess.run([_bash(), "lab/pod_a_teacher.sh", "serve", *args], cwd=REPO, env=env, capture_output=True,
+                          timeout=120)
+    return done, home
+
+
+def serve_arguments(tmp_path: Path, gfx: str, args: tuple[str, ...] = (), env_extra: dict[str, str] | None = None
+                    ) -> list[str]:
+    """Run `bash lab/pod_a_teacher.sh serve` with the stand-ins and return the arguments vLLM was started with."""
+    done, home = run_serve(tmp_path, gfx, args, env_extra)
     assert done.returncode == 0, done.stderr.decode("utf-8", "replace")
     argv = home / "vllm_argv.txt"
     deadline = time.monotonic() + 20       # the server line runs in the background; its stand-in may finish after
@@ -98,3 +109,70 @@ def test_the_server_turns_on_tool_calling_with_the_qwen3_parser(tmp_path, gfx):
 
     assert "--enable-auto-tool-choice" in argv
     assert values(argv, "--tool-call-parser") == ["qwen3_coder"]
+
+
+def speculative_config(argv: list[str]) -> dict:
+    found = values(argv, "--speculative-config")
+    assert len(found) == 1, found
+    return json.loads(found[0])
+
+
+def as_python_spells_it(path: str) -> Path:
+    """A path bash printed, as Python spells it: Git Bash on Windows writes the stand-in home C:/Users/... as
+    /c/Users/..., so the two are compared as paths, not as text."""
+    if os.name == "nt" and len(path) > 2 and path[0] == "/" and path[1].isalpha() and path[2] == "/":
+        path = f"{path[1]}:{path[2:]}"
+    return Path(path)
+
+
+@pytest.mark.parametrize("args", [(), ("--speculative", "off"), ("--speculative=off",)])
+def test_speculative_decoding_is_off_unless_asked_for(tmp_path, args):
+    argv = serve_arguments(tmp_path, "gfx1151", args)
+
+    assert "--speculative-config" not in argv
+
+
+def test_ngram_speculation_uses_vllms_prompt_lookup_and_keeps_tool_calling(tmp_path):
+    argv = serve_arguments(tmp_path, "gfx1151", ("--speculative", "ngram"))
+
+    assert speculative_config(argv) == {"method": "ngram", "num_speculative_tokens": 4,
+                                        "prompt_lookup_min": 1, "prompt_lookup_max": 3}
+    assert "--enable-auto-tool-choice" in argv
+    assert values(argv, "--tool-call-parser") == ["qwen3_coder"]
+    assert values(argv, "--served-model-name") == ["teacher", "group-brain"]
+
+
+def test_the_speculation_settings_come_from_the_environment(tmp_path):
+    argv = serve_arguments(tmp_path, "gfx1151", ("--speculative=ngram",),
+                           {"SPEC_K": "8", "SPEC_MIN": "2", "SPEC_MAX": "4"})
+
+    assert speculative_config(argv) == {"method": "ngram", "num_speculative_tokens": 8,
+                                        "prompt_lookup_min": 2, "prompt_lookup_max": 4}
+
+
+def test_draft_speculation_runs_the_small_model_from_the_models_folder(tmp_path):
+    draft = tmp_path / "home" / "models" / "Qwen3.5-0.8B"
+    draft.mkdir(parents=True)
+    (draft / "config.json").write_text("{}", encoding="utf-8")
+    argv = serve_arguments(tmp_path, "gfx1151", ("--speculative", "draft"))
+
+    config = speculative_config(argv)
+    assert as_python_spells_it(config.pop("model")) == draft
+    assert config == {"method": "draft_model", "num_speculative_tokens": 4}
+    assert "--enable-auto-tool-choice" in argv
+
+
+def test_draft_speculation_without_the_draft_checkpoint_starts_nothing(tmp_path):
+    done, home = run_serve(tmp_path, "gfx1151", ("--speculative", "draft"))
+
+    assert done.returncode != 0
+    assert b"draft checkpoint missing" in done.stdout
+    assert not (home / "vllm_argv.txt").exists()
+
+
+@pytest.mark.parametrize("args", [("--speculative", "eagle"), ("--speculative",), ("--fast",)])
+def test_an_unknown_speculation_mode_or_option_starts_nothing(tmp_path, args):
+    done, home = run_serve(tmp_path, "gfx1151", args)
+
+    assert done.returncode != 0
+    assert not (home / "vllm_argv.txt").exists()

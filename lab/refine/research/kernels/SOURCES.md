@@ -585,6 +585,16 @@ chip sheet). "energy" in the Cited in column means `energy_model_gfx1151.md`.
 | L22 | our measurement | `fixtures/lab/energy_model/attach-sweep-pod-c-2026-10-10.jsonl` with `source.json`: R26's `lab/bench.py` rows (session bench-20261010T215122Z-2c65) trimmed to the fields the checker reads, values as the harness wrote them | this repo, `fixtures/lab/energy_model/` | 2026-10-11 | energy |
 | L23 | our files | `lab/README.md`, section "Request-side settings sweep: `lab/sweep_request.py` (R52)": the grid, its slot minutes and the collect command; no result committed on main at 9ed11fc | this repo, `lab/README.md` (main at 9ed11fc) | 2026-10-11 | energy |
 
+## Added by R54, speculative decoding on gfx1151 (2026-10-11)
+
+| Id | Kind | Source | Link or location | Opened | Cited in |
+| --- | --- | --- | --- | --- | --- |
+| S183 | code | vLLM commit 4a5299c93, "feat: spec decode with draft models" (#24322), 2026-01-19; in the pinned b1388b1 | https://github.com/vllm-project/vllm/commit/4a5299c93ff97c26def537b92562df5ada530fea | 2026-10-11 | speculative |
+| S184 | code | vLLM commit a9ec46d4b, "[ROCm][Perf] Support N=5 in wvSplitK skinny GEMM kernels for speculative decoding" (#40687), 2026-05-28; on main, not in b1388b1 | https://github.com/vllm-project/vllm/commit/a9ec46d4b7db6ae1d0cb0f27ce1a7ddb0f749ef8 | 2026-10-11 | speculative |
+| S185 | code | vLLM b1388b1 `vllm/v1/spec_decode/ngram_proposer.py::_find_longest_matched_ngram_and_propose_tokens`, `vllm/config/speculative.py` (methods, prompt-lookup defaults, equal-vocabulary check), `vllm/v1/attention/backends/gdn_attn.py` (speculative state indices), `vllm/model_executor/layers/utils.py::rocm_unquantized_gemm_impl`, `vllm/model_executor/models/qwen3_5_mtp.py`, `docs/features/speculative_decoding/` | https://github.com/vllm-project/vllm/blob/b1388b1fbf5aaef47937fabe98931211684666a6/vllm/v1/spec_decode/ngram_proposer.py | 2026-10-11 | speculative |
+| S186 | our files | `lab/speculative_estimate.py` and `lab/refine/research/kernels/data/speculative-acceptance-2026-10-11.json` (R54): vLLM's prompt-lookup rule on 314 assistant turns, proxy tokenizer | this repo, PR #323 | 2026-10-11 | speculative |
+| S187 | our files | `lab/refine/research/kernels/data/chipsheet-gfx1151-2026-10-11.md` (R33 run on pod-b): copy bandwidth, fp16, bf16 and int4 dequant matmul at 1, 4, 8 and 16 rows, loaded and idle watts | this repo | 2026-10-11 | speculative |
+
 ## Added by R55, the low-bit teacher (2026-10-11)
 
 Re-opened by R55 and cited under its existing id: L10 (the gfx1151 chipsheet). Code was read with `git show` in
