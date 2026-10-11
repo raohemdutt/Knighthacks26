@@ -183,9 +183,11 @@ EXPECTED_SEED = [
     ("teacher_batching.watts_peak", "pod-a", {"batch_size": 16, "session": R60}, 97.0, "W", True),
     ("pod.idle_watts", "pod-a", {"server": "teacher loaded, no request"}, 10.44, "W", False),
     # R21: the stock teacher on pod C compared with its own baseline (the K4 self-match floor), one compare
-    ("teacher.output_match_rate", "pod-a", {"chip": "gfx1151", "batch_size": 1, "engine_commit": "b1388b1"}, 0.5, "fraction", True),
+    ("teacher.output_match_rate", "pod-a", {"chip": "gfx1151", "batch_size": 1, "engine_commit": "b1388b1",
+                                         "run_id": "correctness-20261011T010421Z-af32"}, 0.5, "fraction", True),
     # R60: the new build against the stock baseline (1 of 4; the two image prompts and text-schedule diverge)
-    ("teacher.output_match_rate", "pod-a", {"chip": "gfx1151", "batch_size": 1, "engine_commit": "db9527a46"}, 0.25, "fraction", True),
+    ("teacher.output_match_rate", "pod-a", {"chip": "gfx1151", "batch_size": 1, "engine_commit": "db9527a46",
+                                         "task": "R60"}, 0.25, "fraction", True),
     # R57: the A100 reference on Colab (other chip: NVIDIA A100-SXM4-40GB, stock vLLM 0.31.0), the same INT4 teacher
     # through lab/bench.py, 3 cold spawns per batch size; watts from nvidia-smi over each decode window
     # (fixtures/lab/bench/a100-2026-10-10, recomputed in test_a100_reference_rows_match_the_fixture)
@@ -280,6 +282,23 @@ EXPECTED_SEED = [
     ("teacher_llamacpp.watts_peak", "pod-b", {"batch_size": 16}, 101.0, "W", True),
     ("teacher_llamacpp.llama_bench_pp512_tok_s", "pod-b", {"test": "pp512"}, 390.7811, "tok/s", True),
     ("teacher_llamacpp.llama_bench_tg128_tok_s", "pod-b", {"test": "tg128"}, 12.1822, "tok/s", True),
+    # R64: the v0.31.0 teacher against its own record (3 live compares), and the three cross pairs offline from the
+    # fixtures (fixtures/lab/new_teacher_quality/correctness/three_way.json)
+    ("teacher.output_match_rate", "pod-a", {"task": "R64", "baseline": "vllm-gfx1151-v0.31.0-2026-10-11.json"}, 1.0, "fraction", True),
+    ("teacher.output_match_rate", "pod-a", {"task": "R64", "run_fixture": "vllm-gfx1151-v0.31.0-2026-10-11.json", "baseline": "vllm-gfx1151-2026-10-11.json"}, 0.25,
+     "fraction", True),
+    ("teacher.output_match_rate", "pod-a", {"task": "R64", "run_fixture": "vllm-gfx1151-v0.31.0-2026-10-11.json", "baseline": "vllm-a100-2026-10-10.json"}, 0.5,
+     "fraction", True),
+    ("teacher.output_match_rate", "pod-a", {"task": "R64", "run_fixture": "vllm-gfx1151-2026-10-11.json", "baseline": "vllm-a100-2026-10-10.json"}, 0.25,
+     "fraction", True),
+    # R64: label agreement of the v0.31.0 teacher with the April build's L13 labels (reworded, and the control arm)
+    ("label.agreement_rate", "pod-a", {"task": "R64", "reworded": True}, 0.833333, "ratio", True),
+    ("label.agreement_rate", "pod-a", {"task": "R64", "reworded": False}, 0.983333, "ratio", True),
+    # R64: 1 GB pushed and pulled three times on pod C, joules above idle from the pod power sampler
+    ("sync.push_joules_per_gb", "pod-a", {"task": "R64", "sampler": SAMPLER}, 441.9, "J/GB", True),
+    ("sync.push_gb_s", "pod-a", {"task": "R64", "sampler": SAMPLER}, 0.00929, "GB/s", True),
+    ("sync.pull_joules_per_gb", "pod-a", {"task": "R64", "sampler": SAMPLER}, 63.9, "J/GB", True),
+    ("sync.pull_gb_s", "pod-a", {"task": "R64", "sampler": SAMPLER}, 0.04577, "GB/s", True),
 ]
 
 # The numbers the lab setup measured, by metric name.
@@ -342,6 +361,9 @@ def test_every_low_confidence_seed_row_says_why():
         "teacher_batching." + name
         for name in ("decode_tok_s", "decode_tok_s_total", "ttft_s", "joules_per_token", "watts_avg", "watts_peak")} | {
         "teacher.output_match_rate"} | {
+        # R64: one pass of 30 labels; the sync rows are the pod sampler's (error unknown)
+        "label.agreement_rate", "sync.push_joules_per_gb", "sync.pull_joules_per_gb", "sync.push_gb_s",
+        "sync.pull_gb_s"} | {
         # R57: the A100 reference medians are of 3 spawns
         "telemetry.sampler_cpu_pct", "jetson.idle_watts", "student.watts_avg", "student.watts_peak",
         "teacher.decode_tok_s", "teacher.decode_tok_s_total", "teacher.ttft_s"} | {
