@@ -4,7 +4,7 @@
 import * as THREE from "three";
 import { tint, flat } from "./common.js";
 
-const SKIN = 0xd9bfae, TOP = 0x8f9cb0, PANTS = 0x5d6573, SHOE = 0xe9edf2, HAIR = 0x4a3f38, FEATURE = 0x2b313b, LIP = 0xa8766a;
+const SKIN = 0xd9bfae, TOP = 0x8f9cb0, PANTS = 0x5d6573, SHOE = 0xe9edf2, HAIR = 0x4a3f38, FEATURE = 0x1b2433, LIP = 0xa8766a;
 
 const cap = (r, len, mat) => {
   const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, Math.max(0.001, len - 2 * r), 6, 14), mat);

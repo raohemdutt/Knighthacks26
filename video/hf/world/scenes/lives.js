@@ -20,8 +20,15 @@ export default function choreograph(tl, world, scene) {
   world.leg(tl, t0, HIGH, 2.6, "power2.inOut");
   world.leg(tl, t0 + 2.6, HIGH_DRIFT, L[1].start - (t0 + 2.6), "none");
 
-  // ---- Line 1: "And Day Run. Play tomorrow before you live it": the route draws across the map. ----
-  tl.to(state, { route: 1, duration: 2.0, ease: "power2.inOut" }, at(1, 0.1));
+  // ---- Line 1: "And Day Run. Play tomorrow before you live it": the route draws across the real campus, and each
+  // stop is named as the line reaches it (assets/ucf-route.json, baked from OpenStreetMap by campus_bake.py). ----
+  const draw = at(1, 0.1);
+  tl.to(state, { route: 1, duration: 2.0, ease: "power2.inOut" }, draw);
+  world.ucfStops.forEach((s, i) => {
+    const l = world.label("lives-stop-" + i, { text: s.name, at: [(s.u - 0.5) * 30, -0.2, (s.v - 0.5) * 30], size: 56, scale: 3.4 });
+    tl.fromTo(l, { opacity: 0, lift: -0.3 }, { opacity: 1, lift: 0, duration: 0.45, ease: "power4.out" }, draw + 0.15 + i * 0.6);
+    tl.to(l, { opacity: 0, duration: 0.4, ease: "power2.in" }, at(1, 0.6));
+  });
   // "on a map of your own campus": pull to the final hero; the ring and the shell come up around the box.
   const pull = at(1, 0.6);
   world.leg(tl, pull, HERO, Math.min(2.8, tEnd - 0.1 - pull), "power2.inOut");

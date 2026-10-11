@@ -7,24 +7,36 @@
       <style>
         #root { position: absolute; inset: 0; font-family: var(--font); overflow: hidden; }
         #intro-chapter { position: absolute; left: 96px; top: 72px; padding: 14px 28px; font-size: 28px; opacity: 0; }
-        /* The wordmark: one soft-raised card high in the frame while the parts fall in beneath it. */
-        #intro-mark { position: absolute; left: 50%; top: 120px; padding: 18px 92px 28px; font-size: 144px; opacity: 0; will-change: transform, opacity; }
-        #intro-tag { position: absolute; left: 0; right: 0; top: 340px; text-align: center; font-size: 40px; font-weight: 500; opacity: 0; }
+        /* The website's mark (web/components/Logo.tsx) and its load-splash wordmark, drawn in the same order. */
+        #intro-stage { position: absolute; left: 0; right: 0; top: 36px; display: flex; justify-content: center; }
+        #intro-mark { display: flex; flex-direction: column; align-items: center; gap: 22px; opacity: 0; }
+        #intro-logo { width: 150px; height: 150px; display: block; overflow: visible; }
+        #intro-dot { transform-box: fill-box; transform-origin: center; }
+        #intro-word { font-size: 64px; opacity: 0; }
+        #intro-tag { font-size: 34px; font-weight: 600; opacity: 0; padding: 10px 30px; border-radius: 999px; background: var(--surface); box-shadow: 6px 6px 14px var(--shade), -6px -6px 14px var(--light); }
         /* Line 1: three soft words in the right column, one after another. */
         #intro-words { position: absolute; right: 120px; top: 300px; display: flex; flex-direction: column; align-items: flex-end; gap: 30px; }
         .intro-word { padding: 22px 44px 24px 36px; border-radius: 40px; display: flex; align-items: center; gap: 22px; font-size: 64px; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); opacity: 0; }
-        .intro-word i { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 7px rgba(217,119,74,0.14); flex: none; }
+        .intro-word i { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 7px rgba(69,108,179,0.14); flex: none; }
         /* Line 3: the Jetson's three jobs, and the squire card. */
         #intro-jobs { position: absolute; right: 120px; top: 230px; display: flex; flex-direction: column; align-items: flex-end; gap: 24px; }
         .intro-chip { height: 92px; padding: 0 40px 0 30px; border-radius: 46px; display: flex; align-items: center; gap: 18px; font-size: 40px; font-weight: 600; color: var(--ink); opacity: 0; }
-        .intro-chip i { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 6px rgba(217,119,74,0.14); }
+        .intro-chip i { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 6px rgba(69,108,179,0.14); }
         #intro-squire { position: absolute; right: 120px; top: 640px; width: 460px; padding: 30px 38px; border-radius: 32px; opacity: 0; }
         #intro-squire .k { font-size: 28px; font-weight: 600; color: var(--accent); letter-spacing: 0.02em; }
         #intro-squire .v { margin-top: 6px; font-size: 40px; font-weight: 600; color: var(--ink); line-height: 1.2; }
       </style>
       <div id="root" data-composition-id="intro" data-width="1920" data-height="1080">
-        <div id="intro-mark" class="soft-raised soft-title">Atlas</div>
-        <div id="intro-tag" class="soft-muted">The personal AI computer</div>
+        <div id="intro-stage" class="site-stage"><div id="intro-mark">
+          <svg id="intro-logo" class="site-logo" viewBox="0 0 100 100" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <defs><linearGradient id="intro-grad" x1="12" y1="10" x2="88" y2="92" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#b9d1f7" /><stop offset="1" stop-color="#456cb3" /></linearGradient></defs>
+            <circle id="intro-ring" cx="50" cy="50" r="44" pathLength="1" stroke="url(#intro-grad)" stroke-width="6" stroke-dasharray="1" stroke-dashoffset="1" />
+            <path id="intro-a" d="M30 73L50 27L70 73" pathLength="1" stroke="url(#intro-grad)" stroke-width="7" stroke-dasharray="1" stroke-dashoffset="1" />
+            <circle id="intro-dot" cx="50" cy="59" r="5.5" fill="url(#intro-grad)" />
+          </svg>
+          <div id="intro-word" class="site-word">ATLAS</div>
+          <div id="intro-tag" class="soft-muted">The personal AI computer</div>
+        </div></div>
         <div id="intro-chapter" class="soft-raised soft-muted">Atlas</div>
         <div id="intro-words">
           <div id="intro-word-0" class="intro-word soft-raised"><i></i>Learns you</div>
@@ -46,13 +58,16 @@
           // Re-derive these if the words in film.yaml change. The scene lasts 26.836.
           const DUR = 26.836, FIRST = 2.5;
           const tl = gsap.timeline({ paused: true });
-          const PRESSED = "inset 8px 8px 16px #b7c0cd, inset -8px -8px 16px #ffffff";
+          const PRESSED = "inset 8px 8px 16px #c9d3e3, inset -8px -8px 16px #ffffff";
 
-          // The wordmark arrives while the parts fall, and leaves on the first word.
-          tl.fromTo("#intro-mark", { opacity: 0, scale: 0.94, y: 20, xPercent: -50 }, { opacity: 1, scale: 1, y: 0, xPercent: -50, duration: 1.1, ease: "power4.out" }, 0.2);
-          tl.fromTo("#intro-tag", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.8, ease: "power4.out" }, 0.8);
-          tl.to("#intro-tag", { opacity: 0, y: -8, duration: 0.4, ease: "power2.in" }, FIRST + 0.45);
-          tl.to("#intro-mark", { opacity: 0, scale: 0.97, y: -16, xPercent: -50, duration: 0.45, ease: "power2.in" }, FIRST + 0.55);
+          // The splash, as the website plays it (splash.module.css): ring 0.8 s, the A 0.52 s, the dot pops, the word rises.
+          tl.fromTo("#intro-mark", { opacity: 0, scale: 0.94, rotationX: 18, y: 30 }, { opacity: 1, scale: 1, rotationX: 0, y: 0, duration: 1.2, ease: "power3.out" }, 0.1);
+          tl.fromTo("#intro-ring", { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 0.8, ease: "power2.inOut" }, 0.1 + 0.08);
+          tl.fromTo("#intro-a", { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 0.52, ease: "power2.inOut" }, 0.1 + 0.56);
+          tl.fromTo("#intro-dot", { opacity: 0, scale: 0.2 }, { opacity: 1, scale: 1, duration: 0.42, ease: "back.out(2.4)" }, 0.1 + 1.0);
+          tl.fromTo("#intro-word", { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.52, ease: "power2.out" }, 0.1 + 0.9);
+          tl.fromTo("#intro-tag", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0.1 + 1.25);
+          tl.to("#intro-mark", { opacity: 0, scale: 0.96, y: -20, rotationX: -14, duration: 0.5, ease: "power2.in" }, FIRST + 0.6);
           tl.fromTo("#intro-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.6, ease: "power4.out" }, FIRST + 1.1);
 
           // Line 1: each word lands as it is spoken; the earlier ones press in and go quiet.
@@ -60,8 +75,8 @@
           words.forEach((w, i) => {
             tl.fromTo("#intro-word-" + i, { opacity: 0, y: 26, scale: 0.94 }, { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: "power4.out" }, w - 0.1);
             if (i < 2) {
-              tl.to("#intro-word-" + i, { boxShadow: PRESSED, color: "#6f7886", duration: 0.5, ease: "power2.inOut" }, words[i + 1] - 0.1);
-              tl.to("#intro-word-" + i + " i", { backgroundColor: "#b7c0cd", boxShadow: "0 0 0 0px rgba(217,119,74,0)", duration: 0.5 }, words[i + 1] - 0.1);
+              tl.to("#intro-word-" + i, { boxShadow: PRESSED, color: "#566176", duration: 0.5, ease: "power2.inOut" }, words[i + 1] - 0.1);
+              tl.to("#intro-word-" + i + " i", { backgroundColor: "#c9d3e3", boxShadow: "0 0 0 0px rgba(69,108,179,0)", duration: 0.5 }, words[i + 1] - 0.1);
             }
           });
           tl.to(".intro-word", { opacity: 0, x: 24, duration: 0.45, ease: "power2.in", stagger: 0.06 }, 14.2);

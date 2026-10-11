@@ -6,14 +6,26 @@
       <link rel="stylesheet" href="world/soft.css" />
       <style>
         #root { position: absolute; inset: 0; font-family: var(--font); overflow: hidden; }
-        /* The closing wordmark, the same card the film opened on, and the line under it. Held to the last frame. */
-        #end-mark { position: absolute; left: 50%; top: 150px; padding: 18px 92px 28px; font-size: 144px; opacity: 0; will-change: transform, opacity; }
-        #end-tag { position: absolute; left: 0; right: 0; top: 372px; text-align: center; font-size: 40px; font-weight: 500; opacity: 0; }
-        #end-rule { position: absolute; left: 50%; top: 440px; width: 72px; height: 6px; margin-left: -36px; border-radius: 3px; background: var(--accent); opacity: 0; transform-origin: 50% 50%; }
+        /* The website's mark (web/components/Logo.tsx) and its load-splash wordmark, drawn in the same order. */
+        #end-stage { position: absolute; left: 0; right: 0; top: 96px; display: flex; justify-content: center; }
+        #end-mark { display: flex; flex-direction: column; align-items: center; gap: 22px; opacity: 0; }
+        #end-logo { width: 150px; height: 150px; display: block; overflow: visible; }
+        #end-dot { transform-box: fill-box; transform-origin: center; }
+        #end-word { font-size: 64px; opacity: 0; }
+        #end-tag { font-size: 34px; font-weight: 600; opacity: 0; padding: 10px 30px; border-radius: 999px; background: var(--surface); box-shadow: 6px 6px 14px var(--shade), -6px -6px 14px var(--light); }
+        #end-rule { position: absolute; left: 50%; top: 470px; width: 72px; height: 6px; margin-left: -36px; border-radius: 3px; background: var(--accent); opacity: 0; transform-origin: 50% 50%; }
       </style>
       <div id="root" data-composition-id="end" data-width="1920" data-height="1080">
-        <div id="end-mark" class="soft-raised soft-title">Atlas</div>
-        <div id="end-tag" class="soft-muted">The personal AI computer</div>
+        <div id="end-stage" class="site-stage"><div id="end-mark">
+          <svg id="end-logo" class="site-logo" viewBox="0 0 100 100" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <defs><linearGradient id="end-grad" x1="12" y1="10" x2="88" y2="92" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#b9d1f7" /><stop offset="1" stop-color="#456cb3" /></linearGradient></defs>
+            <circle id="end-ring" cx="50" cy="50" r="44" pathLength="1" stroke="url(#end-grad)" stroke-width="6" stroke-dasharray="1" stroke-dashoffset="1" />
+            <path id="end-a" d="M30 73L50 27L70 73" pathLength="1" stroke="url(#end-grad)" stroke-width="7" stroke-dasharray="1" stroke-dashoffset="1" />
+            <circle id="end-dot" cx="50" cy="59" r="5.5" fill="url(#end-grad)" />
+          </svg>
+          <div id="end-word" class="site-word">ATLAS</div>
+          <div id="end-tag" class="soft-muted">The personal AI computer</div>
+        </div></div>
         <div id="end-rule"></div>
       </div>
       <script>
@@ -21,8 +33,14 @@
           // LOCAL time (0 = scene start, absolute 180.584). Line 0 "Atlas. The personal AI computer. It learns you..."
           // starts at 0; "personal" lands at about 0.76, "learns" at 2.48 (film.json, character fractions). Lasts 6.168.
           const tl = gsap.timeline({ paused: true });
-          tl.fromTo("#end-mark", { opacity: 0, scale: 0.94, y: 20, xPercent: -50 }, { opacity: 1, scale: 1, y: 0, xPercent: -50, duration: 1.1, ease: "power4.out" }, 0.05);
-          tl.fromTo("#end-tag", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.8, ease: "power4.out" }, 0.7);
+          // The same mark the film opened on, seen from another angle: it lies on the campus map and stands up to the camera.
+          // The splash, as the website plays it (splash.module.css): ring 0.8 s, the A 0.52 s, the dot pops, the word rises.
+          tl.fromTo("#end-mark", { opacity: 0, scale: 0.94, rotationX: 64, y: 120 }, { opacity: 1, scale: 1, rotationX: 0, y: 0, duration: 1.6, ease: "power3.out" }, 0.05);
+          tl.fromTo("#end-ring", { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 0.8, ease: "power2.inOut" }, 0.05 + 0.08);
+          tl.fromTo("#end-a", { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 0.52, ease: "power2.inOut" }, 0.05 + 0.56);
+          tl.fromTo("#end-dot", { opacity: 0, scale: 0.2 }, { opacity: 1, scale: 1, duration: 0.42, ease: "back.out(2.4)" }, 0.05 + 1.0);
+          tl.fromTo("#end-word", { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.52, ease: "power2.out" }, 0.05 + 0.9);
+          tl.fromTo("#end-tag", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0.05 + 1.25);
           tl.fromTo("#end-rule", { opacity: 0, scaleX: 0 }, { opacity: 1, scaleX: 1, duration: 0.7, ease: "power4.out" }, 2.45);
           window.__timelines["end"] = tl;
         })();

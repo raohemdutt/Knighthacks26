@@ -2,6 +2,7 @@
 
     python video/scripts/film_build.py            # synthesise what changed, write film.json + index.html, print the layout
     python video/scripts/film_build.py --check    # no writes: exit 1 if a scene file is missing or a cached line is
+    python video/scripts/film_render.py day       # render one scene fast (15 fps draft), see film_render.py
 
 Every line is spoken once (edge-tts, cached under video/public/voice/ by text hash, copied into video/hf/assets/voice/).
 Scenes run back to back: start = previous end + pad_s; duration = max(min_s, lead_s + speech + gaps + tail_s).
@@ -109,6 +110,7 @@ async def speak(text: str, voice: str, rate: str, path: Path) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true")
+    ap.add_argument("--scene-previews", action="store_true", help="also write scene-<id>.html (film_render.py does this and removes them)")
     args = ap.parse_args()
     cfg = yaml.safe_load(FILM.read_text(encoding="utf-8"))
     voice, rate = cfg["voice"], cfg.get("rate", "+0%")
@@ -209,7 +211,7 @@ def main() -> int:
       <canvas id="world" class="clip" data-start="0" data-duration="{total:.1f}" data-track-index="0" width="1920" height="1080"></canvas>
       <div class="soft-grain"></div>
 {nl.join(hosts)}
-      <div id="host-captions" data-composition-id="captions" data-composition-src="compositions/captions.html" data-start="0" data-duration="{total:.1f}" data-track-index="4" data-width="1920" data-height="1080"></div>
+      <div id="host-captions" data-track-kind="captions" data-composition-id="captions" data-composition-src="compositions/captions.html" data-start="0" data-duration="{total:.1f}" data-track-index="4" data-width="1920" data-height="1080"></div>
 {nl.join(audio)}
     </div>
     <script>
@@ -235,6 +237,50 @@ def main() -> int:
 </html>
 """
     INDEX.write_text(html, encoding="utf-8")
+    # One preview file per scene (scene-<id>.html): the same world and the same timeline, played only over that
+    # scene, its overlay and its voice at local time. `hyperframes render -c scene-<id>.html` renders 20 s, not 3 min.
+    # No captions in previews (the captions file is laid out on the film's absolute clock).
+    # They exist only while film_render.py renders: a second root file trips lint (multiple_root_compositions).
+    for old in HF.glob("scene-*.html"):
+        old.unlink()
+    for sc in (scenes if args.scene_previews else []):
+        sid, s0, d = sc["id"], sc["start"], sc["duration"]
+        host = (f'      <div id="host-{sid}" data-composition-id="{sid}" data-composition-src="compositions/{sid}.html" '
+                f'data-start="0" data-duration="{d:.3f}" data-track-index="2" data-width="1920" data-height="1080"></div>')
+        voices = [f'      <audio id="voice-{sid}-{l["n"]}" src="{l["file"]}" data-start="{l["start"] - s0:.3f}" '
+                  f'data-duration="{l["duration"]:.3f}" data-track-index="3" data-volume="1"></audio>' for l in sc["lines"]]
+        page = html.split("<body>")[0] + f"""<body>
+    <div id="root" data-composition-id="atlas" data-start="0" data-duration="{d:.3f}" data-fps="{FPS}" data-width="1920" data-height="1080">
+      <canvas id="world" class="clip" data-start="0" data-duration="{d:.3f}" data-track-index="0" width="1920" height="1080"></canvas>
+      <div class="soft-grain"></div>
+{host}
+{nl.join(voices)}
+    </div>
+    <script>
+      window.__hf = window.__hf || {{}}; window.__hf.buildReady = window.__hf.buildReady || {{}};
+      window.__hf.buildReady.world = new Promise((resolve) => {{ window.__worldReady = resolve; }});
+    </script>
+    <script type="module">
+      import {{ createWorld }} from "./world/world.js";
+      import film from "./film.json" with {{ type: "json" }};
+{nl.join(imports)}
+      const world = await createWorld(document.getElementById("world"));
+      window.__world = world;
+      const full = gsap.timeline({{ paused: true }});
+      const clock = {{ t: 0 }};
+      full.to(clock, {{ t: {total:.1f}, duration: {total:.1f}, ease: "none", onUpdate: () => world.render(clock.t) }}, 0);
+{nl.join(calls).replace("(tl, world", "(full, world")}
+      const tl = gsap.timeline({{ paused: true }});
+      tl.add(full.tweenFromTo({s0:.3f}, {s0 + d:.3f}, {{ ease: "none", immediateRender: false }}), 0);
+      window.__timelines["atlas"] = tl;
+      tl.seek(0); full.seek({s0:.3f}); world.render({s0:.3f});
+      if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      window.__worldReady();
+    </script>
+  </body>
+</html>
+"""
+        (HF / f"scene-{sid}.html").write_text(page, encoding="utf-8")
     print(f"wrote {OUT_JSON.relative_to(ROOT.parent)} and {INDEX.relative_to(ROOT.parent)}")
     return 0
 

@@ -9,10 +9,11 @@ import { SURFACE_3D, SHADE, LIGHT, INK, ACCENT, MUTED, ENV_INTENSITY, DESK_Y, ha
 import { buildEnclosure, buildEnclosureLite } from "./sets/enclosure.js";
 import { buildRoom } from "./sets/room.js";
 import { buildKitchen, KX } from "./sets/kitchen.js";
+import UCF from "../assets/ucf-route.json" with { type: "json" };
 
 export { hash };
 const W = 1920, H = 1080;
-// Image-based light at a whisper, and filmic tone mapping with the exposure that keeps a lit top face at #e4e8ee.
+// Image-based light at a whisper, and filmic tone mapping with the exposure that keeps a lit top face at #eef2f8.
 const ENV_SCENE = 0.6, EXPOSURE = 1.0;
 
 // Legacy geometry constants (the old four-slab box). Kept so older scene files still load; do not build on them.
@@ -29,14 +30,14 @@ function shadowTexture() {
 function labelTexture(text, size) {
   const pad = 36, fs = size, w = 1024, h = 256;
   return softTexture((ctx, cw, ch) => {
-    ctx.font = `600 ${fs}px Inter, "Segoe UI", system-ui, sans-serif`;
+    ctx.font = `600 ${fs}px Quicksand, "Segoe UI", system-ui, sans-serif`;
     const tw = Math.min(cw - 2 * pad, ctx.measureText(text).width + 2 * pad);
     const x = (cw - tw) / 2, y = (ch - fs * 1.9) / 2, hh = fs * 1.9, r = 28;
     ctx.shadowColor = "rgba(183,192,205,0.9)"; ctx.shadowBlur = 24; ctx.shadowOffsetX = 10; ctx.shadowOffsetY = 10;
-    ctx.fillStyle = "#e4e8ee"; ctx.beginPath(); ctx.roundRect(x, y, tw, hh, r); ctx.fill();
+    ctx.fillStyle = "#eef2f8"; ctx.beginPath(); ctx.roundRect(x, y, tw, hh, r); ctx.fill();
     ctx.shadowColor = "rgba(255,255,255,0.95)"; ctx.shadowOffsetX = -8; ctx.shadowOffsetY = -8; ctx.fill();
     ctx.shadowColor = "transparent";
-    ctx.fillStyle = "#2b313b"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(text, cw / 2, ch / 2 + 2);
+    ctx.fillStyle = "#1b2433"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(text, cw / 2, ch / 2 + 2);
   }, w, h);
 }
 
@@ -45,9 +46,9 @@ function plateTexture(name) {
   return softTexture((ctx, w, h) => {
     ctx.clearRect(0, 0, w, h);
     ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-    ctx.fillStyle = "#2b313b"; ctx.font = `700 78px Inter, "Segoe UI", system-ui, sans-serif`; ctx.fillText(name, 24, 92);
-    ctx.fillStyle = "#6f7886"; ctx.font = `600 32px Inter, "Segoe UI", system-ui, sans-serif`; ctx.fillText("AMD STRIX HALO · RADEON 8060S", 26, 140);
-    ctx.fillStyle = "#b7c0cd"; ctx.fillRect(24, 106, 440, 3);
+    ctx.fillStyle = "#1b2433"; ctx.font = `700 78px Quicksand, "Segoe UI", system-ui, sans-serif`; ctx.fillText(name, 24, 92);
+    ctx.fillStyle = "#566176"; ctx.font = `600 32px Quicksand, "Segoe UI", system-ui, sans-serif`; ctx.fillText("AMD STRIX HALO · RADEON 8060S", 26, 140);
+    ctx.fillStyle = "#c9d3e3"; ctx.fillRect(24, 106, 440, 3);
   }, 640, 160);
 }
 
@@ -113,6 +114,8 @@ function shellMaterial(side = THREE.FrontSide, gain = 1) {
 const SHELL = { rx: 1.3, ry: 1.0, rz: 1.75, y: -0.4 };
 
 export async function createWorld(canvas) {
+  // Canvas-drawn labels, plates and screens use Quicksand (world/soft.css): load it before anything is drawn.
+  try { await Promise.all(["600 40px Quicksand", "700 40px Quicksand"].map((f) => document.fonts.load(f))); } catch (e) { /* falls back to Segoe UI */ }
   const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true });
   renderer.setSize(W, H, false); renderer.setPixelRatio(1);
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.VSMShadowMap;
@@ -203,13 +206,18 @@ export async function createWorld(canvas) {
   const linkGeo = new THREE.BufferGeometry(); const linkMat = new THREE.LineBasicMaterial({ color: ACCENT, transparent: true, opacity: 0, toneMapped: false });
   const links = new THREE.LineSegments(linkGeo, linkMat); scene.add(links);
 
-  // The campus map under everything, and the route drawn on it.
-  const campus = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), flat({ map: campusTexture(), transparent: true, opacity: 0, depthWrite: false }));
-  campus.rotation.x = -Math.PI / 2; campus.position.y = DESK_Y + 0.01; campus.renderOrder = -3; scene.add(campus);
-  const routePts = [[-9, 8], [-9, 1], [-2, 1], [-2, -6], [6, -6], [6, -11], [11, -11]].map(([x, z]) => new THREE.Vector3(x, -0.9, z));
-  const routeCurve = new THREE.CatmullRomCurve3(routePts, false, "catmullrom", 0.2);
-  const route = new THREE.Mesh(new THREE.TubeGeometry(routeCurve, 200, 0.08, 8, false), new THREE.MeshStandardMaterial({ color: ACCENT, roughness: 0.5, toneMapped: false, envMapIntensity: 0.2, transparent: true, opacity: 0 }));
-  scene.add(route);
+  // The campus map under everything: the real UCF campus (OpenStreetMap) in the website's map palette, baked by
+// video/scripts/campus_bake.py; the route is Day Run's walk on the real footpaths (dorm, class, library, the Union).
+const campusTex = await new THREE.TextureLoader().loadAsync("assets/ucf-campus.png");
+campusTex.colorSpace = THREE.SRGBColorSpace; campusTex.anisotropy = 8;
+const campus = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), flat({ map: campusTex, transparent: true, opacity: 0, depthWrite: false }));
+campus.rotation.x = -Math.PI / 2; campus.position.y = DESK_Y + 0.01; campus.renderOrder = -3; scene.add(campus);
+const routePts = UCF.route.map(([u, v]) => new THREE.Vector3((u - 0.5) * 30, DESK_Y + 0.06, (v - 0.5) * 30));
+const routeCurve = new THREE.CatmullRomCurve3(routePts, false, "catmullrom", 0.1);
+const route = new THREE.Mesh(new THREE.TubeGeometry(routeCurve, 400, 0.07, 8, false), new THREE.MeshStandardMaterial({ color: ACCENT, roughness: 0.5, toneMapped: false, emissive: ACCENT, emissiveIntensity: 0.25, transparent: true }));
+const routeCasing = new THREE.Mesh(new THREE.TubeGeometry(routeCurve, 400, 0.12, 8, false), flat({ color: 0xffffff, transparent: true, depthWrite: false }));
+routeCasing.renderOrder = 1; route.renderOrder = 2; route.add(routeCasing); // the site's route: a white casing under the blue line
+scene.add(route);
 
   // The Ethernet cable: from the jack on the back wall it droops to the desk and trails away. Turns with the box.
   const cableRig = new THREE.Group(); scene.add(cableRig);
@@ -345,7 +353,7 @@ export async function createWorld(canvas) {
 
     // Campus and route.
     campus.material.opacity = state.campus * 0.9; campus.visible = state.campus > 0.002;
-    route.material.opacity = state.route > 0 ? 1 : 0; route.visible = state.route > 0.001; route.geometry.setDrawRange(0, Math.floor(state.route * 200 * 8 * 6));
+    route.material.opacity = state.route > 0 ? 1 : 0; route.visible = state.route > 0.001; route.geometry.setDrawRange(0, Math.floor(state.route * 400 * 8 * 6)); routeCasing.geometry.setDrawRange(0, Math.floor(state.route * 400 * 8 * 6));
 
     // The cable turns with the box; `cable` pulls the plug back out of the jack and lets it drop; hidden while the
     // parts are in the air or the box is exploded.
@@ -391,6 +399,7 @@ export async function createWorld(canvas) {
     THREE, scene, camera, renderer, cam, HOME, SHOTS, state, P, at, flows, flow, labels, label, render, draw, leg, hash,
     atlas, parts: atlas.parts, box: atlas.group, membrane, lab, pods, friends: friendBoxes, room, kitchen, KX,
     SLAB, layerY, // legacy
+    ucfStops: UCF.stops, // Day Run's stops on the real campus: [{ name, kind, u, v }], u east / v south in 0..1
   };
   draw(0);
   return world;

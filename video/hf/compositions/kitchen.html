@@ -10,13 +10,13 @@
 
         /* Line 0: the wall camera's own view. Viewfinder corners, a "bin camera" tag, what it saw, the rule. */
         #kitchen-vf { position: absolute; inset: 48px; opacity: 0; pointer-events: none; }
-        #kitchen-vf i { position: absolute; width: 72px; height: 72px; border: 0 solid rgba(43,49,59,0.55); }
+        #kitchen-vf i { position: absolute; width: 72px; height: 72px; border: 0 solid rgba(27,36,51,0.55); }
         #kitchen-vf i:nth-child(1) { left: 0; top: 0; border-left-width: 5px; border-top-width: 5px; border-top-left-radius: 18px; }
         #kitchen-vf i:nth-child(2) { right: 0; top: 0; border-right-width: 5px; border-top-width: 5px; border-top-right-radius: 18px; }
         #kitchen-vf i:nth-child(3) { left: 0; bottom: 0; border-left-width: 5px; border-bottom-width: 5px; border-bottom-left-radius: 18px; }
         #kitchen-vf i:nth-child(4) { right: 0; bottom: 0; border-right-width: 5px; border-bottom-width: 5px; border-bottom-right-radius: 18px; }
         #kitchen-tag { position: absolute; right: 96px; top: 72px; height: 60px; padding: 0 28px 0 22px; border-radius: 30px; display: flex; align-items: center; gap: 14px; font-size: 28px; font-weight: 600; color: var(--ink); opacity: 0; }
-        #kitchen-tag .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 6px rgba(217,119,74,0.16); }
+        #kitchen-tag .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 6px rgba(69,108,179,0.16); }
 
         #kitchen-stack { position: absolute; right: 96px; top: 170px; width: 600px; display: flex; flex-direction: column; align-items: flex-end; gap: 28px; }
         #kitchen-seen { height: 84px; padding: 0 38px 0 30px; border-radius: 42px; display: flex; align-items: center; gap: 18px; font-size: 40px; font-weight: 600; color: var(--ink); opacity: 0; }
@@ -25,7 +25,7 @@
         #kitchen-rule { width: 600px; padding: 30px 40px 34px; border-radius: 36px; opacity: 0; }
         #kitchen-rule .k { font-size: 28px; font-weight: 600; color: var(--muted); }
         #kitchen-rule .v { margin-top: 6px; font-size: 64px; font-weight: 700; color: var(--ink); line-height: 1.1; letter-spacing: -0.01em; }
-        #kitchen-rule .v b { color: #c66d44; font-weight: 700; }
+        #kitchen-rule .v b { color: #456cb3; font-weight: 700; }
         #kitchen-rule .bins { margin-top: 22px; display: flex; gap: 16px; }
         .kitchen-bin { flex: 1; height: 64px; border-radius: 22px; display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 28px; font-weight: 600; color: var(--muted); }
         .kitchen-bin i { width: 14px; height: 14px; border-radius: 4px; }
@@ -36,16 +36,15 @@
         #kitchen-count .head { display: flex; justify-content: space-between; align-items: baseline; }
         #kitchen-count .title { font-size: 40px; font-weight: 600; color: var(--ink); }
         #kitchen-count .when { font-size: 28px; font-weight: 500; color: var(--muted); }
-        #kitchen-count .nums { margin-top: 18px; display: flex; align-items: baseline; justify-content: space-between; }
-        #kitchen-of { font-size: 64px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; position: relative; height: 80px; width: 300px; }
+        #kitchen-count .nums { margin-top: 10px; display: flex; align-items: center; gap: 36px; }
+        #kitchen-ring { width: 300px; height: 248px; display: block; overflow: visible; }
+        #kitchen-ring text { font-family: var(--font); }
+        #kitchen-of { font-size: 72px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; position: relative; height: 80px; width: 300px; }
         #kitchen-of span { position: absolute; left: 0; top: 0; white-space: nowrap; }
         #kitchen-of small { font-size: 28px; font-weight: 600; color: var(--muted); margin-left: 12px; letter-spacing: 0; }
-        #kitchen-pct { font-size: 112px; font-weight: 700; color: var(--accent); letter-spacing: -0.03em; line-height: 1; }
-        #kitchen-bar { position: relative; margin-top: 26px; height: 36px; border-radius: 18px; }
-        #kitchen-fill { position: absolute; left: 6px; top: 6px; bottom: 6px; width: 0; border-radius: 12px; background: var(--accent); }
-        #kitchen-goal { position: absolute; top: -12px; bottom: -12px; left: 80%; width: 4px; border-radius: 2px; background: var(--ink); opacity: 0; }
-        #kitchen-goal-l { position: absolute; top: 52px; left: 80%; transform: translateX(-50%); font-size: 28px; font-weight: 600; color: var(--muted); white-space: nowrap; opacity: 0; }
-        #kitchen-steps { margin-top: 64px; display: flex; gap: 18px; }
+        #kitchen-pct { font-size: 30px; font-weight: 700; fill: #1b2433; }
+        #kitchen-goal-l { font-size: 13px; font-weight: 600; fill: #566176; opacity: 0; }
+        #kitchen-steps { margin-top: 20px; display: flex; gap: 18px; }
         .kitchen-step { flex: 1; padding: 20px 24px 22px; border-radius: 26px; opacity: 0; }
         .kitchen-step .k { font-size: 28px; font-weight: 600; color: var(--muted); }
         .kitchen-step .v { margin-top: 4px; font-size: 32px; font-weight: 600; color: var(--ink); line-height: 1.2; }
@@ -76,13 +75,19 @@
           </div>
         </div>
 
-        <div id="kitchen-count" class="soft-raised">
-          <div class="head"><div class="title">In the right bin</div><div class="when">this week</div></div>
+        <div id="kitchen-count" class="site-card">
+          <div class="head"><div class="title">In the right bin</div><span class="site-tag">this week</span></div>
           <div class="nums">
+            <!-- The website's Impact ring (web/components/impact/WeekStory.tsx, Ring): track, fill, goal tick at 80 %. -->
+            <svg id="kitchen-ring" viewBox="0 0 160 132">
+              <circle cx="80" cy="62" r="44" fill="none" stroke="#e6ebf3" stroke-width="12" />
+              <circle id="kitchen-ring-fill" cx="80" cy="62" r="44" fill="none" stroke="#456cb3" stroke-width="12" stroke-linecap="round" stroke-dasharray="276.46" stroke-dashoffset="276.46" transform="rotate(-90 80 62)" />
+              <line id="kitchen-goal" x1="46.7" y1="51.2" x2="29.6" y2="45.6" stroke="#1b2433" stroke-width="3" stroke-linecap="round" />
+              <text id="kitchen-pct" x="80" y="70" text-anchor="middle">0%</text>
+              <text id="kitchen-goal-l" x="80" y="128" text-anchor="middle">goal 80%</text>
+            </svg>
             <div id="kitchen-of"><span id="kitchen-of-a">4 of 6</span><span id="kitchen-of-b">5 of 7</span></div>
-            <div id="kitchen-pct">67%</div>
           </div>
-          <div id="kitchen-bar" class="soft-well"><div id="kitchen-fill"></div><div id="kitchen-goal"></div><div id="kitchen-goal-l">goal 80%</div></div>
           <div id="kitchen-steps">
             <div id="kitchen-step-0" class="kitchen-step soft-well"><div class="k">Nudge</div><div class="v">Cans go in recycling</div></div>
             <div id="kitchen-step-1" class="kitchen-step soft-well"><div class="k">Sort It</div><div class="v">Can &rarr; recycling &middot; <b>right bin</b></div></div>
@@ -91,11 +96,11 @@
 
         <div id="kitchen-leaves">
           <div id="kitchen-pill-ok" class="kitchen-pill soft-raised">
-            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5" fill="none" stroke="#d9774a" stroke-width="2.2"/><path d="M7.6 12.4 L10.6 15.3 L16.6 9" fill="none" stroke="#d9774a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5" fill="none" stroke="#456cb3" stroke-width="2.2"/><path d="M7.6 12.4 L10.6 15.3 L16.6 9" fill="none" stroke="#456cb3" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
             Counts leave the box
           </div>
           <div id="kitchen-pill-no" class="kitchen-pill soft-pressed">
-            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5" fill="none" stroke="#6f7886" stroke-width="2.2"/><path d="M8.5 8.5 L15.5 15.5 M15.5 8.5 L8.5 15.5" fill="none" stroke="#6f7886" stroke-width="2.4" stroke-linecap="round"/></svg>
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5" fill="none" stroke="#566176" stroke-width="2.2"/><path d="M8.5 8.5 L15.5 15.5 M15.5 8.5 L8.5 15.5" fill="none" stroke="#566176" stroke-width="2.4" stroke-linecap="round"/></svg>
             Pictures never do
           </div>
         </div>
@@ -133,17 +138,18 @@
           // Line 1: the count on the counter device.
           tl.fromTo("#kitchen-count", { opacity: 0, y: 30, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: "power4.out" }, F(1, 0.1));
           tl.set("#kitchen-of-b", { opacity: 0 }, 0);
-          tl.fromTo("#kitchen-fill", { width: "0%" }, { width: "66%", duration: 0.9, ease: "power2.out" }, F(1, 0.33));
-          tl.to(["#kitchen-goal", "#kitchen-goal-l"], { opacity: 1, duration: 0.4, ease: "power2.out" }, F(1, 0.54));
+          const ring = { v: 0 }, C = 276.46;
+          const showRing = () => { document.getElementById("kitchen-ring-fill").setAttribute("stroke-dashoffset", (C * (1 - ring.v)).toFixed(2)); document.getElementById("kitchen-pct").textContent = Math.round(ring.v * 100) + "%"; };
+          tl.fromTo(ring, { v: 0 }, { v: 0.667, duration: 0.9, ease: "power2.out", onUpdate: showRing, immediateRender: false }, F(1, 0.33));
+          tl.fromTo("#kitchen-goal-l", { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "power2.out" }, F(1, 0.54));
+          tl.fromTo("#kitchen-goal", { attr: { "stroke-width": 3 } }, { attr: { "stroke-width": 5 }, duration: 0.2, yoyo: true, repeat: 1 }, F(1, 0.54));
           tl.fromTo("#kitchen-step-0", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.6, ease: "power4.out" }, F(1, 0.63));
           tl.fromTo("#kitchen-step-1", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.6, ease: "power4.out" }, F(1, 0.75));
           // "and the number moves"
           const mv = F(1, 0.9);
           tl.to("#kitchen-of-a", { opacity: 0, y: -24, duration: 0.35, ease: "power2.in" }, mv);
           tl.fromTo("#kitchen-of-b", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.45, ease: "power4.out" }, mv + 0.2);
-          const pct = { v: 67 };
-          tl.to(pct, { v: 71, duration: 0.6, ease: "power2.out", onUpdate: () => { document.getElementById("kitchen-pct").textContent = Math.round(pct.v) + "%"; } }, mv + 0.1);
-          tl.to("#kitchen-fill", { width: "70%", duration: 0.6, ease: "power2.out" }, mv + 0.1);
+          tl.to(ring, { v: 0.714, duration: 0.6, ease: "power2.out", onUpdate: showRing }, mv + 0.1);
           tl.to("#kitchen-count", { opacity: 0, y: -14, duration: 0.45, ease: "power2.in" }, LN[2].start - 0.2);
 
           // Line 2: only counts leave.

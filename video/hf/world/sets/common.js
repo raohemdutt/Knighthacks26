@@ -3,9 +3,9 @@
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 
-export const SURFACE = 0xe4e8ee, SHADE = 0xb7c0cd, LIGHT = 0xffffff, INK = 0x2b313b, ACCENT = 0xd9774a, MUTED = 0x6f7886;
+export const SURFACE = 0xeef2f8, SHADE = 0xc9d3e3, LIGHT = 0xffffff, INK = 0x1b2433, ACCENT = 0x456cb3, MUTED = 0x566176;
 // ACES pulls the cool cast out of a lit surface, so the 3D base colour sits a touch bluer than the CSS token.
-export const SURFACE_3D = 0xdfe6f0;
+export const SURFACE_3D = 0xe8eef7;
 export const ENV_INTENSITY = 0.35;
 export const DESK_Y = -1.0;
 /** The room and the kitchen share one floor: a 75 cm desk under the device (1 unit = 100 mm). */
@@ -50,7 +50,7 @@ export function softTexture(draw, w = 512, h = 512) {
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
   return tex;
 }
-export const FONT = `Inter, "Segoe UI", system-ui, sans-serif`;
+export const FONT = `Quicksand, "Segoe UI", system-ui, sans-serif`;
 
 // ---- Materials ----
 /** Exact sRGB colours: labels, maps, plates, accent lines. Not tone mapped. */

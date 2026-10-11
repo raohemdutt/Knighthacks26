@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { SHADE, INK, ACCENT, MUTED, FLOOR_Y, hash, clamp01, lerp, softTexture, FONT, flat, matte, tint, between, fadingSet, RoundedBoxGeometry } from "./common.js";
 import { makePerson, SEATED } from "./person.js";
 
-const WOOD = 0xe0d6c8, WALL = 0xe1e6ed, FABRIC = 0xa9b4c5, BOOKS = [0x8f9cb0, 0xc9b7a2, 0x9fb09c, 0xd2c2b0, 0x6f7886, 0xb4a6b8, 0xa7b8c4, 0xd9cbb9];
+const WOOD = 0xe0d6c8, WALL = 0xe1e6ed, FABRIC = 0xa9b4c5, BOOKS = [0x8f9cb0, 0xc9b7a2, 0x9fb09c, 0xd2c2b0, 0x566176, 0xb4a6b8, 0xa7b8c4, 0xd9cbb9];
 
 function rbox(w, h, d, mat, r = 0.12, seg = 3) {
   const m = new THREE.Mesh(new RoundedBoxGeometry(w, h, d, seg, Math.min(r, Math.min(w, h, d) / 2 - 1e-3)), mat);
@@ -15,10 +15,10 @@ function screenTexture() {
     ctx.fillStyle = "#eef1f5"; ctx.fillRect(0, 0, w, h);
     const rr = (x, y, ww, hh, r, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.roundRect(x, y, ww, hh, r); ctx.fill(); };
     rr(28, 28, 180, h - 56, 22, "#e2e7ee");
-    for (let i = 0; i < 5; i++) rr(52, 70 + i * 54, 130, 18, 9, i === 1 ? "#d9774a" : "#c8d0db");
-    ctx.fillStyle = "#2b313b"; ctx.font = `700 40px ${FONT}`; ctx.fillText("Today", 250, 86);
+    for (let i = 0; i < 5; i++) rr(52, 70 + i * 54, 130, 18, 9, i === 1 ? "#456cb3" : "#c8d0db");
+    ctx.fillStyle = "#1b2433"; ctx.font = `700 40px ${FONT}`; ctx.fillText("Today", 250, 86);
     for (let d = 0; d < 5; d++) {
-      const x = 250 + d * 150; ctx.fillStyle = "#6f7886"; ctx.font = `600 20px ${FONT}`; ctx.fillText(["Mon", "Tue", "Wed", "Thu", "Fri"][d], x, 130);
+      const x = 250 + d * 150; ctx.fillStyle = "#566176"; ctx.font = `600 20px ${FONT}`; ctx.fillText(["Mon", "Tue", "Wed", "Thu", "Fri"][d], x, 130);
       for (let k = 0; k < 3; k++) { if (hash(d, k + 50) < 0.3) continue; rr(x, 150 + k * 90 + hash(d, k) * 30, 130, 56 + hash(d, k + 9) * 30, 12, d === 2 && k === 1 ? "#f0c9b4" : "#dde3eb"); }
     }
   }, 1024, 576);

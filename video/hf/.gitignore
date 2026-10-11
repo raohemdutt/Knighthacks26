@@ -6,3 +6,5 @@ assets/clips/*.mp4
 AGENTS.md
 CLAUDE.md
 snapshots*/
+scene-*.html
+renders/

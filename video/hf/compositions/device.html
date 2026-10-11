@@ -25,7 +25,7 @@
         #device-offline .txt { font-size: 40px; font-weight: 600; color: var(--ink); }
         #device-chips { position: absolute; right: 120px; top: 280px; display: flex; flex-direction: column; align-items: flex-end; gap: 22px; }
         .device-chip { height: 84px; padding: 0 38px 0 30px; border-radius: 42px; display: flex; align-items: center; gap: 18px; font-size: 40px; font-weight: 600; color: var(--ink); opacity: 0; }
-        .device-chip .dot { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 6px rgba(217,119,74,0.16); }
+        .device-chip .dot { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 6px rgba(69,108,179,0.16); }
         .device-chip .tag { font-size: 28px; font-weight: 600; color: var(--muted); opacity: 0; }
 
         /* Line 2: the ledger. */
@@ -39,7 +39,14 @@
         .device-cell .l { margin-top: 10px; font-size: 28px; font-weight: 600; color: var(--muted); display: flex; align-items: center; gap: 12px; }
         .device-cell .l i { width: 14px; height: 14px; border-radius: 50%; }
         #device-cell-ok .l i { background: var(--accent); }
-        #device-cell-no .l i { background: var(--shade); box-shadow: inset 2px 2px 3px rgba(43,49,59,0.25); }
+        #device-cell-no .l i { background: var(--shade); box-shadow: inset 2px 2px 3px rgba(27,36,51,0.25); }
+        /* Line 1: the same Ask card as "It remembers", seen from the other side: it still answers with the cable out. */
+        #device-ask-stage { position: absolute; left: 110px; top: 560px; width: 620px; }
+        #device-ask { width: 620px; display: flex; flex-direction: column; align-items: flex-start; gap: 22px; opacity: 0; transform-origin: 0% 50%; }
+        #device-ask .site-you { align-self: flex-end; font-size: 32px; }
+        #device-ask .site-card { width: 620px; padding: 28px 34px; }
+        #device-ask .site-answer { font-size: 34px; }
+        #device-ask .row { margin-top: 16px; display: flex; gap: 12px; }
       </style>
       <div id="root" data-composition-id="device" data-width="1920" data-height="1080">
         <div id="device-chapter" class="soft-raised soft-muted">On the device</div>
@@ -47,7 +54,7 @@
         <div id="device-edge-label">leaves the device</div>
         <div id="device-edge">
           <svg viewBox="0 0 40 640" xmlns="http://www.w3.org/2000/svg">
-            <line id="device-edge-line" x1="20" y1="0" x2="20" y2="640" stroke="#b7c0cd" stroke-width="5" stroke-linecap="round" stroke-dasharray="2 18" />
+            <line id="device-edge-line" x1="20" y1="0" x2="20" y2="640" stroke="#c9d3e3" stroke-width="5" stroke-linecap="round" stroke-dasharray="2 18" />
           </svg>
         </div>
         <div id="device-pic" class="soft-raised">
@@ -60,8 +67,8 @@
                 <rect x="94" y="150" width="26" height="34" rx="10" fill="#d9bfae" />
                 <ellipse cx="107" cy="112" rx="44" ry="52" fill="#d9bfae" />
                 <path d="M63 108 C60 66 86 52 108 52 C134 52 156 68 151 108 C146 86 128 78 107 80 C88 80 70 88 63 108 Z" fill="#4a3f38" />
-                <circle cx="91" cy="114" r="5" fill="#2b313b" />
-                <circle cx="123" cy="114" r="5" fill="#2b313b" />
+                <circle cx="91" cy="114" r="5" fill="#1b2433" />
+                <circle cx="123" cy="114" r="5" fill="#1b2433" />
                 <path d="M94 138 Q107 148 120 138" fill="none" stroke="#a8766a" stroke-width="4" stroke-linecap="round" />
               </g>
             </svg>
@@ -78,8 +85,14 @@
           <div class="device-chip soft-raised" id="device-chip-learning"><div class="dot"></div>learning<span class="tag">paused</span></div>
         </div>
 
-        <div id="device-ledger" class="soft-raised">
-          <div class="head"><div class="title">What left</div><div class="when">tonight</div></div>
+        <div id="device-ask-stage" class="site-stage"><div id="device-ask">
+          <div class="site-you">Where did I leave my keys?</div>
+          <div class="site-card"><div class="site-answer">Left of the laptop, behind the mug.</div>
+            <div class="row"><span class="site-tag">offline</span><span class="site-tag">on the Jetson</span></div></div>
+        </div></div>
+
+        <div id="device-ledger" class="site-card">
+          <div class="head"><div class="title">What left</div><span class="site-tag">tonight</span></div>
           <div class="row">
             <div id="device-cell-ok" class="device-cell soft-well"><div class="n">13</div><div class="l"><i></i>allowed</div></div>
             <div id="device-cell-no" class="device-cell soft-well"><div class="n">13</div><div class="l"><i></i>blocked</div></div>
@@ -94,7 +107,7 @@
           // pauses 13.05; ledger 14.68, thirteen 16.32, allowed 17.52, thirteen 18.01, blocked 18.51.
           // Re-derive these if the words in film.yaml change. The scene lasts 20.144.
           const DUR = 20.144;
-          const PRESSED = "inset 8px 8px 16px #b7c0cd, inset -8px -8px 16px #ffffff";
+          const PRESSED = "inset 8px 8px 16px #c9d3e3, inset -8px -8px 16px #ffffff";
           const tl = gsap.timeline({ paused: true });
           tl.fromTo("#device-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.6, ease: "power4.out" }, 0.2);
 
@@ -105,7 +118,7 @@
           tl.fromTo("#device-pic", { opacity: 0, scale: 0.92, x: -20 }, { opacity: 1, scale: 1, x: 0, duration: 0.7, ease: "power4.out" }, 2.6);
           tl.fromTo("#device-pic", { x: 0 }, { x: 420, duration: 1.6, ease: "power2.inOut", immediateRender: false }, 3.6);
           tl.fromTo("#device-face-g", { filter: "blur(0px)" }, { filter: "blur(9px)", duration: 0.7, ease: "power2.inOut" }, 4.15);
-          tl.to("#device-edge-label", { color: "#d9774a", duration: 0.4 }, 4.2);
+          tl.to("#device-edge-label", { color: "#456cb3", duration: 0.4 }, 4.2);
           tl.to(["#device-pic", "#device-edge", "#device-edge-label"], { opacity: 0, duration: 0.5, ease: "power2.in" }, 7.0);
 
           // Line 1: offline as the plug drops, then the chips, one per word; learning goes quiet on "pauses".
@@ -113,11 +126,15 @@
           [["seeing", 9.6], ["remembering", 10.05], ["alerting", 10.8], ["answering", 11.55], ["learning", 12.2]].forEach(([id, w]) => {
             tl.fromTo("#device-chip-" + id, { opacity: 0, y: 24, scale: 0.94 }, { opacity: 1, y: 0, scale: 1, duration: 0.6, ease: "power4.out" }, w);
           });
-          tl.to("#device-chip-learning", { boxShadow: PRESSED, color: "#6f7886", duration: 0.5, ease: "power2.inOut" }, 13.0);
-          tl.to("#device-chip-learning .dot", { backgroundColor: "#b7c0cd", boxShadow: "0 0 0 0px rgba(217,119,74,0)", duration: 0.5, ease: "power2.inOut" }, 13.0);
+          tl.to("#device-chip-learning", { boxShadow: PRESSED, color: "#566176", duration: 0.5, ease: "power2.inOut" }, 13.0);
+          tl.to("#device-chip-learning .dot", { backgroundColor: "#c9d3e3", boxShadow: "0 0 0 0px rgba(69,108,179,0)", duration: 0.5, ease: "power2.inOut" }, 13.0);
           tl.fromTo("#device-chip-learning .tag", { opacity: 0, x: -8 }, { opacity: 1, x: 0, duration: 0.5, ease: "power4.out" }, 13.15);
           tl.to(".device-chip", { opacity: 0, x: 20, duration: 0.4, ease: "power2.in", stagger: 0.04 }, 13.7);
           tl.to("#device-offline", { opacity: 0, x: 20, duration: 0.4, ease: "power2.in" }, 13.8);
+
+          // "answering": the Ask card, turned the other way from the desk scene.
+          tl.fromTo("#device-ask", { opacity: 0, rotationY: 24, x: -30 }, { opacity: 1, rotationY: 14, x: 0, duration: 0.8, ease: "power4.out" }, 11.4);
+          tl.to("#device-ask", { opacity: 0, rotationY: 6, duration: 0.45, ease: "power2.in" }, 13.75);
 
           // Line 2: the ledger card on "ledger", the numbers on their words.
           tl.fromTo("#device-ledger", { opacity: 0, y: 30, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: "power4.out" }, 14.55);

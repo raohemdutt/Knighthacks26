@@ -87,7 +87,7 @@ export function buildKitchen(scene) {
   const head = new THREE.Group(); head.position.set(0, -0.15, 1.6); head.rotation.order = "YXZ"; head.rotation.set(1.08, 0.37, 0); wcam.add(head);
   head.add(at(rbox(1.0, 0.8, 1.5, white, 0.3, 3), 0, 0, 0.3));
   const wl = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.26, 0.12, 20), matte({ color: INK, roughness: 0.15, envMapIntensity: 1.2 })); wl.rotation.x = Math.PI / 2; wl.position.set(0, 0, 1.08); head.add(wl);
-  const wled = new THREE.Mesh(new THREE.CircleGeometry(0.06, 12), flat({ color: 0xd9774a })); wled.position.set(0.32, 0.22, 1.06); head.add(wled);
+  const wled = new THREE.Mesh(new THREE.CircleGeometry(0.06, 12), flat({ color: 0x456cb3 })); wled.position.set(0.32, 0.22, 1.06); head.add(wled);
   set.add(wcam);
 
   // The second Atlas on the counter.

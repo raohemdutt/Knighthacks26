@@ -54,9 +54,9 @@
       <div id="root" data-composition-id="friends" data-width="1920" data-height="1080">
         <div id="friends-chapter" class="soft-raised soft-muted">Friends</div>
 
-        <div class="friends-priv soft-raised" id="friends-priv-0"><svg viewBox="0 0 24 24"><path d="M7 11V8a5 5 0 0 1 10 0v3" fill="none" stroke="#6f7886" stroke-width="2.2" stroke-linecap="round"/><rect x="5" y="11" width="14" height="10" rx="3" fill="#6f7886"/></svg>Private calendar</div>
-        <div class="friends-priv soft-raised" id="friends-priv-1"><svg viewBox="0 0 24 24"><path d="M7 11V8a5 5 0 0 1 10 0v3" fill="none" stroke="#6f7886" stroke-width="2.2" stroke-linecap="round"/><rect x="5" y="11" width="14" height="10" rx="3" fill="#6f7886"/></svg>Private calendar</div>
-        <div class="friends-priv soft-raised" id="friends-priv-2"><svg viewBox="0 0 24 24"><path d="M7 11V8a5 5 0 0 1 10 0v3" fill="none" stroke="#6f7886" stroke-width="2.2" stroke-linecap="round"/><rect x="5" y="11" width="14" height="10" rx="3" fill="#6f7886"/></svg>Private calendar</div>
+        <div class="friends-priv soft-raised" id="friends-priv-0"><svg viewBox="0 0 24 24"><path d="M7 11V8a5 5 0 0 1 10 0v3" fill="none" stroke="#566176" stroke-width="2.2" stroke-linecap="round"/><rect x="5" y="11" width="14" height="10" rx="3" fill="#566176"/></svg>Private calendar</div>
+        <div class="friends-priv soft-raised" id="friends-priv-1"><svg viewBox="0 0 24 24"><path d="M7 11V8a5 5 0 0 1 10 0v3" fill="none" stroke="#566176" stroke-width="2.2" stroke-linecap="round"/><rect x="5" y="11" width="14" height="10" rx="3" fill="#566176"/></svg>Private calendar</div>
+        <div class="friends-priv soft-raised" id="friends-priv-2"><svg viewBox="0 0 24 24"><path d="M7 11V8a5 5 0 0 1 10 0v3" fill="none" stroke="#566176" stroke-width="2.2" stroke-linecap="round"/><rect x="5" y="11" width="14" height="10" rx="3" fill="#566176"/></svg>Private calendar</div>
 
         <div class="friends-bub soft-raised" id="friends-bub-0"><i></i>Free.</div>
         <div class="friends-bub soft-raised busy" id="friends-bub-1"><i></i>Busy then. How about 3:00?</div>
@@ -85,8 +85,8 @@
           }
           const LN = lines();
           const W = (i, s) => LN[i].start + s; // measured word moments, see world/scenes/friends.js
-          const PRESSED = "inset 10px 10px 20px #b7c0cd, inset -10px -10px 20px #ffffff";
-          const RAISED = "18px 18px 36px #b7c0cd, -18px -18px 36px #ffffff";
+          const PRESSED = "inset 10px 10px 20px #c9d3e3, inset -10px -10px 20px #ffffff";
+          const RAISED = "18px 18px 36px #c9d3e3, -18px -18px 36px #ffffff";
           const tl = gsap.timeline({ paused: true });
 
           tl.fromTo("#friends-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0.2);
