@@ -112,3 +112,19 @@ def test_an_old_chip_row_only_fills_a_gap_and_says_so(tmp_path):
     md = slide.table(slide.measured_rows(httpx.Client(), None, [], metrics_file=metrics, ledger_dir=str(tmp_path / "no-ledger")))
     assert "| Teacher tok/s (Strix Halo) | 2.82 tok/s | metrics.jsonl:2 | 2026-10-10T19:59:08Z | no |" in md
     assert "| Trainer samples/s (Strix Halo) | 0.51 samples/s | metrics.jsonl:4 (R9700, not the current lab) | 2026-10-10T10:23:23Z | LOW |" in md
+
+
+def test_a_reference_row_from_another_chip_never_reaches_the_slide(tmp_path):
+    """R57's A100 rows say other_chip: true; even newer and with no lab row to beat, they never fill the slide."""
+    metrics = tmp_path / "metrics.jsonl"
+    rows = [
+        {"metric": "teacher.decode_tok_s", "value": 2.82, "unit": "tok/s", "ts": "2026-10-10T19:59:08Z", "conditions": STRIX},
+        {"metric": "teacher.decode_tok_s", "value": 64.956, "unit": "tok/s", "ts": "2026-10-11T01:52:01Z",
+         "node": "a100", "conditions": {"hub": "colab", "other_chip": True}},
+        {"metric": "teacher.joules_per_token", "value": 0.6003, "unit": "J/token", "ts": "2026-10-11T01:52:01Z",
+         "node": "a100", "conditions": {"hub": "colab", "other_chip": True}},
+    ]
+    metrics.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    found = slide.lab_metrics(metrics)
+    assert found["teacher.decode_tok_s"][:3] == (2.82, "tok/s", "metrics.jsonl:1")
+    assert "teacher.joules_per_token" not in found

@@ -176,8 +176,9 @@ def test_two_atlases_agree_through_neon():
         dom.share_executor(ActionRequest(id="a1", kind="circle_share", target=c, reason="Study", expires_at=NOW, params={
             "kind": "event_proposal", "thread_id": f"{c}-t1", "proposal": proposal.model_dump(mode="json")}))
 
-        [received] = hem.poll()  # hemdutt's box reads the proposal from Neon and replies free
-        assert received.kind == "proposal" and received.proposal == proposal
+        # hemdutt's box reads the proposal from Neon and replies free; as the only invitee it also sees the agreement
+        received, heard = hem.poll()
+        assert received.kind == "proposal" and received.proposal == proposal and isinstance(heard, EventAgreed)
         [agreed] = [e for e in dom.poll() if isinstance(e, EventAgreed)]
         assert agreed.attendees == [f"{c}-dom", f"{c}-hemdutt"]
         assert dom.poll() == [] and hem.poll() == []  # nothing new on either side

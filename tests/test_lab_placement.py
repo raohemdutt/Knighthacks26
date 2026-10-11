@@ -376,10 +376,10 @@ def test_python_m_lab_placement_prints_the_plan_as_text(capsys):
     assert lab_cli.main(["placement", "--no-queue", "--now", "2026-10-10T22:30:00Z"]) == 0
     out = capsys.readouterr().out
     assert out.startswith("Placement plan as of 2026-10-10T22:30:00Z; facts from fixtures/lab/placement")
-    for heading in ("\nPods\n", "\nPlan\n", "\nMay share a chip\n", "\nQueue\n", "\nLevers\n", "\nNotes\n",
-                    "\nNumbers\n"):
+    for heading in ("\nPods\n", "\nPlan\n", "\nMay share a chip\n", "\nQueue\n", "\nLevers\n", "\nNumbers\n"):
         assert heading in out
     assert "  teacher  -> pod-a (stays)" in out and "  lora     -> pod-b" in out
+    assert "\nNotes\n" not in out  # printed only when the plan has notes; --no-queue adds none
 
 
 def test_json_is_one_object_on_one_line(capsys):

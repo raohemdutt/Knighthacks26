@@ -186,6 +186,23 @@ class Spot:
                                  "and the schematic view uses the CSV coordinates as given.")},
                 "source": "04_ASSETS/fictional_floor_plan.png (the kit); pin positions in fixtures/spot/waypoint_pixels.json (ours)"}
 
+    @cached_property
+    def walkable(self):
+        """The walkable map traced from the plan picture (fixtures/spot/floor_walkable.json), when the plan and the trace are both there."""
+        from contexts.spot.domain.walkable import Walkable
+
+        plan = self.plan
+        trace_file = Path(self.kit.path).parent / "floor_walkable.json" if self.kit is not None else None
+        if plan is None or trace_file is None or not trace_file.is_file():
+            return None
+        try:
+            trace = json.loads(trace_file.read_text(encoding="utf-8"))
+            if trace.get("image") != plan["image"]:
+                return None
+            return Walkable.of(trace, {k: {"floor": self.kit.location[k].floor, "x": v["x"], "y": v["y"]} for k, v in plan["waypoints"].items()})
+        except (ValueError, KeyError, TypeError):
+            return None
+
     def sample_image(self, action_type: str) -> dict | None:
         name = SAMPLE_IMAGE.get(action_type)
         path = f"sample_inspection_images/{name}"

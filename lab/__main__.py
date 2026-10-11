@@ -63,6 +63,7 @@ VERBS: dict[str, str] = {
     "pool": "lab.machine.pool:main",
     "profile-decode": "lab.profile_decode:main",
     "publish-adapter": "lab.publish_adapter:main",
+    "quark-compare": "lab.quark_compare:main",
     "ready": "lab.machine.ready:main",
     "referee": "lab.machine.referee:main",
     "research-check": "lab.machine.research_check:main",
@@ -72,6 +73,7 @@ VERBS: dict[str, str] = {
     "sampler-overhead": "lab.sampler_overhead:main",
     "sit": "lab.machine.sit:main",
     "slot": "lab.machine.slots:main",
+    "spot-score": "lab.spot_score:main",
     "stop": "lab.machine.stop:stop_main",
     "sweep-request": "lab.sweep_request:main",
 }

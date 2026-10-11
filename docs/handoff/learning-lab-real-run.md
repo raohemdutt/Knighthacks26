@@ -16,8 +16,8 @@ experiments with their verdicts. Today it shows a labelled sample run plus the r
 | Training run tab (replay) | `web/app/lab/`, `web/components/lab/LabRun.tsx`, `contexts/learning/application/lab_view.py`, `lab_api.py` | events in the box's log; a sample from `fixtures/learning/sample_run/` only when the log has no real run |
 | Speed and energy tab | `web/components/lab/SpeedEnergy.tsx`, `contexts/learning/application/lab_bench.py` | `lab/refine/metrics.jsonl`, parsed directly |
 | Routing tab (what-if) | `web/components/lab/Routing.tsx`, `contexts/learning/application/lab_routing.py` | the same rows; calls the real `runtime.routing.route` and the `capability` / `energy` policies |
-| Experiments tab | `web/components/lab/Experiments.tsx`, `contexts/learning/application/lab_experiments.py` | the lab ledger if present (`LAB_STATE_DIR`, else `lab/state/ledger.jsonl`), the seeded queue, `REFINE_LOG.md` passes |
-| Import of a run | `contexts/learning/lab_import.py` | a `telemetry.jsonl`, a gate `scores.json`, a package `manifest.json` |
+| Experiments tab | `web/components/lab/Experiments.tsx`, `contexts/learning/application/lab_experiments.py` | the lab ledger if present (`LAB_STATE_DIR`, else the copy pushed to `<data_dir>/lab_state/ledger.jsonl`, else `lab/state/ledger.jsonl`), the seeded queue, `REFINE_LOG.md` passes |
+| Import of a run, and of the ledger | `contexts/learning/lab_import.py` | a `telemetry.jsonl`, a gate `scores.json`, a package `manifest.json`, the lab's `ledger.jsonl` |
 | Run folder reader | `contexts/learning/application/lab_runs.py` | `<data_dir>/lab_runs/<any>/telemetry.jsonl` (+ `run.json`), or `ATLAS_LAB_RUNS_DIR` |
 
 Endpoints: `GET /api/learning/lab`, `GET /api/learning/lab/{run_id}`, `GET /api/learning/lab/bench`,
@@ -88,11 +88,40 @@ The Experiments tab reads the lab ledger through the lab's own `experiments.fold
 running / dropped. No ledger exists on the box or on the owner's Mac, so it shows the five seeded experiments as
 queued and the refinement passes as "not converged".
 
-Put a copy of the ledger where the box can read it and point the gateway at it: set `LAB_STATE_DIR=<folder containing
-ledger.jsonl>` in the box's `.env` (a restart of `atlas-gateway` is needed to pick up the variable; ask Xander or
-Dominick, the box is theirs to restart), and refresh the copy with `rsync`/`scp` when it changes. If you would rather
-not restart the box, tell Hemdutt's agent and an import route for a ledger file can be added the same way as the run
+Push the ledger to the box, whole, whenever it has changed (from the folder that holds it: `$LAB_STATE_DIR`, else
+`lab/state/`):
+
+```
+curl -X POST --data-binary @ledger.jsonl "http://100.124.34.36:8000/api/learning/lab/import?kind=ledger"
+```
+
+No token is set on the box today. If one is set later, add `-H "Authorization: Bearer $ATLAS_TOKEN"` as for the run
 import.
+
+- The box keeps the file as it is at `<data_dir>/lab_state/ledger.jsonl` (never in `lab/state/` of its checkout) and
+  the Experiments tab reads it on its next request. No environment variable, no restart per push. The tab says
+  "Ledger received from the lab at 1:42 AM, 37 rows".
+- The answer: `{"kind": "ledger", "changed": true, "rows": 37, "experiments": 9, "verdicts": {"a_ahead": 1,
+  "b_ahead": 2, "too_early": 1}, "bytes": 41873, "received_at": "2026-10-11T05:42:10Z", "stored":
+  "lab_state/ledger.jsonl"}`. The same bytes again write nothing: `"changed": false` and a note saying so.
+- Every line must be a row the lab's own `ledger.validate` accepts, with an integer `seq`. One that is not refuses the
+  whole body (400) and every bad line is named by number and field (`line 12: actor is missing`), never by its
+  contents; the copy already on the box stays as it was. A half-written last line counts as a bad line, so push
+  between appends, not during one. The body is capped at 8 MB (413).
+- Each line is also checked by the repo's credential scan (the one `tests/test_no_secrets.py` runs over `lab/state`).
+  A line that holds something shaped like a token, a key or a password refuses the body: `line 12: holds what looks
+  like a credential (hub token)`. Take it out of the ledger, and replace the credential.
+- What the box shows from the ledger is what it showed before: experiment ids, titles, levers, arms, hypotheses,
+  citations, the numbers and the verdicts. A row's `note`, `source`, `conditions`, `actor` and `refs` are stored with
+  the file and served nowhere.
+- From a checkout on the box: `python -m contexts.learning.lab_import --ledger <file> [--data-dir data]` writes the
+  same copy through the same checks; a running gateway picks it up without a restart.
+- The route arrives with this code, so the box needs one pull and one restart of `atlas-gateway` to have it (ask
+  Xander or Dominick, the box is theirs to restart). After that, a push needs neither.
+
+Order of reading: `LAB_STATE_DIR` when it is set and holds a ledger, then the pushed copy, then `lab/state/` in the
+box's checkout. Setting `LAB_STATE_DIR` in the box's `.env` and refreshing that folder with `rsync`/`scp` still works,
+but it needs a restart to pick up the variable; the push is the way to do it.
 
 **Done when:** `/lab/?tab=experiments` on the box shows your experiments with their verdicts and sources.
 
