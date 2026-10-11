@@ -176,8 +176,10 @@ class WindowConditions(BaseModel):
 class JoulesPerAnswer(_TelemetryEvent):
     """The energy of one answer: the answering node's power integrated over the request window (J), gross.
 
-    Gross means nothing is subtracted (telemetry ruling 1); the node's latest idle watts and their time are stored
-    beside the value so a marginal figure can be derived without measuring again. The integral takes the last
+    Gross means nothing is subtracted (telemetry ruling 1); the node's idle watts are stored beside the value so a
+    marginal figure can be derived without measuring again. The idle is the node's calibrated figure (the deep-idle
+    reading taken by the sampler alone, named by `idle_metric` and `idle_measured`) and `idle_source` says
+    "calibrated"; where no figure is calibrated it is the latest quiet reading before the window, "latest_quiet". The integral takes the last
     sample at or before the window start and the first at or after its end, clipped to the window by linear
     interpolation; repeated identical readings are all kept. Where requests overlap on the node, each stretch
     between samples and window edges is split among the requests running in it in proportion to their output
@@ -200,8 +202,11 @@ class JoulesPerAnswer(_TelemetryEvent):
     attribution: Literal["token_proportional"] = "token_proportional"
     overlapping: int = 0  # other requests that ran on the node during part of this window
     tokens_out: int | None = None
-    idle_w: float | None  # the node's latest idle reading before the window, W; null when none was seen
-    idle_ts: datetime | None
+    idle_w: float | None  # the node's idle, W: its calibrated figure, else the latest quiet reading before the window
+    idle_ts: datetime | None  # when the latest quiet reading was taken (on `clock`); null for a calibrated figure
+    idle_source: Literal["calibrated", "latest_quiet"] | None = None  # which idle_w is; null in rows from before it
+    idle_metric: str | None = None  # a calibrated figure: the ledger metric it was measured as, e.g. pod.idle_watts
+    idle_measured: datetime | None = None  # a calibrated figure: the timestamp of that ledger row (UTC)
     power_field: str  # the reading integrated: "VDD_IN" on the Jetson, "socket_w" on the pods
     boundary: str  # what that reading covers, e.g. "module input" or "APU socket (CPU cores and graphics)"
     accelerator: str  # the chip that answered, e.g. "Radeon 8060S (gfx1151, Strix Halo)"

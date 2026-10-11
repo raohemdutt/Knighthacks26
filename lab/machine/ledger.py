@@ -61,7 +61,7 @@ from typing import IO, Any
 
 from lab.machine import stop
 from lab.machine.lock import FileLock, LockTimeout
-from lab.machine.metrics import _METRIC_RE as METRIC_NAME_RE
+from lab.machine.metrics import METRIC_NAME_RE
 
 __all__ = ["ENV_STATE_DIR", "DEFAULT_STATE_DIR", "LEDGER_FILE", "LOCK_FILE", "LOCK_TIMEOUT", "FIELDS",
            "REF_KEYS", "OPTIONAL_FIELDS", "FILTER_NAMES", "LockTimeout", "RowError", "resolve_state_dir",

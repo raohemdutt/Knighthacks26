@@ -1155,13 +1155,16 @@ def test_the_pool_verb_is_registered_and_owner_only():
 
 
 class InterruptOnce(pool.Pool):
-    """A pool whose main loop gets one Ctrl+C once a seat runs, the way a console delivers it."""
+    """A pool whose main loop gets one Ctrl+C once a seat runs, the way a console delivers it. `interrupted` is set
+    the moment it is raised, so a test can hold the seat open until the pool has taken the interrupt."""
 
-    raised = False
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.interrupted = threading.Event()
 
     def tick(self, timeout):
-        if self.seats and not self.raised:
-            self.raised = True
+        if self.seats and not self.interrupted.is_set():
+            self.interrupted.set()
             raise KeyboardInterrupt
         return super().tick(timeout)
 
@@ -1171,7 +1174,15 @@ def test_ctrl_c_drains_the_pool_starting_nothing_new_until_its_seats_end(lab, re
     fake = FakeLauncher()
     conf = pool.Settings(state_dir=lab, budget=2, refine=pool.TreeFiles(refine_root), verbs=lambda: ["digest", "sit"])
     p = InterruptOnce(conf, launcher=fake, tick_seconds=0.01, clock=clock)
-    ender = threading.Thread(target=lambda: (fake.wait_calls(1), time.sleep(0.2), fake.finish("task O1")))
+
+    def end_the_seat() -> None:
+        # O1 ends only after the pool has taken the Ctrl+C: were it a sleep, a loaded box could end O1 and start O2
+        # before the interrupt, and the drain row would count two seats
+        fake.wait_calls(1)
+        assert p.interrupted.wait(10), "the pool never took the interrupt"
+        fake.finish("task O1")
+
+    ender = threading.Thread(target=end_the_seat)
     ender.start()
     try:
         answer = p.run()

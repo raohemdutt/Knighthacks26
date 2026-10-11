@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from datetime import date as _date
 from datetime import datetime
 
+from lab.machine.metrics import METRIC_NAME_RE
+
 __all__ = [
     "Change",
     "CodeBlock",
@@ -50,9 +52,9 @@ __all__ = [
 TRACKS: tuple[str, ...] = ("telemetry", "learning", "plumbing", "kernels")
 
 #: A metric name: dotted lowercase words, each starting with a letter (teacher.decode_tok_s). It is the rule
-#: lab/machine/metrics.py applies to lab/refine/metrics.jsonl, so a name a reading cites or an experiment moves is
-#: one that file can hold.
-METRIC_NAME = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+")
+#: lab/machine/metrics.py applies to lab/refine/metrics.jsonl (the same object), so a name a reading cites or an
+#: experiment moves is one that file can hold.
+METRIC_NAME = METRIC_NAME_RE
 
 # A dimension id is the label a track's RUBRIC.md gives one of its tests (D1, T3, ...); U1 and U2 are
 # the two universal rules.

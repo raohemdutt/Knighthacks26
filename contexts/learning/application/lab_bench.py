@@ -21,10 +21,13 @@ New rows show up without a code change:
 - `power` takes, per node, the newest `*.idle_watts`, `*.watts_avg` and `*.watts_peak` rows;
 - `not_charted` lists every metric and node the screen draws nothing for, so no row is dropped silently.
 
-The lab moved from the R9700s (gfx1201) to the Strix Halo pods (gfx1151) on Sat 2026-10-10 at 4:25 PM ET. A pod row
-tagged with the old chip, or untagged and measured before the move, is `other_chip: true` (the rule is
-lab/slide_numbers.py's own `_old_chip`, imported). Such a row is never put on a Strix Halo curve: it forms sweeps of
-its own, is left out of `power`'s bars (listed under `power.other_chip` instead) and says so in `not_charted`.
+The lab moved from the R9700s (gfx1201) to the Strix Halo pods (gfx1151) on Sat 2026-10-10 at 4:25 PM ET, and it also
+records reference runs on machines that are not its own (R57: an NVIDIA A100 on Colab). Every row therefore carries
+the chip it was measured on, `chip: {key, name, where, current, role, reason}`, worked out from the row by `chip_of`
+(the rules, in order, are in its docstring). `other_chip` is kept beside it: true for anything that is not the
+current lab. A row from another chip is never put on a Strix Halo curve: it forms sweeps of its own (one per chip),
+is left out of `power`'s bars (listed under `power.other_chip` instead) and says so in `not_charted`. A current
+sweep lists under `comparisons` the other chips' sweeps that recorded the same metrics at the same batch sizes.
 
 A number is a small dict in the lab view's shape, `{label, value, unit, source, low_confidence, reason}`, plus
 `kind`: "measured" (a row's own value) or "derived" (worked out here from rows, with the formula in `formula`).
@@ -45,13 +48,18 @@ STUDENT_NODE = "jetson"
 TRAINER_STRIP = ("trainer.samples_per_s", "trainer.smoke_loss_first", "trainer.smoke_loss_last", "trainer.peak_mem_gb")
 SWEEP_METRICS = ("decode_tok_s", "decode_tok_s_total", "joules_per_token", "ttft_s", "watts_avg", "watts_peak")
 NO_REASON = "the row is flagged low confidence and gives no reason"
-OTHER_CHIP = "other chip (R9700), not the current lab"
+OTHER_CHIP = "another chip, not the current lab"
 LAB_MOVED_AT = "2026-10-10T20:25:00Z"
+MOVED_WORDS = "the lab moved to the Strix Halo pods on Sat 2026-10-10 at 4:25 PM ET"
+CURRENT_CHIP = {"key": "strix-halo", "name": "Radeon 8060S (Strix Halo)", "marks": ("gfx1151", "8060s", "strix"), "role": "current"}
+EARLIER_CHIP = {"key": "r9700", "name": "Radeon R9700", "marks": ("gfx1201", "r9700"), "role": "earlier"}
 
 try:  # the lab's own rule for which rows describe the hardware it no longer uses
     from lab.slide_numbers import _old_chip as _lab_old_chip
 except ImportError:  # the gateway run where lab/ or its imports are missing: the same rule, restated
     def _lab_old_chip(rec: dict) -> bool:
+        if (rec.get("conditions") or {}).get("other_chip") is True:
+            return True
         gpu = str((rec.get("conditions") or {}).get("gpu", ""))
         if "gfx1151" in gpu or "Strix" in gpu:
             return False
@@ -60,9 +68,74 @@ except ImportError:  # the gateway run where lab/ or its imports are missing: th
         return bool(rec.get("ts")) and str(rec["ts"]) < LAB_MOVED_AT
 
 
+def _where(row: dict[str, Any]) -> str | None:
+    """Where the row was measured, as far as it says: its hub ("colab" -> "Colab", "sjc" -> "SJC"), else its node."""
+    hub = (row.get("conditions") or {}).get("hub")
+    if isinstance(hub, str) and hub.strip():
+        hub = hub.strip()
+        return hub.upper() if len(hub) <= 3 else hub[0].upper() + hub[1:]
+    node = row.get("node")
+    return node if isinstance(node, str) and node.strip() else None
+
+
+def chip_name(text: str) -> str:
+    """A short name out of a GPU description: "NVIDIA A100-SXM4-40GB, 400 W power limit" -> "NVIDIA A100".
+    The words up to the first comma or bracket, cut after the model number (the first word holding a digit), which
+    loses its own suffix after a dash."""
+    head = re.split(r"[,;(\[]", text.strip(), maxsplit=1)[0].split() or text.split()
+    words = []
+    for word in head:
+        if any(ch.isdigit() for ch in word):
+            words.append(word.split("-")[0] or word)
+            break
+        words.append(word)
+    return " ".join(words)[:40]
+
+
+def _chip(kind: dict[str, Any], row: dict[str, Any], reason: str) -> dict[str, Any]:
+    return {"key": kind["key"], "name": kind["name"], "where": _where(row), "current": kind["role"] == "current",
+            "role": kind["role"], "reason": reason}
+
+
+def chip_of(row: dict[str, Any]) -> dict[str, Any]:
+    """The chip a row was measured on: `{key, name, where, current, role, reason}`. `role` is "current" (the lab's
+    Strix Halo pods, or the Jetson, which is the box and not a lab card), "earlier" (the R9700s the lab had before),
+    "reference" (any other named chip) or "unnamed". The first rule that fits decides:
+
+    1. a Jetson row is the box;
+    2. the row names its chip (`conditions.gpu`, else `conditions.chip`): the Strix Halo (gfx1151, 8060S, Strix),
+       the R9700 (gfx1201, R9700), or any other chip, which is named from that text and is never the current lab;
+    3. the row names no chip but marks itself `other_chip: true`: another chip, not named;
+    4. the row says nothing: lab/slide_numbers.py's `_old_chip` decides by the time it was measured (before the move
+       it was the R9700s, after it the Strix Halo pods), and the reason says that this is by date only."""
+    c = row.get("conditions") or {}
+    if row.get("node") == STUDENT_NODE:
+        return {"key": "jetson", "name": "Jetson", "where": "the box", "current": True, "role": "current",
+                "reason": "a Jetson row: the box itself, not one of the lab's cards"}
+    field = next((f for f in ("gpu", "chip") if _text(c.get(f))), None)
+    if field:
+        said = c[field].strip()
+        low = said.lower()
+        for kind in (CURRENT_CHIP, EARLIER_CHIP):
+            if any(mark in low for mark in kind["marks"]):
+                return _chip(kind, row, f"conditions.{field} says \"{said}\"")
+        name = chip_name(said)
+        return _chip({"key": re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "other", "name": name, "role": "reference"},
+                     row, f"conditions.{field} says \"{said}\"")
+    if c.get("other_chip") is True:
+        return _chip({"key": "unnamed", "name": "Another chip, not named", "role": "unnamed"}, row,
+                     "the row marks itself other_chip and names no chip")
+    if _lab_old_chip(row):
+        return _chip(EARLIER_CHIP, row, f"the row names no chip and was measured before {MOVED_WORDS}")
+    if row.get("ts"):
+        return _chip(CURRENT_CHIP, row, f"the row names no chip and was measured after {MOVED_WORDS}")
+    return _chip(CURRENT_CHIP, row, "the row names no chip and has no time, so it is counted with the current lab")
+
+
 def other_chip(row: dict[str, Any]) -> bool:
-    """True for a pod row from the R9700s. The Jetson is not one of the lab's cards, so its rows never are."""
-    return row.get("node") != STUDENT_NODE and bool(_lab_old_chip(row))
+    """True for a row that was not measured on the current lab's chip (the R9700s before the move, a reference run
+    on another machine). The Jetson is not one of the lab's cards, so its rows never are."""
+    return not chip_of(row)["current"]
 
 
 def read_rows(path: str | Path | None = METRICS_FILE) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -123,7 +196,7 @@ def build_of(c: dict[str, Any]) -> str | None:
 def sampler_of(c: dict[str, Any]) -> dict[str, Any] | None:
     """How the reading was taken, as far as the row says: the program, its period, how many samples."""
     out = {"sampler": _text(c.get("sampler")),
-           "tool": _text(c.get("reader")) or _text(c.get("sensor")) or _text(c.get("power_field")) or _text(c.get("rail")),
+           "tool": _text(c.get("reader")) or _text(c.get("sensor")) or _text(c.get("power_field")) or _text(c.get("rail")) or _text(c.get("power_source")),
            "period_ms": _number(c.get("period_ms")), "samples": _number(c.get("samples")),
            "error": _text(c.get("error"))}
     return out if any(v is not None for v in out.values()) else None
@@ -142,6 +215,7 @@ def state_of(row: dict[str, Any]) -> str | None:
 def point(row: dict[str, Any], label: str | None = None) -> dict[str, Any]:
     c = row["conditions"]
     low = bool(row.get("low_confidence"))
+    chip = chip_of(row)
     stats = c.get("stats") if isinstance(c.get("stats"), dict) else {}
     return {
         "label": label or row["metric"], "value": row["value"], "unit": row.get("unit"),
@@ -151,11 +225,19 @@ def point(row: dict[str, Any], label: str | None = None) -> dict[str, Any]:
         "formula": _text(c.get("formula")) if c.get("derived") is True else None,
         "metric": row["metric"], "node": row.get("node"), "ts": row.get("ts"), "line": row["_line"],
         "recorded_by": _text(row.get("source")), "sampler": sampler_of(c), "x": batch_of(row),
-        "runs": _number(stats.get("n")), "statistic": _text(c.get("statistic")),
+        "runs": _number(stats.get("n")) if _number(stats.get("n")) is not None else _runs_listed(c), "statistic": _text(c.get("statistic")),
         "spread": {k: stats[k] for k in ("min", "max", "sd") if _number(stats.get(k)) is not None} or None,
         "model": model_of(c), "build": build_of(c), "session": _text(c.get("session")), "state": state_of(row),
-        "other_chip": other_chip(row), "chip": OTHER_CHIP if other_chip(row) else None,
+        "other_chip": not chip["current"], "chip": chip,
     }
+
+
+def _runs_listed(c: dict[str, Any]) -> int | None:
+    """How many runs a row lists one by one when it gives no `stats.n` (R57's `per_spawn`)."""
+    for key in ("per_spawn", "per_run", "per_repeat"):
+        if isinstance(c.get(key), list) and c[key]:
+            return len(c[key])
+    return None
 
 
 def derived(label: str, value: float, unit: str, formula: str, *inputs: dict[str, Any], reason: str | None = None,
@@ -204,9 +286,9 @@ def sweeps(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         c = r["conditions"]
         family = r["metric"].split(".")[0]
-        groups.setdefault((family, r.get("node"), _text(c.get("session")) or _text(r.get("source")) or "", other_chip(r)), []).append(r)
+        groups.setdefault((family, r.get("node"), _text(c.get("session")) or _text(r.get("source")) or "", chip_of(r)["key"]), []).append(r)
     out = []
-    for (family, node, run, old), members in groups.items():
+    for (family, node, run, _key), members in groups.items():
         batches = sorted({batch_of(r) for r in members})
         if len(batches) < 2:
             continue
@@ -222,10 +304,14 @@ def sweeps(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             metrics[name] = pts
         newest = _newest(members)
         c = newest["conditions"]
+        chip = chip_of(newest)
         every = [p for pts in metrics.values() for p in pts]
         out.append({
-            "id": f"{family}:{node}:{run}" + (":other-chip" if old else ""), "other_chip": old, "family": family, "node": node, "run": run, "session": _text(c.get("session")),
-            "model": model_of(c), "build": build_of(c), "chip": _text(c.get("chip")) or _text(c.get("gpu")),
+            "id": f"{family}:{node}:{run}" + ("" if chip["current"] else f":{chip['key']}"), "other_chip": not chip["current"],
+            "chip": chip, "chip_note": _text(c.get("other_chip_note")),
+            "power_source": next((t for t in (_text(r["conditions"].get("power_source")) for r in members) if t), None), "gpu": _text(c.get("chip")) or _text(c.get("gpu")),
+            "family": family, "node": node, "run": run, "session": _text(c.get("session")),
+            "model": model_of(c), "build": build_of(c),
             "mode": _text(c.get("mode")), "prompt_set": (c.get("prompt_set") or {}).get("id") if isinstance(c.get("prompt_set"), dict) else None,
             "max_tokens": _number(c.get("max_tokens")), "ts": newest.get("ts"), "recorded_by": _text(newest.get("source")),
             "batches": batches, "metrics": metrics, "superseded": superseded,
@@ -235,18 +321,31 @@ def sweeps(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         })
     out.sort(key=lambda s: str(s["ts"] or ""), reverse=True)
     out.sort(key=lambda s: s["other_chip"])  # the current lab's sweeps first
+    for s in out:
+        s["comparisons"] = [] if s["other_chip"] else [x for x in (_comparison(s, o) for o in out if o["other_chip"]) if x]
     return out
+
+
+def _comparison(mine: dict[str, Any], other: dict[str, Any]) -> dict[str, Any] | None:
+    """Another chip's sweep that can be read beside this one: the metrics both recorded, at the batch sizes both ran."""
+    batches = [b for b in mine["batches"] if b in other["batches"]]
+    names = [n for n in SWEEP_METRICS if any(p["x"] in batches for p in mine["metrics"].get(n, []))
+             and any(p["x"] in batches for p in other["metrics"].get(n, []))]
+    if not batches or not names:
+        return None
+    return {"id": other["id"], "chip": other["chip"], "metrics": names, "batches": batches,
+            "same_model": mine["model"] is not None and mine["model"] == other["model"]}
 
 
 def _confidence_note(points: list[dict[str, Any]]) -> str:
     """What the rows themselves say about how far to trust the sweep: how many runs stand behind a point."""
     runs = {p["runs"] for p in points}
     sessions = {p["session"] for p in points if p["session"]}
-    if runs <= {None, 1}:
+    stat = next((p["statistic"] for p in points if p["statistic"]), None)
+    if runs <= {None, 1} and not stat:
         head = "Each point is a single run."
     else:
         n = "/".join(f"{r:g}" for r in sorted(r for r in runs if r))
-        stat = next((p["statistic"] for p in points if p["statistic"]), None)
         head = f"Each point is the {stat}" if stat else f"Each point stands on {n} runs"
         head += f", all from one session ({next(iter(sessions))})." if len(sessions) == 1 else "."
     low = [p for p in points if p["low_confidence"]]
@@ -322,7 +421,23 @@ def power(rows: list[dict[str, Any]]) -> dict[str, Any]:
         pick = lambda found, label: point(_newest(found), label) if found else None  # noqa: E731
         nodes.append({"node": node, "idle": pick(idle, f"{node} idle power"), "serving": pick(serving, f"{node} power while serving"),
                       "peak": pick(peak, f"{node} peak power"), "idle_rows": len(idle), "serving_rows": len(serving)})
-    return {"nodes": nodes, "absent": [n for n in NODES if n not in {x["node"] for x in nodes}], "other_chip": old}
+    return {"nodes": nodes, "absent": [n for n in NODES if n not in {x["node"] for x in nodes}], "other_chip": old,
+            "other_chips": _by_chip(old)}
+
+
+def _by_chip(points: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Points grouped by the chip they were measured on, in the order the chips first appear, each with its lines.
+    A reference chip is told apart by where it ran as well: the same card somewhere else is another group."""
+    groups: dict[tuple, dict[str, Any]] = {}
+    for p in points:
+        chip = p["chip"]
+        where = chip["where"] if chip["role"] == "reference" else None
+        g = groups.setdefault((chip["key"], where), {"key": chip["key"], "name": chip["name"], "role": chip["role"],
+                                                     "current": chip["current"], "where": where, "rows": 0, "lines": []})
+        g["rows"] += 1
+        g["lines"].append(p["line"])
+    return list(groups.values())
+
 
 
 def bench(rows: list[dict[str, Any]], skipped: list[dict[str, Any]] | None = None) -> dict[str, Any]:
@@ -351,6 +466,7 @@ def bench(rows: list[dict[str, Any]], skipped: list[dict[str, Any]] | None = Non
             newest = _newest(left)
             not_charted.append({"metric": metric, "node": node, "rows": len(left), "of": len(members), "unit": newest.get("unit"),
                                 "other_chip": sum(other_chip(r) for r in left),
+                                "other_chips": _by_chip([point(r) for r in left if other_chip(r)]),
                                 "latest": point(newest), "lines": [r["_line"] for r in left]})
     families: dict[str, dict[str, Any]] = {}
     for r in rows:
@@ -365,6 +481,7 @@ def bench(rows: list[dict[str, Any]], skipped: list[dict[str, Any]] | None = Non
         "file": REL, "rows": len(rows), "skipped": skipped or [],
         "low_confidence_rows": sum(bool(r.get("low_confidence")) for r in rows),
         "other_chip_rows": sum(other_chip(r) for r in rows), "other_chip_label": OTHER_CHIP, "lab_moved_at": LAB_MOVED_AT,
+        "chips": _by_chip([p for p in (point(r) for r in rows) if p["node"] != STUDENT_NODE]),
         "newest": max((str(r.get("ts")) for r in rows if r.get("ts")), default=None),
         "families": [{**f, "metrics": sorted(f["metrics"]), "nodes": sorted(f["nodes"])} for f in sorted(families.values(), key=lambda f: f["family"])],
         "sweeps": all_sweeps, "student": ref, "power": watts, "series": all_series,
