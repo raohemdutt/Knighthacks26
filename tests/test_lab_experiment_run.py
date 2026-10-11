@@ -37,6 +37,7 @@ UTC = dt.timezone.utc
 T0 = dt.datetime(2026, 10, 10, 14, 0, 0, tzinfo=UTC)
 HUB_TOKEN = "fake-hub-token-d-0123456789abcdef"
 BASE = "https://hub.test"
+BASH = shutil.which("bash") or "bash"     # on Windows a bare "bash" is System32's WSL launcher, not the one on PATH
 HAS_BASH = shutil.which("bash") is not None and shutil.which("base64") is not None and shutil.which("tar") is not None
 needs_bash = pytest.mark.skipif(not HAS_BASH, reason="the pod script needs bash, base64 and tar")
 SERVER_WORDS = ("pod_a_teacher.sh", "kill", "pkill", "vllm serve", "systemctl", "/server")
@@ -123,7 +124,7 @@ class World:
         def terminal(controller, client, name, command, echo):
             """The pod's shell: run what was typed, in the pod's root, and return once it has finished."""
             world.typed.append(command)
-            subprocess.run(["bash", "-c", command], cwd=world.pod_root, env=world.terminal_env, timeout=600,
+            subprocess.run([BASH, "-c", command], cwd=world.pod_root, env=world.terminal_env, timeout=600,
                            check=False)
 
         monkeypatch.setattr(controller_module.Controller, "_type_into_terminal", terminal)
@@ -135,7 +136,7 @@ class World:
                             transport=self.hub.transport, sleep=self.clock.sleep, clock=self.clock.time)
         self.pod = HubPod(letter, self.controller, self.link)
         self.runner = Runner(self.pod, slot_client=self.notion_client, now=lambda: T0,
-                             environ={"LAB_ACTOR": "tester"})
+                             environ={"LAB_ACTOR": "tester", "LAB_ENV_FILES": ""})   # no .env above the clone
 
     def rows(self, verb=None):
         return ledger.read(verb=verb) if verb else ledger.read()
@@ -162,7 +163,7 @@ def fake_config(tmp_path: Path, *, batches=(1, 2), minutes=15, serve_cmd=None, *
                       "/home/jovyan/models/Qwen3.8-27B-INT4", "--port", "0", "--batches",
                       ",".join(map(str, batches)), "--no-64", "--share-spawn", "--max-tokens", "8",
                       "--requests-per-stream", "1", "--warmup", "0", "--no-probe", "--idle-s", "0",
-                      "--request-timeout-s", "60"],
+                      "--request-timeout-s", "60", "--python", sys.executable],   # a bare python3 on Windows is an installer stub
             "arms": {"A": {"batch": batches[0]}, "B": {"batch": batches[1]}}, "minutes": minutes, **more}
 
 
@@ -231,7 +232,8 @@ def test_the_pod_script_is_valid_bash_carries_the_harness_and_never_touches_a_se
                                    node="pod-b")
     text = experiment_run.pod_script(plan)
 
-    assert subprocess.run(["bash", "-n"], input=text, text=True, capture_output=True).returncode == 0
+    assert "\r" not in text                                         # LF only: the pod is Linux, whatever built the text
+    assert subprocess.run([BASH, "-n"], input=text.encode("ascii"), capture_output=True).returncode == 0
     assert "RUN=lab_exp/E3-r1" in text
     assert '"$PY" "$REPO/lab/bench.py" run --engine vllm --checkpoint "$HOME"/models/Qwen3.8-27B-INT4' in text
     assert '--patch "$REPO"/lab/vllm-gfx1201.diff' in text and '--out "$PWD/$RUN/out/i1"' in text
@@ -296,7 +298,7 @@ def test_the_cleanup_interrupts_a_harness_of_this_run_still_going_and_no_other_p
     theirs = subprocess.Popen([sys.executable, str(other)])
     try:
         time.sleep(0.5)
-        done = subprocess.run(["bash", "-c", experiment_run.cleanup_script(plan, plan.run_id)], cwd=root,
+        done = subprocess.run([BASH, "-c", experiment_run.cleanup_script(plan, plan.run_id)], cwd=root,
                               capture_output=True, text=True, timeout=120)
         assert done.returncode == 0, done.stdout + done.stderr
         assert mine.wait(10) == 0 and theirs.poll() is None

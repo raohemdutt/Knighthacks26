@@ -303,7 +303,7 @@ def pod_script(plan: Plan, *, bundle_text: str | None = None) -> str:
             '[ "$RC" -ne 0 ] && [ "$FIRST_RC" -eq 0 ] && FIRST_RC=$RC',
         ]
     lines += ['echo "### results in $RUN/results"', 'exit "$FIRST_RC"', ""]
-    return "\n".join(lines)
+    return "\n".join(lines).replace("\r\n", "\n")   # LF only on every platform: the pod is Linux
 
 
 def cleanup_script(plan: Plan, run_script_id: str) -> str:
