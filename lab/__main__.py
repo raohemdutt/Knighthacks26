@@ -50,6 +50,7 @@ VERBS: dict[str, str] = {
     "experiment": "lab.machine.experiments:main",
     "gpu-power": "lab.machine.gpu_power:main",
     "handoff": "lab.machine.handoff:main",
+    "label-agreement": "lab.label_agreement:main",
     "ledger": "lab.machine.ledger_cli:main",
     "link-speed": "lab.link_speed:main",
     "metrics": "lab.machine.metrics_report:main",
