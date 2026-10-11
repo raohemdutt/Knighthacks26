@@ -57,6 +57,7 @@ REGISTRY_BEFORE_DISCOVERY = {
     "spot-score": "lab.spot_score:main",
     "stop": "lab.machine.stop:stop_main",
     "sweep-request": "lab.sweep_request:main",
+    "tool-call-agreement": "lab.tool_call_agreement:main",
 }
 
 
