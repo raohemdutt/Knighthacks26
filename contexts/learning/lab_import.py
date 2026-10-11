@@ -66,7 +66,9 @@ kind=stage (L30)               the live loop's stage lines (tooling/demo/live_lo
     (`&task=`, or a line's `task`, or what the log knows). Each line becomes a learning.run.progress the stage strip of
     GET /api/learning/lab/{run_id} is drawn from: start -> labeling 0, labeled -> labeling 1, train -> training 0,
     trained -> training 1 and packaging 0, done (rc 0) -> packaging 1 with the message "offered", done with another rc
-    or failed -> failed. Ids are `import:<run_id>:stage.<stage>`, so posting the same lines again adds nothing. A line
+    or failed -> failed; rank1_train and rank1_trained (R65's rank 1 on pod C, posted under the part's run id
+    <run_id>.pod-c) -> training 0 and 1. A start line with members, pods or parts also becomes one learning.loop.act
+    (L29: "2 members", the pods act 2 trains on, and the part run each extra pod's steps are posted under). Ids are `import:<run_id>:stage.<stage>`, so posting the same lines again adds nothing. A line
     of another run refuses the body; a stage name not in that list is skipped and counted. "offered" rides on the
     packaging stage, not on "done": the Teach screen reads "done" as deployed.
 kind=compare / kind=power (L31) the relay's comparison document and its power windows, kept as files under
@@ -116,7 +118,11 @@ STAGE_LINES: dict[str, list[tuple[str, str, float, str]]] = {
     "labeled": [("labeled", "labeling", 1.0, "labeled")],
     "train": [("train", "training", 0.0, "training started")],
     "trained": [("trained", "training", 1.0, "trained"), ("trained.packaging", "packaging", 0.0, "packaging")],
+    # R65's rank 1 on pod C, posted under its own part run id (<act run id>.pod-c) when an act trains on both pods
+    "rank1_train": [("rank1_train", "training", 0.0, "rank 1 on pod C started")],
+    "rank1_trained": [("rank1_trained", "training", 1.0, "rank 1 on pod C trained")],
 }
+LOOP_ACT = "learning.loop.act"   # the act's members, pods and parts (lab_view.LoopAct), from its start line
 STARTED = "learning.training.started"
 LEDGER = "ledger"
 PROBLEMS_SHOWN = 50
@@ -318,7 +324,23 @@ def stage_events(text: str, run_id: str | None, task: str | None = None,
         for suffix, stage, progress, message in marks:
             out.append(RunProgress(event_id=f"import:{run_id}:stage.{suffix}", ts=ts, task=run_task, run_id=run_id,
                                    stage=stage, progress=progress, message=message))
+        if name == "start" and any(row.get(k) is not None for k in ("members", "pods", "parts")):
+            out.append(loop_act(row, run_id, ts))
     return out
+
+
+def loop_act(row: Mapping[str, Any], run_id: str, ts: datetime) -> Event:
+    """A start line's members, pods and parts as one learning.loop.act (L29); ImportRefused when they are not plain."""
+    members, pods, parts = row.get("members"), row.get("pods") or [], row.get("parts") or {}
+    if members is not None and (not isinstance(members, int) or isinstance(members, bool) or members < 1):
+        raise ImportRefused(["members must be a whole number of at least 1"])
+    if not isinstance(pods, list) or not all(isinstance(x, str) and _FIELD.fullmatch(x) for x in pods):
+        raise ImportRefused(["pods must be a list of pod names"])
+    if not isinstance(parts, dict) or not all(isinstance(k, str) and _FIELD.fullmatch(k) and isinstance(v, str)
+                                              and v.startswith(run_id + ".") for k, v in parts.items()):
+        raise ImportRefused(["parts must map a pod to a run id that starts with the act's own run id and a dot"])
+    return parse_event({"type": LOOP_ACT, "event_id": f"import:{run_id}:loop.act", "ts": ts, "run_id": run_id,
+                        "act": row.get("act"), "members": members, "pods": pods, "parts": parts})
 
 
 def skipped_stages(text: str) -> list[str]:
@@ -591,7 +613,8 @@ def seen_in(events: Iterable[Event]) -> set[tuple]:
 def seen_in_view(view: LabView) -> set[tuple]:
     seen = {("step", run_id, step) for run_id, steps in view.steps.items() for step in steps}
     seen |= {("id", e.event_id) for e in view.evaluated.values()}
-    seen |= {("id", e.event_id) for table in (view.reports, view.packages, view.started) for e, _ in table.values()}
+    seen |= {("id", e.event_id) for table in (view.reports, view.packages, view.started, view.loop_acts)
+             for e, _ in table.values()}
     seen |= {("id", e.event_id) for progress in view.progress.values() for e in progress}
     return seen
 

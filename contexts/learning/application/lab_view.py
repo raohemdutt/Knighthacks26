@@ -10,7 +10,9 @@ timeline), what changed on the held-out questions, why the gate deployed it or d
 runs on the box now. While the run is still going it also says so (L30): `run_status` is running, finished or
 failed, `steps_so_far` the steps the log holds, and `stage_strip` the four stages of the live loop (labeling,
 training, packaging, offered), each {stage, state (done, now, waiting, failed, not reported), started, ended,
-seconds, message}, lit from the run's own progress events, steps and package. It never invents a number:
+seconds, message}, lit from the run's own progress events, steps and package. A live-loop act (L29,
+learning.loop.act) adds `members`, `pods` (the training stage names them too) and `parts`: the steps of each extra
+pod's rank (R65's two-pod LoRA), whose own run id is left out of the run list. It never invents a number:
 
 - every number is a small dict `{label, value, unit, source, low_confidence, reason}`. `source` names
   the event (type and id), the file and line, or how it was derived and from which events;
@@ -133,7 +135,19 @@ class SwapCompleted(_Optional):
     reason: str | None = None
 
 
-OPTIONAL = {m.TYPE: m for m in (TrainingStarted, EvalReported, PackageBuilt, SwapCompleted)}
+class LoopAct(_Optional):
+    """The live loop's act (L29): who pooled, which pods train it, and the runs that are its parts (one per extra pod:
+    R65's rank 1 on pod C writes its steps under its own run id). Published by lab_import kind=stage from the act's
+    start line; not in contracts/, like the others here."""
+    TYPE: ClassVar[str] = "learning.loop.act"
+    run_id: str
+    act: str | None = None
+    members: int | None = None
+    pods: list[str] = []
+    parts: dict[str, str] = {}   # pod -> the run id its rank's steps are posted under
+
+
+OPTIONAL = {m.TYPE: m for m in (TrainingStarted, EvalReported, PackageBuilt, SwapCompleted, LoopAct)}
 
 SUGGESTED_EVENTS = [
     {"type": TrainingStarted.TYPE, "gives": "total steps, samples per step and the trainer's node, so samples/s and joules per "
@@ -223,6 +237,7 @@ class LabView:
         self.reports: dict[str, tuple[Event, EvalReported]] = {}
         self.packages: dict[str, tuple[Event, PackageBuilt]] = {}
         self.swaps: list[tuple[Event, SwapCompleted]] = []
+        self.loop_acts: dict[str, tuple[Event, LoopAct]] = {}
         self.deployments: list[ModelDeployed] = []
         self.gpu: dict[str, deque[GpuPower]] = {}
         self.answers: deque[JoulesPerAnswer] = deque(maxlen=keep)
@@ -283,7 +298,12 @@ class LabView:
             self.swaps.append((e, body))
             return
         self._run(body.run_id)
-        {TrainingStarted: self.started, EvalReported: self.reports, PackageBuilt: self.packages}[type(body)][body.run_id] = (e, body)
+        {TrainingStarted: self.started, EvalReported: self.reports, PackageBuilt: self.packages,
+         LoopAct: self.loop_acts}[type(body)][body.run_id] = (e, body)
+
+    def part_of(self, run_id: str) -> str | None:
+        """The act this run is a part of (a rank on another pod), or None."""
+        return next((parent for parent, (_, act) in self.loop_acts.items() if run_id in act.parts.values()), None)
 
     # --- reads ---
 
@@ -291,6 +311,8 @@ class LabView:
         """One line per run, newest first."""
         out = []
         for run_id in self.run_ids:
+            if self.part_of(run_id):   # a rank on another pod shows inside its act's story, not as a run of its own
+                continue
             s = self.story(run_id)
             out.append({"run_id": run_id, "task": s["task"]["slug"], "status": s["status"], "started": s["marks"]["run_start"],
                         "ended": s["marks"]["end"], "scores": s["eval"]["scores"], "model_version": s["eval"]["model_version"],
@@ -354,6 +376,7 @@ class LabView:
             "ignored_events": [r for r in self.rejected],
         }
         story["stage_strip"] = self._strip(progress, steps, evaluated, package, deployed)
+        story.update(self._loop(run_id, story["stage_strip"]))
         story["run_status"] = _run_state(status, progress, story["stage_strip"])
         story["steps_so_far"] = len(steps)
         story["gaps"] = [{"label": n["label"], "reason": n["reason"]} for n in collect_numbers(story) if n["value"] is None]
@@ -752,6 +775,32 @@ class LabView:
                         "seconds": _secs(a, b) if a and b else None,
                         "message": failed.message if state == "failed" and failed else None})
         return out
+
+    def _loop(self, run_id: str, strip: list[dict[str, Any]]) -> dict[str, Any]:
+        """The live loop's act (L29): members, the pods it trains on, and each extra pod's rank as a part of the
+        training, with its steps and losses. The strip's training stage names the pods."""
+        found = self.loop_acts.get(run_id)
+        if found is None:
+            return {"members": None, "pods": None, "parts": [], "part_of": self.part_of(run_id)}
+        act = found[1]
+        parts = []
+        for node, part in sorted(act.parts.items()):
+            steps = [st for _, st in sorted(self.steps.get(part, {}).items())]
+            losses = [st.loss for st in steps if st.loss is not None]
+            parts.append({"node": node, "run_id": part, "steps": len(steps),
+                          "loss_first": losses[0] if losses else None, "loss_last": losses[-1] if losses else None,
+                          "points": [{"step": st.step, "ts": st.ts, "loss": st.loss, "w": st.socket_w} for st in steps],
+                          "source": derived("one point per telemetry.train.step of the part's run", *steps) if steps
+                          else None})
+            if steps:   # the other pod's steps light the training stage too
+                training = next(x for x in strip if x["stage"] == "training")
+                if training["state"] == "waiting":
+                    training["state"], training["started"] = "now", training["started"] or steps[0].ts
+        for x in strip:
+            if x["stage"] == "training":
+                x["pods"] = list(act.pods)
+        return {"members": act.members, "pods": list(act.pods), "parts": parts, "part_of": None,
+                "loop": {"act": act.act, "members": act.members, "pods": list(act.pods), "source": by_event(found[0])}}
 
     def _box(self, deployed: ModelDeployed | None, swap: tuple[Event, SwapCompleted] | None) -> dict[str, Any]:
         """Energy and speed per answer on the box, for the model before the swap and the one after it."""
