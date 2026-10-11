@@ -24,6 +24,9 @@ export interface LabNum {
 
 export type LabStatus = "training" | "gated" | "deployed" | "not deployed" | "rolled back" | "failed";
 
+/** Whether the run is still moving, as the gateway says it (lab_view._run_state, PR 421). Absent on older gateways. */
+export type RunStatus = "running" | "finished" | "failed";
+
 export interface LabRunSummary {
   run_id: string;
   task: string | null;
@@ -33,6 +36,7 @@ export interface LabRunSummary {
   model_version: string | null;
   verdict: string | null;
   scores: { current: LabNum; candidate: LabNum; teacher: LabNum };
+  run_status?: RunStatus | null;
 }
 
 /**
@@ -120,6 +124,7 @@ export interface LabStory {
   sample: boolean;
   sample_reason: string | null;
   status: LabStatus;
+  run_status?: RunStatus | null;
   phase: string | null;
   task: { slug: string | null; instruction: string | null; instruction_reason: string | null };
   marks: Record<"start" | "run_start" | "taught" | "exported" | "training_start" | "training_end" | "evaluated" | "packaged" | "deployed" | "end", string | null>;
@@ -326,9 +331,34 @@ export const CHANGE_LABEL: Record<LabChange, string> = {
 
 /* ---------- a run that is still going (L30) ---------- */
 
-/** Still moving: training, or cleared by the gate with packaging and the swap still to report. */
-export function isLive(story: Pick<LabStory, "sample" | "status">): boolean {
-  return !story.sample && (story.status === "training" || story.status === "gated");
+/** A run that has stopped training, whatever else is still to report: never "training now". */
+const NOT_LIVE = new Set(["gated", "finished", "failed", "offered", "deployed", "not deployed", "rolled back"]);
+
+/**
+ * Training now, and nothing else: the gateway's `run_status` is "running" (PR 421) and the run's own status is not
+ * one that has stopped (gated, finished, failed, offered, deployed, ...). A gateway older than `run_status` counts a
+ * run as live only when its status is exactly "running" and it has no ended time. Anything else is resting.
+ */
+export function isLiveRun(r: { sample?: boolean; status: string; run_status?: string | null; ended?: string | null }): boolean {
+  if (r.sample) return false;
+  if (NOT_LIVE.has(r.status)) return false;
+  if (r.run_status !== undefined && r.run_status !== null) return r.run_status === "running";
+  return r.status === "running" && !r.ended;
+}
+
+/** isLiveRun for a run's story: its ended time is the story's last mark. */
+export function isLive(story: Pick<LabStory, "sample" | "status" | "run_status" | "marks">): boolean {
+  return isLiveRun({ sample: story.sample, status: story.status, run_status: story.run_status, ended: story.marks.end });
+}
+
+/**
+ * A measured trainer row from the lab's own hardware: the Strix Halo pods (gfx1151) or the box (Jetson), by the chip the
+ * gateway worked out from the row (`chip.key`, lab_bench.chip_of). A row from another chip (the R9700s the lab had
+ * before, a reference machine) or with no chip at all is not "measured on our hardware".
+ */
+export const OUR_CHIPS = new Set(["strix-halo", "jetson"]);
+export function onOurHardware(m: Pick<LabMeasured, "chip" | "other_chip">): boolean {
+  return !!m.chip && OUR_CHIPS.has(m.chip.key) && m.other_chip !== true;
 }
 
 export type StageKey = "taught" | "training" | "packaging" | "box";
