@@ -9,6 +9,7 @@ import { SURFACE_3D, SHADE, LIGHT, INK, ACCENT, MUTED, ENV_INTENSITY, DESK_Y, ha
 import { buildEnclosure, buildEnclosureLite } from "./sets/enclosure.js";
 import { buildRoom } from "./sets/room.js";
 import { buildKitchen, KX } from "./sets/kitchen.js";
+import { buildControl, CX, CONTROL_SHOTS } from "./sets/control.js";
 import { loadHuman } from "./sets/human.js";
 import UCF from "../assets/ucf-route.json" with { type: "json" };
 
@@ -237,6 +238,7 @@ scene.add(route);
   const humanGltf = await loadHuman(); // the person: Quaternius' Universal Animation Library mannequin (CC0)
   const room = buildRoom(scene, humanGltf);
   const kitchen = buildKitchen(scene, humanGltf);
+  const control = buildControl(scene, humanGltf); // the plant control room (film v4.7, beat 16), x = CX
 
   // Studio three-quarter of the enclosure (no room): from the front-right, a touch high.
   const HOME = { x: 3.0, y: 1.1, z: 4.6, tx: 0, ty: -0.42, tz: 0.05, fov: 30 };
@@ -252,6 +254,7 @@ scene.add(route);
     kitchenWide: { x: KX - 5, y: 8.5, z: 44, tx: KX + 2.5, ty: 0.5, tz: 0, fov: 40 },
     binCam: { x: KX - 8.4, y: 13.0, z: -2.0, tx: KX - 6.2, ty: 1.4, tz: 3.6, fov: 76 },        // from the wall camera
     counterAtlas: { x: KX + 6.0, y: 1.9, z: 3.0, tx: KX + 3.3, ty: 0.9, tz: -1.9, fov: 30 },
+    ...CONTROL_SHOTS,
   };
   const cam = { ...HOME };
   const state = {
@@ -263,11 +266,12 @@ scene.add(route);
     membrane: 0, ring: 0, beads: 0, bars: 0, lab: 0, labGlow: 0, labCurve: 0, friends: 0, friendsLink: 0, campus: 0, route: 0, blur: 0,
     // Sets.
     room: 0, person: 0, personLook: 0, personSmile: 0, personSleepy: 0, personStrain: 0, personTalk: 0, kitchen: 0, canThrow: 0, binCount: 0,
+    control: 0, spotWalk: 0, trainee: 0, xTalk: 0, consoleCount: 0,
   };
   const P = {
     ...atlas.P, lab: [14, 0.8, -2], friend: friendBoxes.map((g) => [g.position.x, -0.4, g.position.z]),
     ring: (a) => [Math.cos(a) * RING_R, -0.9, Math.sin(a) * RING_R],
-    ...room.P, ...kitchen.P,
+    ...room.P, ...kitchen.P, ...control.P,
   };
   /** Legacy: world-space height of old layer i, mapped onto the new parts (0 = webcam, 1..3 = the Jetson). */
   const layerY = (i) => (i === 0 ? atlas.P.webcam[1] : atlas.P.jetson[1] + (i - 2) * 0.1);
@@ -302,8 +306,8 @@ scene.add(route);
   function draw(t) {
     camera.position.set(cam.x, cam.y, cam.z); camera.lookAt(cam.tx, cam.ty, cam.tz); camera.fov = cam.fov; camera.updateProjectionMatrix();
     // Shadows follow the action: tight in the studio, wide for the sets / lab / friends / campus, slid to the kitchen.
-    const wide = clamp01(Math.max(state.lab, state.friends, state.campus, state.room, state.kitchen, state.ring * 0.6, state.explode * 0.25));
-    const kx = KX * smooth(0.25, 0.75, state.kitchen);
+    const wide = clamp01(Math.max(state.lab, state.friends, state.campus, state.room, state.kitchen, state.control, state.ring * 0.6, state.explode * 0.25));
+    const kx = KX * smooth(0.25, 0.75, state.kitchen) + CX * smooth(0.25, 0.75, state.control);
     aimShadow(kx * 1, 0, 3.2 + 22.8 * smooth(0, 1, wide));
 
     // The enclosure.
@@ -312,7 +316,7 @@ scene.add(route);
     contact.material.opacity = (1 - clamp01(d * 1.6)) * (1 - ex * 0.6);
     contact.scale.setScalar(1 + ex * 0.5);
     // The studio shadow plane gives way to the sets' own surfaces.
-    desk.material.opacity = 0.22 * (1 - clamp01(state.room * 1.5)) * (1 - clamp01(state.kitchen * 1.5)); desk.visible = desk.material.opacity > 0.002;
+    desk.material.opacity = 0.22 * (1 - clamp01(state.room * 1.5)) * (1 - clamp01(state.kitchen * 1.5)) * (1 - clamp01(state.control * 1.5)); desk.visible = desk.material.opacity > 0.002;
 
     // The membrane drifts a little, like something alive.
     membrane.material.uniforms.uOpacity.value = state.membrane; membraneBack.material.uniforms.uOpacity.value = state.membrane;
@@ -368,6 +372,7 @@ scene.add(route);
     // The sets.
     room.update(state, t);
     kitchen.update(state, t);
+    control.update(state, t);
 
     // Particle flows.
     for (const id in flowMeshes) {
@@ -399,7 +404,7 @@ scene.add(route);
 
   const world = {
     THREE, scene, camera, renderer, cam, HOME, SHOTS, state, P, at, flows, flow, labels, label, render, draw, leg, hash,
-    atlas, parts: atlas.parts, box: atlas.group, membrane, lab, pods, friends: friendBoxes, room, kitchen, KX,
+    atlas, parts: atlas.parts, box: atlas.group, membrane, lab, pods, friends: friendBoxes, room, kitchen, KX, control, CX,
     SLAB, layerY, // legacy
     ucfStops: UCF.stops, // Day Run's stops on the real campus: [{ name, kind, u, v }], u east / v south in 0..1
   };

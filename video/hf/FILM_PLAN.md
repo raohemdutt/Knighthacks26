@@ -701,3 +701,21 @@ What to post, where, and the text. This session could not reach Notion; the post
 | Full Sail | 2 (Today's Plan), 8, 16 (Shift Run) |
 | NextEra | 15, 16 |
 
+## 15. Build status (v4.7, Sun Oct 11, about 5 AM)
+
+How it is built now (all on `ctx/demo/video-hyperframes`):
+
+- `SCRIPT.md` is the words. `python video/scripts/film_from_script.py` writes `film.yaml` from it (18 scenes, 45 lines,
+  a voice per speaker at 1.3x, the action as lead and hold seconds). `python video/scripts/film_build.py` speaks and
+  lays it out (4:55); `python video/scripts/film_panes.py` writes the overlays (the app window and the spec cards);
+  `python video/scripts/film_render.py all --jobs 3` renders the scenes side by side and joins them (a 15 fps draft in
+  about 9 minutes); `--final` for 30 fps.
+- Milestones: M1 people (committed as work in progress; hair does not show yet); M2 dialogue and voices (done: Atlas
+  is `en-US-GuyNeural` until Piper is installed here); M3 the app window (done, a pane library in `film_panes.py`);
+  M4 to M7 every beat built (morning, desk, kitchen, Sort It, friends, NextEra) with simple sets where noted below;
+  M8 the bookends reuse the current intro and end.
+- Simplifications to revisit if there is time: beat 12's three panes are the app window over the dorm (no '63 South
+  set or split screen); beat 15 uses the campus map plane as the floor plan; the control room for beat 16 is a new
+  set (`sets/control.js`: console, monitors, the Inspection display, a window onto the plant with HX-202/HX-204 and a
+  walking SPOT, Xander and the trainee).
+
