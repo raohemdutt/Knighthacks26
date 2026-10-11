@@ -5,10 +5,15 @@ import { ErrorBox, Loading } from "@/components/States";
 import ui from "@/components/ui.module.css";
 import { ApiError, api } from "@/lib/api";
 import { clamp01 } from "@/lib/lab";
-import { type BenchPoint, type LabSim, POLICY_TITLE, type PolicyName, type SimKind, type SimParams, type SimRun, fmt, joules, shortRef } from "@/lib/labBench";
+import { type BenchPoint, type LabSim, type PolicyName, type SimKind, type SimParams, type SimRun, fmt, joules, shortRef } from "@/lib/labBench";
+import { POLICY_WORDS, metricWords, routingTakeaway, said } from "@/lib/labWords";
 import { LabelKey, LockIcon, PointDetail, Tag, useReduced, useWidth } from "./Labels";
 import { Sheet } from "./LabRun";
+import { ChartWords, Fold, SourceChip } from "./Story";
 import b from "./bench.module.css";
+
+/** The two rules by the names the screen uses; the code's own names ("capability", "energy") are in their meaning. */
+const POLICY_TITLE: Record<PolicyName, string> = { capability: POLICY_WORDS.capability.title, energy: POLICY_WORDS.energy.title };
 
 /**
  * Routing what-if: for a stream of requests, where each one is answered (the box or the lab's teacher) under each
@@ -20,6 +25,8 @@ import b from "./bench.module.css";
  *   /lab/?tab=routing&policy=capability&basis=decode
  */
 
+/** The four kinds of request by a short plain name; the code's own word ("chat", "eval") is in the fold of its reasons. */
+const KIND_WORDS: Record<string, string> = { chat: "Questions", caption: "Camera descriptions", label: "Labelling examples", eval: "Practice scoring" };
 const SHAPES = ["circle", "square", "triangle", "diamond"] as const;
 const PLAY_SECONDS = 18;
 const FLIGHT = 0.07; // how long a dot is on its way, as a share of the replay
@@ -131,8 +138,8 @@ function Lane({ sim, run, name, u, on, scale }: { sim: LabSim; run: SimRun; name
         <Tag kind="modelled" />
       </div>
       <p className={b.note}>
-        {run.teacher_batch !== null ? `Teacher answers about ${fmt(run.teacher_batch, run.teacher_batch >= 10 ? 0 : 1)} at once here (${fmt(run.teacher_j_per_token ?? 0)} J per token).` : "Nothing is sent to the teacher."}
-        {run.saturated ? " It is at the largest batch the lab measured (64): a queue would build, which this model does not count." : ""}
+        {run.teacher_batch !== null ? `The teacher answers about ${fmt(run.teacher_batch, run.teacher_batch >= 10 ? 0 : 1)} at once here (${fmt(run.teacher_j_per_token ?? 0)} J per token).` : "Nothing is sent to the teacher."}
+        {run.saturated ? ` That is the most at once the lab has measured (${Math.max(...(sim.inputs?.teacher.batches ?? [0]))}): more would have to wait in a queue, which this what-if does not count.` : ""}
       </p>
     </div>
   );
@@ -161,7 +168,10 @@ function BreakEven({ sim, policy }: { sim: LabSim; policy: PolicyName }) {
   return (
     <div ref={ref} className={b.chart}>
       {width > 0 ? (
-        <svg width={w} height={h} role="img" aria-label={be.batch !== null ? `The teacher costs less per token than the box above batch ${be.batch}` : (be.reason ?? "")}>
+        <svg width={w} height={h} role="img" aria-label={be.batch !== null ? `Energy for one token against how many requests the teacher answers at once: the teacher costs less than the box above ${fmt(be.batch, 0)} at once` : (be.reason ?? "")}>
+          <text className={b.axis} x={4} y={10}>
+            J/token
+          </text>
           {ticks.map((v) => (
             <g key={v}>
               <line className={b.gridline} x1={pad.left} x2={w - pad.right} y1={y(v)} y2={y(v)} />
@@ -173,8 +183,8 @@ function BreakEven({ sim, policy }: { sim: LabSim; policy: PolicyName }) {
           {be.curve
             .filter((p) => p.recorded)
             .map((p) => (
-              <text key={p.batch} className={b.axis} x={x(p.batch)} y={h - 6} textAnchor="middle">
-                {p.batch === xs[0] ? `batch ${p.batch}` : p.batch}
+              <text key={p.batch} className={b.axis} x={x(p.batch)} y={h - 6} textAnchor={p.batch === xs[0] ? "start" : p.batch === xs[xs.length - 1] ? "end" : "middle"} dx={p.batch === xs[0] ? -6 : p.batch === xs[xs.length - 1] ? 8 : 0}>
+                {p.batch === xs[0] || p.batch === xs[xs.length - 1] ? `${p.batch} at once` : p.batch}
               </text>
             ))}
           <line className={b.refLine} x1={pad.left} x2={w - pad.right} y1={y(be.student_j_per_token)} y2={y(be.student_j_per_token)} />
@@ -194,7 +204,7 @@ function BreakEven({ sim, policy }: { sim: LabSim; policy: PolicyName }) {
             <>
               <line className={b.breakEven} x1={x(be.batch)} x2={x(be.batch)} y1={pad.top - 4} y2={h - pad.bot} />
               <text className={b.valueLabel} x={x(be.batch) - 8} y={pad.top + 8} textAnchor="end">
-                break-even: batch {fmt(be.batch, 0)}
+                equal at {fmt(be.batch, 0)} at once
               </text>
             </>
           ) : null}
@@ -354,59 +364,77 @@ export function Routing({ initialPreset, initialT, initialPolicy, initialBasis, 
     if (!playing && uRef.current >= 1) setU(0);
     setPlaying((x) => !x);
   };
+  const take = routingTakeaway(sim);
   const seconds = sim.requests ? Math.min(1, u) * sim.requests.window_s : 0;
   const clockText = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
   return (
     <div className={b.page}>
-      <div className={ui.pageHead}>
-        <h1>Should the box answer, or ask the teacher?</h1>
-        <p className={b.sub}>Pick what people are asking and how often. Each request is routed twice, once by each policy, and you see where it goes and what it costs.</p>
-        <div className={b.cardHead} style={{ justifyContent: "flex-start", marginTop: 8 }}>
-          <button type="button" className={ui.btn} onClick={() => setDrawer(true)}>
-            How this is modelled
-          </button>
-        </div>
+      {/* opened from the routing card on the Speed and energy tab: the card above already says the result in one line */}
+      <p className={b.note}>
+        Routing is the rule that decides, for each request, whether the box&apos;s own small model answers or the request goes to the lab&apos;s big teacher. Change what is being
+        asked and how often, and see where each request goes under two rules and what that costs.
+      </p>
+      {take ? <SourceChip sources={take.sources} about="The routing result" /> : null}
+      <div className={b.cardHead} style={{ justifyContent: "flex-start" }}>
+        <button type="button" className={ui.btn} onClick={() => setDrawer(true)}>
+          How this is modelled
+        </button>
+      </div>
+      <div className={b.key} role="note" aria-label="The two rules" data-guide="lab:rules">
+        {(["capability", "energy"] as PolicyName[]).map((name) => (
+          <span key={name}>
+            <b>{POLICY_WORDS[name].title}.</b> {POLICY_WORDS[name].means}
+          </span>
+        ))}
       </div>
 
       {sim.measured ? (
-        <div className={b.card}>
+        <div className={b.card} data-guide="lab:routing-measured">
           <div className={b.cardHead}>
-            <h2>Measured with the policy on and off</h2>
+            <h2>Measured once for real: the two rules side by side</h2>
             <Tag kind="measured" />
           </div>
-          <table className={ui.table}>
-            <thead>
-              <tr>
-                <th>Measured</th>
-                <th className={ui.num}>Capability only</th>
-                <th className={ui.num}>Energy aware</th>
-                <th className={ui.num}>Change</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sim.measured.rows.map((r) => (
-                <tr key={`${r.metric}|${r.node}`}>
-                  <td>
-                    {r.metric} <span className={b.note}>on {r.node}</span>
-                    {r.low_confidence ? <span className={b.low}> low confidence</span> : null}
-                  </td>
-                  <td className={ui.num}>
-                    <button type="button" className={b.numBtn} onClick={() => setNum(r.capability)}>
-                      {fmt(r.capability.value)} {r.unit}
-                    </button>
-                  </td>
-                  <td className={ui.num}>
-                    <button type="button" className={b.numBtn} onClick={() => setNum(r.energy)}>
-                      {fmt(r.energy.value)} {r.unit}
-                    </button>
-                  </td>
-                  <td className={ui.num}>{r.change_pct !== null ? `${r.change_pct > 0 ? "+" : ""}${r.change_pct}%` : ""}</td>
+          <div className={b.tableWrap}>
+            <table className={ui.table}>
+              <thead>
+                <tr>
+                  <th>What was measured</th>
+                  <th className={ui.num}>{POLICY_TITLE.capability}</th>
+                  <th className={ui.num}>{POLICY_TITLE.energy}</th>
+                  <th className={ui.num}>Change</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className={b.note}>From the lab&apos;s metrics file: each side over at least {sim.measured.min_requests} requests. The simulation below is a what-if around this measurement.</p>
+              </thead>
+              <tbody>
+                {sim.measured.rows.map((r) => {
+                  const value = (v: number) => (r.unit === "fraction" ? `${said(v * 100)}%` : `${fmt(v)} ${r.unit ?? ""}`);
+                  return (
+                    <tr key={`${r.metric}|${r.node}`}>
+                      <td>
+                        {metricWords(r.metric)}
+                        {r.low_confidence ? <span className={b.low}> low confidence</span> : null}
+                      </td>
+                      <td className={ui.num}>
+                        <button type="button" className={b.numBtn} onClick={() => setNum(r.capability)}>
+                          {value(r.capability.value)}
+                        </button>
+                      </td>
+                      <td className={ui.num}>
+                        <button type="button" className={b.numBtn} onClick={() => setNum(r.energy)}>
+                          {value(r.energy.value)}
+                        </button>
+                      </td>
+                      <td className={ui.num}>{r.change_pct !== null ? `${r.change_pct > 0 ? "+" : ""}${r.change_pct}%` : ""}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className={b.note}>
+            Each side ran over at least {sim.measured.min_requests} requests on {[...new Set(sim.measured.rows.map((r) => r.node))].join(", ")}. Tap a number for the row it came from. Everything below
+            this card is a what-if around this measurement.
+          </p>
           {num ? <PointDetail p={num} onClose={() => setNum(null)} /> : null}
         </div>
       ) : null}
@@ -444,7 +472,7 @@ export function Routing({ initialPreset, initialT, initialPolicy, initialBasis, 
                 {kinds.map((k, i) => (
                   <label key={k.kind} className={`${b.field} ${k.locked ? b.fieldLocked : ""}`}>
                     <span>
-                      <KindMark i={i} className={k.locked ? b.reqLocked! : b.reqOpen!} /> {k.title}
+                      <KindMark i={i} className={k.locked ? b.reqLocked! : b.reqOpen!} /> {k.title.replace(/for the gate$/, "for the test")}
                       {k.locked ? (
                         <span className={b.lock}>
                           {" "}
@@ -459,7 +487,7 @@ export function Routing({ initialPreset, initialT, initialPolicy, initialBasis, 
                   </label>
                 ))}
                 <div>
-                  <span className={b.stepLabel}>Policy to highlight</span>
+                  <span className={b.stepLabel}>Rule to highlight</span>
                   <div className={ui.segmented} role="group" aria-label="Routing policy">
                     {(["capability", "energy"] as PolicyName[]).map((name) => (
                       <button key={name} type="button" className={`${ui.seg} ${p.policy === name ? ui.segOn : ""}`} aria-pressed={p.policy === name} onClick={() => edit({ policy: name })}>
@@ -467,7 +495,7 @@ export function Routing({ initialPreset, initialT, initialPolicy, initialBasis, 
                       </button>
                     ))}
                   </div>
-                  <p className={b.note}>{p.policy === "capability" ? "Capability only: the box answers whatever its small model can do; the rest goes to the teacher." : "Energy aware: work goes to the teacher only when its energy per answer is lower than the box's."}</p>
+                  <p className={b.note}>{POLICY_WORDS[p.policy].means}</p>
                 </div>
                 <button type="button" className={`${ui.chip} ${advanced ? ui.chipOn : ""}`} aria-expanded={advanced} onClick={() => setAdvanced((v) => !v)} style={{ alignSelf: "flex-start" }}>
                   Assumptions you can change
@@ -478,7 +506,7 @@ export function Routing({ initialPreset, initialT, initialPolicy, initialBasis, 
                       {kinds.map((k) => (
                         <label key={k.kind}>
                           <span>
-                            Answer length, {k.kind} <Tag kind="modelled">assumed</Tag>
+                            Answer length in tokens, {(KIND_WORDS[k.kind] ?? k.kind).toLowerCase()} <Tag kind="modelled">assumed</Tag>
                           </span>
                           <input className={b.tokenInput} type="number" min={4} max={1024} step={8} value={p.tokens[k.kind] ?? k.tokens} aria-label={`Tokens per ${k.kind} answer`} onChange={(e) => edit({ tokens: { ...p.tokens, [k.kind]: Math.max(4, Math.min(1024, Math.round(Number(e.target.value) || 4))) } })} />
                         </label>
@@ -537,8 +565,8 @@ export function Routing({ initialPreset, initialT, initialPolicy, initialBasis, 
                 {kinds.map((k, i) => (
                   <span key={k.kind}>
                     <KindMark i={i} className={k.locked ? b.reqLocked! : b.reqOpen!} />
-                    {k.kind}
-                    {k.locked ? " (locked)" : ""}
+                    {(KIND_WORDS[k.kind] ?? k.kind).toLowerCase()}
+                    {k.locked ? " (stays on the box)" : ""}
                   </span>
                 ))}
                 <span>
@@ -548,13 +576,12 @@ export function Routing({ initialPreset, initialT, initialPolicy, initialBasis, 
               {reduced ? <p className={b.note}>Reduced motion is on: nothing moves. Next step advances a quarter at a time; the counts and meters show the totals so far.</p> : null}
             </div>
 
-            <p className={b.verdict} role="status">
-              {sim.compare!.sentence}
-              <span className={b.verdictSub}>
-                {sim.requests!.n} requests over {sim.params.minutes} minutes, {eng!.locked} of them locked to the box by the privacy line. <Tag kind="modelled" />
-                {eng!.cold_start_note ? ` ${eng!.cold_start_note}` : ""}
-              </span>
-            </p>
+            <ChartWords guide="lab:routing-words">
+              <b>The picture in words.</b> Over {sim.params.minutes} minutes, {sim.requests!.n} requests. {POLICY_TITLE.capability}: {cap!.to_student} answered on the box, {cap!.to_teacher} by the
+              teacher, {joules(cap!.energy_j)}. {POLICY_TITLE.energy}: {eng!.to_student} on the box, {eng!.to_teacher} by the teacher, {joules(eng!.energy_j)}. {eng!.locked} are about your own
+              space and never leave the box under either rule.
+              {eng!.cold_start_note ? ` ${eng!.cold_start_note}` : ""}
+            </ChartWords>
           </div>
 
           <div className={b.card}>
@@ -567,7 +594,8 @@ export function Routing({ initialPreset, initialT, initialPolicy, initialBasis, 
               {sim.break_even!.batch !== null
                 ? `Per token, the teacher beats the box once it answers about ${fmt(sim.break_even!.batch, 0)} requests at once, which takes about ${fmt(sim.break_even!.rpm_to_teacher ?? 0, 0)} requests a minute sent its way. Below that, sending work to the lab costs more energy.`
                 : sim.break_even!.reason}{" "}
-              Joules per token, both axes on a log scale. The box&apos;s line is derived; the curve between measured points is interpolated.
+              Energy for one token (up the side) against how many requests the teacher answers at once (along the bottom); both scales are logarithmic. The box&apos;s line is worked out, not
+              measured, and between measured points the teacher&apos;s curve is filled in.
             </p>
           </div>
 
@@ -577,10 +605,10 @@ export function Routing({ initialPreset, initialT, initialPolicy, initialBasis, 
               <table className={ui.table}>
                 <thead>
                   <tr>
-                    <th>Kind</th>
-                    <th>Requests</th>
-                    <th>Capability only</th>
-                    <th>Energy aware</th>
+                    <th>Kind of request</th>
+                    <th className={ui.num}>How many</th>
+                    <th>{POLICY_TITLE.capability}</th>
+                    <th>{POLICY_TITLE.energy}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -590,14 +618,20 @@ export function Routing({ initialPreset, initialT, initialPolicy, initialBasis, 
                     return (
                       <tr key={k.kind}>
                         <td>
-                          <KindMark i={i} className={k.locked ? b.reqLocked! : b.reqOpen!} /> {k.kind}
+                          <KindMark i={i} className={k.locked ? b.reqLocked! : b.reqOpen!} /> {KIND_WORDS[k.kind] ?? k.kind}
                         </td>
-                        <td>{k.n}</td>
+                        <td className={ui.num}>{k.n}</td>
                         <td>
-                          <Where target={c.target} locked={k.locked} /> <span className={b.note}>{fmt(c.joules, 0)} J · {fmt(c.latency_s, 0)} s</span>
+                          <Where target={c.target} locked={k.locked} />
+                          <span className={b.note} style={{ display: "block", whiteSpace: "nowrap" }}>
+                            {fmt(c.joules, 0)} J, {fmt(c.latency_s, 0)} s
+                          </span>
                         </td>
                         <td>
-                          <Where target={e.target} locked={k.locked} /> <span className={b.note}>{fmt(e.joules, 0)} J · {fmt(e.latency_s, 0)} s</span>
+                          <Where target={e.target} locked={k.locked} />
+                          <span className={b.note} style={{ display: "block", whiteSpace: "nowrap" }}>
+                            {fmt(e.joules, 0)} J, {fmt(e.latency_s, 0)} s
+                          </span>
                         </td>
                       </tr>
                     );
@@ -606,15 +640,16 @@ export function Routing({ initialPreset, initialT, initialPolicy, initialBasis, 
               </table>
             </div>
             <p className={b.note}>
-              Energy and time for one answer <Tag kind="modelled" />. The hook&apos;s own words under {POLICY_TITLE[p.policy].toLowerCase()}:
+              Where one request of each kind is answered, with the energy and the time for that one answer <Tag kind="modelled" />. A lock means it never leaves the box.
             </p>
-            <div className={b.list}>
+            <Fold summary="The routing code's own reasons">
+              <span className={b.note}>What the box&apos;s routing code said for each kind under {POLICY_TITLE[p.policy].toLowerCase()}, word for word:</span>
               {kinds.map((k) => (
-                <div key={k.kind} className={b.listRow}>
-                  <span className={b.code}>{sim.policies![p.policy].by_kind[k.kind]!.reason}</span>
-                </div>
+                <span key={k.kind} className={b.code}>
+                  {k.kind}: {sim.policies![p.policy].by_kind[k.kind]!.reason}
+                </span>
               ))}
-            </div>
+            </Fold>
           </div>
         </div>
       )}

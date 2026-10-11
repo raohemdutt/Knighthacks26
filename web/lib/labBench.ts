@@ -8,14 +8,20 @@
  */
 import type { LabChip, LabNum, LabSource } from "./lab";
 
-export type LabTab = "run" | "compare" | "speed" | "routing" | "experiments";
+/** Three tabs. The keys are the old ones ("run", "compare") so nothing that names them breaks; the titles are new. */
+export type LabTab = "run" | "speed" | "compare";
 export const LAB_TABS: { key: LabTab; title: string }[] = [
-  { key: "run", title: "Training run" },
-  { key: "compare", title: "Alone vs with a friend" },
+  { key: "run", title: "The model" },
   { key: "speed", title: "Speed and energy" },
-  { key: "routing", title: "Routing" },
-  { key: "experiments", title: "Experiments" },
+  { key: "compare", title: "Together" },
 ];
+
+/** The tab a `?tab=` value opens. The five tabs the screen used to have each land where their content went. */
+export function labTabOf(asked: string | null): LabTab {
+  if (asked === "speed" || asked === "routing") return "speed";
+  if (asked === "compare" || asked === "together") return "compare";
+  return "run";
+}
 
 export interface BenchPoint extends Omit<LabNum, "value" | "source"> {
   value: number;
@@ -292,7 +298,8 @@ export function batchReadout(sweep: BenchSweep, batch: number): string | null {
   const tok1 = at("decode_tok_s", first);
   if (tok === undefined || j === undefined) return null;
   if (batch === first || j1 === undefined)
-    return `At batch ${batch} the teacher answers ${batch === 1 ? "one person at a time" : `${batch} people at once`}: ${fmt(tok)} tokens a second, and each token costs ${fmt(j)} J.`;
-  const pace = tok1 !== undefined && tok < tok1 ? (tok > tok1 * 0.75 ? "each a bit slower" : tok > tok1 * 0.5 ? "each slower" : "each much slower") : "each";
-  return `At batch ${batch} the teacher answers ${batch} people at once, ${pace} (${fmt(tok)} tok/s instead of ${tok1 !== undefined ? fmt(tok1) : "?"}), and each token costs ${fmt(j)} J instead of ${fmt(j1)}: ${fmt(j1 / j, 1)} times less energy.`;
+    return `${batch === 1 ? "One request at a time" : `With ${batch} requests at once`}, the teacher writes ${fmt(tok)} tokens a second for each, and each token costs ${fmt(j)} J.`;
+  const pace = tok1 !== undefined && tok < tok1 ? (tok > tok1 * 0.75 ? "a bit slower for each person" : tok > tok1 * 0.5 ? "slower for each person" : "much slower for each person") : "for each person";
+  const energy = j < j1 ? `${fmt(j1 / j, 1)} times less energy` : "no saving";
+  return `With ${batch} requests at once the teacher is ${pace} (${fmt(tok)} tokens a second${tok1 !== undefined ? ` instead of ${fmt(tok1)}` : ""}), and each token costs ${fmt(j)} J instead of ${fmt(j1)}: ${energy}.`;
 }

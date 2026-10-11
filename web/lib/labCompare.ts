@@ -62,6 +62,8 @@ export interface CompareChoice {
 }
 
 export interface LabCompare {
+  /** Only on the lab's recorded rehearsal (GET /api/learning/lab/rehearsal): what it is and the label the screen prints. */
+  record?: { kind: "rehearsal"; label: string; file: string; stamp: string | null };
   a: CompareRun | null;
   b: CompareRun | null;
   ratios: Record<string, number | null> | null;
