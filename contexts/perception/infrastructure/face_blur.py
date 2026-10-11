@@ -58,6 +58,19 @@ class FaceBlur:
             out[y1:y2, x1:x2] = _scramble(out[y1:y2, x1:x2], cv2)
         return out, len(rows)
 
+    def scrambled_until_clear(self, frame: Any, passes: int = 5) -> tuple[Any, int]:
+        """`scrambled`, repeated while the detector still finds a face (at most `passes` times), and the faces the
+        first pass found. A small or half-hidden face is often found only in part (an 18x23 px box on a 50 px face
+        on the Jetson's desk camera); the next pass finds it again around the scrambled patch and covers it wider.
+        For the outbound gate, where a missed face leaves the box."""
+        out, first = self.scrambled(frame)
+        found = first
+        for _ in range(passes - 1):
+            if not found:
+                break
+            out, found = self.scrambled(out)
+        return out, first
+
 
 def _scramble(patch: Any, cv2: Any) -> Any:
     """Pixelate to an 8x8 grid, then smooth the blocks: nothing recognisable is left."""
