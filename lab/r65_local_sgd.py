@@ -166,7 +166,10 @@ def make_callback(link: Link, record: dict[str, Any]) -> Any:
                 raise RuntimeError("the two ranks do not train the same LoRA parameters")
             record.update(connect_s=round(link.connect_s or 0.0, 3), tensors=len(params),
                           parameters=sum(p.numel() for _, p in params))
-            self.round(model, state, label="init")   # identical by seed; checked, and costs one exchange
+            # identical by seed: checked with a digest, not a full exchange (one exchange is about 65 MB over the relay)
+            mine = torch.cat([p.detach().to(torch.bfloat16).flatten() for _, p in params]).cpu()
+            digest = hashlib.sha256(mine.view(torch.int16).numpy().tobytes()).hexdigest()
+            record["init_identical"] = swap(link.sock, digest.encode()).decode() == digest
 
         def on_epoch_end(self, args: Any, state: Any, control: Any, model: Any = None, **kwargs: Any) -> None:
             self.round(model, state, label=f"epoch {round(state.epoch or 0)}")
@@ -180,9 +183,6 @@ def make_callback(link: Link, record: dict[str, Any]) -> Any:
             theirs_blob = swap(link.sock, blob)
             t2 = time.monotonic()
             theirs = torch.frombuffer(bytearray(theirs_blob), dtype=torch.int16).view(torch.bfloat16)
-            if label == "init":
-                same = bool(torch.equal(mine, theirs))
-                record["init_identical"] = same
             mean = (mine.float() + theirs.float()) / 2
             offset = 0
             with torch.no_grad():
