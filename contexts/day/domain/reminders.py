@@ -108,8 +108,8 @@ def due(moves: list[PlanMove], plan_id: str, committed: bool, now: datetime, see
     if not awake or (said.last is not None and timedelta(0) <= now - said.last < GAP):
         return None
     blocks = sorted(moves, key=lambda m: m.start)
-    if any(m.fixed and m.start <= now < m.end for m in blocks):
-        return None
+    if any(m.fixed and m.start <= now < m.end and not (m.origin == ORIGIN and m.start == now) for m in blocks):
+        return None  # a fixed event is running (an accepted optional event starting this minute is the one to say)
     for i, m in enumerate(blocks):
         if not eligible(m, committed) or f"{plan_id}:{m.id}" in said.blocks:
             continue

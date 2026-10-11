@@ -95,11 +95,13 @@ class Arbiter:
         if self.answered_at is None or e.ts >= self.answered_at:
             self.answered_at = e.ts
 
-    def scene(self, now: datetime) -> Scene:
+    def scene(self, now: datetime, about=()) -> Scene:
+        """The moment at `now`; a fixed block the line is itself about (an accepted optional event starting) does
+        not count as a fixed event running."""
         day = self.clock.day_of(now)
         awake = self.clock.wake_at(day) <= now < self.clock.bed_at(day)
         plan = self.planner.current.get(day)
-        fixed = bool(plan) and any(m.fixed and m.start <= now < m.end for m in plan.moves)
+        fixed = bool(plan) and any(m.fixed and m.start <= now < m.end and m.id not in about for m in plan.moves)
         # an answer is being said from when it is written until ANSWER_SPEAK later; a question still being thought
         # about does not hold a line back (the line goes out before the answer, which then waits its turn in the voice)
         answering = self.answered_at is not None and timedelta(0) <= now - self.answered_at < ANSWER_SPEAK
@@ -111,13 +113,13 @@ class Arbiter:
 
     def quiet(self, moment: str, now: datetime, about=()) -> str | None:
         """Why a line of `moment` would not be said at `now` (suppression only: a line in the gap is held, not quiet)."""
-        return rule.suppressed(Line(moment=moment, ts=now, about=frozenset(about)), self.scene(now), self.ledger, now, self.rules)
+        return rule.suppressed(Line(moment=moment, ts=now, about=frozenset(about)), self.scene(now, about), self.ledger, now, self.rules)
 
     def offer(self, job) -> list[Event]:
         if job.moment in SCREEN_ONLY and not job.urgent:
             return self.narrator.say(job)
         now = job.ts
-        verdict = rule.decide(self.line(job), self.scene(now), self.ledger, now, self.rules)
+        verdict = rule.decide(self.line(job), self.scene(now, job.about), self.ledger, now, self.rules)
         self.log.append((job.event_id, verdict.action, verdict.reason))
         if verdict.action == "say":
             return self.out(job, now)
@@ -138,9 +140,9 @@ class Arbiter:
         can be), the suppressed and stale ones are dropped, the rest keep waiting."""
         if not self.held:
             return []
-        scene, keep, ready = self.scene(now), [], []
+        keep, ready = [], []
         for job in sorted(self.held, key=lambda j: (self.line(j).rank, j.ts)):
-            verdict = rule.decide(self.line(job), scene, self.ledger, now, self.rules)
+            verdict = rule.decide(self.line(job), self.scene(now, job.about), self.ledger, now, self.rules)
             if verdict.action == "drop":
                 self.log.append((job.event_id, "drop", verdict.reason))
             elif verdict.action == "say":
