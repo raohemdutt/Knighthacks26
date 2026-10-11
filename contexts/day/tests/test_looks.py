@@ -157,11 +157,27 @@ def test_no_sentence_it_can_build_uses_a_diagnosis_word():
               Outcome(known=True, eased=True), Outcome(known=True, got_up=True, eased=False), Outcome(known=True, got_up=False, drink=False, eased=False)):
         m = moment(FRIDAY, outcome=o, sitting_min=120, since_drink_min=100, energy_drinks=3, energy_limit=2, rhr_up=True, short_night=True,
                    doing="studying", deadline="Project Milestone 1", deadline_hours=20)
-        lines += [memory.callback(m, TODAY, TZ), memory.learned(m)[0], memory.going_on(m.context), memory.went(m), memory.chip(m, TODAY, TZ),
-                  memory.said_last(m, TODAY, TZ), memory.said_why(m, m, TODAY, TZ), memory.said_helped(m, TODAY, TZ)]
+        # what goes into a check-in: the callback, what it learned, and the two lines behind the chip
+        said = [memory.callback(m, TODAY, TZ), memory.learned(m)[0], memory.going_on(m.context), memory.went(m)]
+        assert not [w for line in said for w in rule.diagnosis_in(line)]
+        # the chip and the answers to a question name the look as the People screen does ("looked tired"), and nothing more
+        named = [memory.chip(m, TODAY, TZ), memory.said_last(m, TODAY, TZ), memory.said_why(m, m, TODAY, TZ), memory.said_helped(m, TODAY, TZ)]
+        assert {w for line in named for w in rule.diagnosis_in(line)} <= {"tired"}
+        lines += said + named
     lines += [memory.said_last(None, TODAY, TZ), memory.said_why(None, None, TODAY, TZ), memory.said_helped(None, TODAY, TZ)]
-    assert not [w for line in lines for w in rule.diagnosis_in(line)]
     assert not [line for line in lines if re.search(r"look-|frames:|\d{2}:\d{2}|\bbpm\b", line)]  # no ids, no ranges, no heart value
+
+
+def test_the_kind_of_look_is_one_of_the_people_screens_two_words_and_a_callback_is_to_the_same_kind():
+    from contexts.perception.domain.expression import LOOKS, STRAINED
+
+    assert memory.LOOK_WORDS == {label: LOOKS[label] for label in STRAINED}  # Perception's own words for people
+    assert memory.look_word({"sad": 12.0, "angry": 9.0}) == "tired" and memory.look_word({"sad": 4.0, "angry": 9.0, "fearful": 2.0}) == "tense"
+    assert memory.look_word({}) == "tired" and memory.look_word({"neutral": 30.0, "disgust": 1.0}) == "tense"
+    now = ctx(15, 40, sitting_min=100, since_drink_min=95)
+    tired = moment(FRIDAY, sitting_min=110, since_drink_min=95)
+    assert memory.similar(now, TODAY, MEMBER, [tired], "tired") is tired and memory.similar(now, TODAY, MEMBER, [tired], "tense") is None
+    assert memory.chip(memory.replace(tired, look="tense"), TODAY, TZ) == "Looked tense · like Fri"
 
 
 def test_a_moment_holds_labels_and_numbers_only():
@@ -235,7 +251,7 @@ def test_a_sustained_look_is_remembered_once_with_what_was_going_on_and_what_hap
     loop, bus, out, _ = box(places, tmp_path)
     asyncio.run(bus.publish_all([scanned(MEMBER), *friday()]))
     [m] = loop.looks.remembered(at(16, 0, FRIDAY))  # one stretch of six windows: ONE moment
-    assert m.id == "look-m-ana-20261009-1500" and m.at == at(15, 0, FRIDAY) and m.look == "strained"
+    assert m.id == "look-m-ana-20261009-1500" and m.at == at(15, 0, FRIDAY) and m.look == "tired"
     assert m.until == at(15, 18, FRIDAY)  # the rule's twenty minutes still held when they sat back down; by 3:21 they no longer did
     assert m.context == Context(minute_of_day=15 * 60, weekday=4, sitting_min=120, since_drink_min=99)  # no plan, no watch that day: unknown, not zero
     assert m.outcome == Outcome(known=True, got_up=True, away_min=10, drink=False, eased=True)
@@ -271,7 +287,7 @@ def test_the_check_in_calls_back_to_it_and_leads_with_what_helped(places, tmp_pa
     back = e.callback
     assert back.said == "That's the same look you had Friday afternoon, when you'd gone two hours without moving."
     assert back.learned == "Ten minutes away from the desk helped then." and back.lead == "walk" and back.day == date(2026, 10, FRIDAY)
-    assert back.chip == "Looked strained · like Fri" and back.moment_id == "look-m-ana-20261009-1500"
+    assert back.chip == "Looked tired · like Fri" and back.moment_id == "look-m-ana-20261009-1500"
     assert back.lines == ["Friday afternoon, around 3 PM. At the desk for two hours, no drink seen for about an hour and three quarters.",
                           "Ten minutes away from the desk helped: the look eased within half an hour."]
     assert [s.kind for s in e.suggestions][:2] == ["walk", "drink"]  # re-ranked by what worked; the set and its words are the rule's own
@@ -282,7 +298,9 @@ def test_the_check_in_calls_back_to_it_and_leads_with_what_helped(places, tmp_pa
     assert back.said in e.text and back.said in told.display
     sentences, chars = BOUNDS["checkin"]
     assert len(re.split(r"(?<=[.!?])\s+", told.spoken)) <= sentences and len(told.spoken) <= chars
-    assert rule.diagnosis_in(told.spoken) == [] and rule.diagnosis_in(e.text) == [] and not set(DIAGNOSIS) & set(re.findall(r"[a-z]+", back.model_dump_json().lower()))
+    assert rule.diagnosis_in(told.spoken) == [] and rule.diagnosis_in(e.text) == []
+    # the kind of look ("tired", the People screen's word) is on the chip only: no sentence of the check-in carries it
+    assert not set(DIAGNOSIS) & set(re.findall(r"[a-z]+", " ".join([back.said, back.learned, *back.lines]).lower())) and back.look == "tired"
     facts = rule.facts(e.signals, e.suggestions, e.history, TZ, callback=back)
     assert check(told.spoken, facts, render(facts).spoken) == []  # the grounding check a model's rewrite must pass holds for it
     # the moment now carries what Atlas suggested then
@@ -290,7 +308,7 @@ def test_the_check_in_calls_back_to_it_and_leads_with_what_helped(places, tmp_pa
     assert today.checkin_id == e.event_id and today.suggested[:2] == ("walk", "drink")
     # the card: the chip opens the remembered moment
     card = loop.checkin.card(e)
-    assert card["callback"]["chip"] == "Looked strained · like Fri" and card["callback"]["lines"] == back.lines
+    assert card["callback"]["chip"] == "Looked tired · like Fri" and card["callback"]["lines"] == back.lines
 
 
 def test_staying_put_last_time_is_said_gently_and_changes_no_order(places, tmp_path):  # noqa: F811
@@ -403,6 +421,21 @@ def test_forgetting_one_or_all_goes_through_the_authorised_route_and_survives_a_
     assert c.delete("/api/day/looks", headers=auth).json() == {"forgotten": 1, "left": 0}  # forget all: one call
     assert c.get("/api/day/looks").json()["moments"] == [] and asyncio.run(restart("c")).looks.moments == {}
     assert {e.type for e in out if isinstance(e, DayLookForgotten)} == {"day.look.forgotten"}
+
+
+def test_a_wipe_of_everything_empties_it_at_once_and_a_smaller_wipe_leaves_it(places, tmp_path):  # noqa: F811
+    """The memory is a projection of the event log. "Wipe everything" removes the log (contexts/vault/application/wipe.py,
+    scope "all": `events`), so a restart has nothing to rebuild from; the running box is emptied at the same moment."""
+    from contexts.vault.application.wipe import SCOPES
+    from contracts.vault import WipeRequested
+
+    loop, bus, out, _ = box(places, tmp_path)
+    asyncio.run(bus.publish_all([scanned(MEMBER), *friday()]))
+    assert "events" in SCOPES["all"] and "events" not in SCOPES["memory"] and "events" not in SCOPES["keyframes"]
+    loop.looks.on_wipe(WipeRequested(ts=NOW, scope="memory"))  # the log is still there: so is what is rebuilt from it
+    assert len(loop.looks.moments) == 1
+    loop.looks.on_wipe(WipeRequested(ts=NOW, scope="all"))
+    assert loop.looks.moments == {} and loop.looks.looks == {} and loop.looks.faces == {} and loop.looks.view(NOW)["moments"] == []
 
 
 def fields_of(loop, raised: DayCheckinRaised) -> list[str]:
@@ -520,13 +553,13 @@ def test_nothing_outside_the_day_loop_reads_the_look_memory():
 def test_the_three_questions_are_answered_from_the_memory_for_the_ear(places, tmp_path):  # noqa: F811
     loop, bus, out, _ = asyncio.run(tuesday(places, tmp_path, [scanned(MEMBER), *friday()]))
     ask = loop.looks.said
-    assert ask("last", NOW) == "The last time you looked this strained was Friday afternoon, when you'd gone two hours without moving."
+    assert ask("last", NOW) == "The last time you looked this tired was Friday afternoon, when you'd gone two hours without moving."
     assert ask("helped", NOW) == "Last time, Friday afternoon, ten minutes away from the desk helped: the look eased within half an hour."
-    assert ask("why", NOW) == ("I can't know how you feel, only what I saw: your face has read as strained for a while, you'd been at the desk "
+    assert ask("why", NOW) == ("I can't know how you feel, only what I saw: your face has looked tired for a while, you'd been at the desk "
                                "for about ninety minutes, and you slept short. "
                                "That's the same look you had Friday afternoon, when you'd gone two hours without moving.")
     # a day later, with no look lately: it says so, and never guesses
-    assert ask("why", NOW + timedelta(days=1)) == ("I don't think that right now: your face hasn't read as strained lately. "
+    assert ask("why", NOW + timedelta(days=1)) == ("I don't think that right now: your face hasn't looked tired or tense lately. "
                                                    "I can only go by how you look to the camera.")
-    assert ask("last", NOW + timedelta(days=1)) == "The last time you looked this strained was yesterday afternoon, when you'd gone about ninety minutes without moving."
+    assert ask("last", NOW + timedelta(days=1)) == "The last time you looked this tired was yesterday afternoon, when you'd gone about ninety minutes without moving."
     assert ask("anything else", NOW) is None

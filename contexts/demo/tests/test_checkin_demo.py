@@ -19,7 +19,7 @@ SAID = ("You slept about five hours, your resting heart rate is up, and you've l
         f"{BACK} {HELPED} "
         "You've been at the desk for an hour and three quarters straight, and I haven't seen you pick up a drink since two o'clock. "
         "Take ten minutes outside, drink some water, and I can move the study block to after dinner if you say yes.")
-ASKED = {"last": "The last time you looked this strained was Saturday afternoon, when you'd gone two hours without moving.",
+ASKED = {"last": "The last time you looked this tired was Saturday afternoon, when you'd gone two hours without moving.",
          "helped": "Last time, Saturday afternoon, ten minutes away from the desk helped: the look eased within half an hour."}
 
 
@@ -35,7 +35,7 @@ def test_the_invented_afternoon_raises_one_check_in_with_every_clause_and_a_rest
         # the look memory: the earlier afternoon is in the log as source events, and what is said of it is the memory's own
         back = e.callback
         assert (back.said, back.learned, back.lead, back.day) == (BACK, HELPED, "walk", THEN) and THEN.strftime("%A") == "Saturday"
-        assert back.chip == "Looked strained · like Sat" and [s.kind for s in e.suggestions] == ["walk", "drink", "move_block"]
+        assert back.chip == "Looked tired · like Sat" and [s.kind for s in e.suggestions] == ["walk", "drink", "move_block"]
         assert back.lines == ["Saturday afternoon, around 2:45 PM. At the desk for two hours.",
                               "Ten minutes away from the desk helped: the look eased within half an hour."]
         looks = shown.app.day.looks
@@ -46,7 +46,7 @@ def test_the_invented_afternoon_raises_one_check_in_with_every_clause_and_a_rest
         assert {x.type for x in checkin.earlier(END)} == {"perception.expression.observed"}
         assert {x.member_id for x in checkin.earlier(END)} == {checkin.MEMBER} and len({x.event_id for x in checkin.earlier(END)}) == len(checkin.earlier(END))
         assert {k: looks.said(k, END) for k in ASKED} == ASKED
-        assert looks.said("why", END).endswith(BACK) and "strained for a while" in looks.said("why", END)
+        assert looks.said("why", END).endswith(BACK) and "looked tired for a while" in looks.said("why", END)
         assert "look memory: the earlier look was on Saturday 2026-10-10." in checkin.summary(shown)
         # the demo owner is on the People screen (made-up vectors, marked as demo data), scanned, with expressions on
         [owner] = [m for m in shown.app.identity.members() if m["member_id"] == checkin.MEMBER]
@@ -74,7 +74,7 @@ def test_the_invented_afternoon_raises_one_check_in_with_every_clause_and_a_rest
         card = again.day.checkin.card(again.day.checkin.latest(END + timedelta(minutes=1)))
         assert card["event_id"] == e.event_id and card["spoken"] == SAID
         assert set(card["evidence"]) == {"sleep", "resting_hr", "expression", "sitting", "drink", "history"}
-        assert card["callback"]["chip"] == "Looked strained · like Sat" and card["callback"]["said"] == BACK
+        assert card["callback"]["chip"] == "Looked tired · like Sat" and card["callback"]["said"] == BACK
         assert again.day.looks.view(END)["moments"] == shown.app.day.looks.view(END)["moments"]  # the same memory from the log alone
         assert "values" not in card["evidence"]["resting_hr"] and len(card["evidence"]["history"]["days"]) == 3
 
@@ -103,7 +103,7 @@ def test_the_weekday_is_the_one_it_really_was_whatever_day_the_story_ends(tmp_pa
         shown = await checkin.show(tmp_path, end)
         [e] = shown.checkins
         assert e.callback.said == "That's the same look you had Tuesday afternoon, when you'd gone two hours without moving."
-        assert e.callback.day == datetime(2026, 10, 13).date() and e.callback.chip == "Looked strained · like Tue"
+        assert e.callback.day == datetime(2026, 10, 13).date() and e.callback.chip == "Looked tired · like Tue"
 
     asyncio.run(run())
 

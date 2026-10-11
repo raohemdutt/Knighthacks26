@@ -45,7 +45,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -446,6 +446,43 @@ def uc_talk(run: Run) -> None:
                 f"{len(links)} link(s) cited" if links else "answered without a link: from the model, or the box has no web right now")
 
 
+WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+
+def look_fields(moments: list[dict]) -> str | None:
+    """A complaint when a remembered look carries anything but labels, numbers and plain lines: no picture, no heart value."""
+    blob = json.dumps(moments)
+    found = [word for word in ("frames:", "frame_ref", "bpm", "resting_hr", "image", "jpeg") if word in blob]
+    return f"a remembered look carries {', '.join(found)}" if found else None
+
+
+def look_back(card: dict | None, moments: list[dict]) -> tuple[str, str]:
+    """(status, note) for the look memory's callback on the newest check-in: its sentence is in what the card says,
+    the moment it names is one the box really remembers from an earlier day, and the day it says is that day's own
+    (never a fixed weekday). SKIP when there is no check-in, no look among its signals, or nothing similar enough."""
+    if not card:
+        return SKIP, "no check-in on this box (python -m contexts.demo checkin --data-dir <the seeded directory> --onto)"
+    if "expression" not in {s.get("kind") for s in card.get("signals") or []}:
+        return SKIP, "the check-in has no look among its signals"
+    back = card.get("callback")
+    if not back:
+        return SKIP, "no earlier look was similar enough (or it was forgotten): nothing is said about the past"
+    said, text = back.get("said") or "", f"{card.get('display') or ''} {card.get('spoken') or ''} {card.get('text') or ''}"
+    then = next((m for m in moments if m.get("id") == back.get("moment_id")), None)
+    if said not in text or not said:
+        return FAIL, f"the callback line is not in what the card says: {said!r}"
+    if then is None:
+        return FAIL, f"the callback names a moment the box does not remember: {back.get('moment_id')}"
+    if then["day"] != back["day"] or then["day"] >= card["day"]:
+        return FAIL, f"the callback's day {back['day']} is not an earlier remembered day (the moment is {then['day']}, the check-in {card['day']})"
+    gap = (date.fromisoformat(card["day"]) - date.fromisoformat(then["day"])).days
+    named = WEEKDAYS[datetime.fromisoformat(then["at"]).weekday()]
+    right = ("yesterday" in said or "last night" in said) if gap == 1 else named in said if gap <= 13 else "weeks ago" in said
+    if not right:
+        return FAIL, f"the callback does not say the day it was ({named}, {gap} days before): {said!r}"
+    return PASS, f"{said} {back.get('learned') or ''}".strip() + f" [{then['day']}, a {named}]"
+
+
 def uc_day(run: Run) -> None:
     run.screen("/now/")
     now = run.fetch("the day as the box sees it", "/api/day/now", ("day", "plan", "status"), missing="the Day loop is not on this box",
@@ -453,9 +490,16 @@ def uc_day(run: Run) -> None:
                     note=lambda d: f"{len(d['plan']['moves'])} blocks; next: {((d.get('status') or {}).get('next_block') or {}).get('title')}")
     if now is None:
         return
-    run.fetch("the check-in card (raise one with: python -m contexts.demo checkin)", "/api/day/checkin", ("enabled", "latest", "watching", "rule"),
-              missing="this build has no check-in",
-              note=lambda d: (d["latest"] or {}).get("text") or f"none raised; held: {(d['watching'] or {}).get('held') or 'nothing agrees yet'}")
+    checkin = run.fetch("the check-in card (raise one with: python -m contexts.demo checkin)", "/api/day/checkin", ("enabled", "latest", "watching", "rule"),
+                        missing="this build has no check-in",
+                        note=lambda d: (d["latest"] or {}).get("text") or f"none raised; held: {(d['watching'] or {}).get('held') or 'nothing agrees yet'}")
+    looks = run.fetch("the looks Atlas remembers (People)", "/api/day/looks?limit=50", ("on", "count", "moments"), missing="this build has no look memory",
+                      check=lambda d: look_fields(d["moments"]),
+                      note=lambda d: (f"{d['count']} remembered; latest: {d['moments'][0]['when']}: {d['moments'][0]['helped']}" if d["moments"]
+                                      else "none remembered" + ("" if d["on"] else " (nobody has expressions switched on)")))
+    if checkin is not None and looks is not None:
+        status, note = look_back(checkin.get("latest"), looks["moments"])
+        run.add("the check-in calls back to an earlier look, on a real earlier day", status, None, note)
     run.fetch("today's plan", "/api/day/plan", ("moves", "blocks", "outcome"),
               note=lambda d: f"{d['outcome'].get('summary', '')} committed={d['committed']}")
     brief = run.fetch("the day in words", "/api/day/brief", ("mode", "engine", "latest"),

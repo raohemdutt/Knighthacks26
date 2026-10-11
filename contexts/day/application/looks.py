@@ -6,7 +6,9 @@
 
 "You've looked strained for the last twenty minutes. That's the same look you had Tuesday afternoon, when you'd gone
 two hours without moving. Ten minutes away from the desk helped then." The rule for what is remembered, what is
-similar and what is said is contexts/day/domain/looks.py; nothing here calls a model.
+similar and what is said is contexts/day/domain/looks.py; nothing here calls a model. The kind of look kept with a
+moment is "tired" or "tense" (the People screen's own two words for a strained look); a callback is only ever to
+the same kind.
 
 A pure projection of the log (every handler below is replay=True and uses event time), so it rebuilds on a restart
 and replays identically. No new event is published for a moment or its outcome: no other context needs one. What it
@@ -67,6 +69,7 @@ class LookMemory:
         # --- state, rebuilt from the log ---
         self.allowed: set[str] | None = None  # who scanned and switched expressions on; None: the log has not said yet
         self.looks: dict[str, list[Look]] = {}
+        self.labels: dict[str, dict[datetime, dict[str, float]]] = {}  # member -> window end -> the strained labels' counted looks
         self.faces: dict[str, list[Span]] = {}  # member -> the windows in which the desk camera had their face, counted or not
         self.presence = DeskPresence()
         self.drinks: list[datetime] = []  # when a drink was seen picked up (times only), in time order
@@ -100,6 +103,7 @@ class LookMemory:
         """Who may be remembered. Anyone no longer on the list is cleared: their windows and every remembered look."""
         self.allowed = set(getattr(e, "expressions", ()) or ())
         self.looks = {m: rows for m, rows in self.looks.items() if m in self.allowed}
+        self.labels = {m: rows for m, rows in self.labels.items() if m in self.allowed}
         self.faces = {m: rows for m, rows in self.faces.items() if m in self.allowed}
         self.moments = {i: m for i, m in self.moments.items() if m.member_id in self.allowed}
         self.open = {m: i for m, i in self.open.items() if m in self.allowed}
@@ -176,9 +180,12 @@ class LookMemory:
             return
         rows = self.looks.setdefault(e.member_id, [])
         rows.append(Look(e.window_start, e.window_end, e.samples, rule.strained_looks(e.shares, e.samples)))
+        labels = self.labels.setdefault(e.member_id, {})
+        labels[e.window_end] = {label: share * e.samples for label, share in e.shares.items() if label in memory.LOOK_WORDS}
         self.settle(now)
         if rows[0].end < now - KEEP_LOOKS - timedelta(hours=1):
             self.looks[e.member_id] = rows = [x for x in rows if x.end >= now - KEEP_LOOKS]
+            self.labels[e.member_id] = {end: counts for end, counts in labels.items() if end >= now - KEEP_LOOKS}
         if rule.looked_strained(rows, now) is None:
             self.open.pop(e.member_id, None)
             return
@@ -193,7 +200,8 @@ class LookMemory:
             log.debug("no context for a look", exc_info=True)
             return
         day = self.clock.day_of(now)
-        m = Moment(id=memory.moment_id(e.member_id, now, self.clock.tz), member_id=e.member_id, at=now, until=now, day=day, context=context)
+        m = Moment(id=memory.moment_id(e.member_id, now, self.clock.tz), member_id=e.member_id, at=now, until=now, day=day, context=context,
+                   look=self.look(e.member_id, now))
         self.open[e.member_id] = m.id
         self.moments[m.id] = m
         self.pending.add(m.id)
@@ -211,7 +219,7 @@ class LookMemory:
     def on_wipe(self, e: Event) -> None:
         """Live only. A wipe of everything removes the log this is a projection of: empty it now, not at the next restart."""
         if getattr(e, "scope", "") == "all":
-            self.looks, self.faces, self.moments, self.open, self.raised, self.answers = {}, {}, {}, {}, [], {}
+            self.looks, self.labels, self.faces, self.moments, self.open, self.raised, self.answers = {}, {}, {}, {}, {}, [], {}
             self.drinks, self.containers, self.dues, self.presence = [], [], {}, DeskPresence()
 
     # --- what a moment holds ---
@@ -321,6 +329,15 @@ class LookMemory:
         """Every remembered moment, most recent first, each with its outcome as far as it is known."""
         return sorted((self.as_of(m, now) for m in self.moments.values()), key=lambda m: m.at, reverse=True)
 
+    def look(self, member_id: str, now: datetime) -> str:
+        """The kind of look in the twenty minutes up to `now`: "tired" or "tense", from the labels behind the strained looks."""
+        got = rule.looked_strained(self.looks.get(member_id, []), now)
+        added: dict[str, float] = {}
+        for window in got[1] if got else []:
+            for label, count in self.labels.get(member_id, {}).get(window.end, {}).items():
+                added[label] = added.get(label, 0.0) + count
+        return memory.look_word(added)
+
     def strained_member(self, now: datetime) -> str | None:
         hits = [(sum(x.samples for x in got[1]), member) for member, rows in self.looks.items() if (got := rule.looked_strained(rows, now))]
         return max(hits)[1] if hits else None
@@ -332,7 +349,7 @@ class LookMemory:
         if member is None or (self.allowed is not None and member not in self.allowed):
             return None
         today = self.clock.day_of(now)
-        then = memory.similar(self.context(now, member), today, member, self.remembered(now))
+        then = memory.similar(self.context(now, member), today, member, self.remembered(now), self.look(member, now))
         if then is None:
             return None
         helped, lead = memory.learned(then, self.words)
@@ -341,20 +358,22 @@ class LookMemory:
                                learned=helped, lead=lead, chip=memory.chip(then, today, self.clock.tz),
                                lines=[f"{shown['when']}, around {shown['time']}. {shown['going_on']}", shown["helped"]])
 
-    def view(self, now: datetime, limit: int = SHOWN) -> dict:
-        """For the owner's own screen (GET /api/day/looks): the most recent moments in plain lines. Box-only."""
+    def view(self, now: datetime, limit: int = SHOWN, member_id: str | None = None) -> dict:
+        """For the owner's own screen (GET /api/day/looks): the most recent moments in plain lines, one member's when
+        `member_id` is given. Box-only."""
         now = self.clock_now(now)
-        today, rows = self.clock.day_of(now), self.remembered(now)
+        today, rows = self.clock.day_of(now), [m for m in self.remembered(now) if member_id in (None, m.member_id)]
         return {"on": bool(self.allowed) or (self.allowed is None and bool(self.looks)), "members": sorted(self.allowed or ()),
                 "count": len(rows), "kept_days": memory.KEEP_DAYS, "callback_days": memory.CALLBACK_DAYS,
                 "moments": [memory.view(m, today, self.clock.tz, self.words) for m in rows[:limit]],
                 "note": "Labels and numbers only, kept on this box. No picture is stored. Switching expressions off clears them."}
 
-    def forget(self, now: datetime, moment_id: str | None = None) -> DayLookForgotten | None:
-        """The event that forgets one moment, or all of them. None when there is no such moment."""
+    def forget(self, now: datetime, moment_id: str | None = None, member_id: str | None = None) -> DayLookForgotten | None:
+        """The event that forgets one moment, or all of them (one member's with `member_id`). None when there is no such moment."""
         if moment_id is not None and moment_id not in self.moments:
             return None
-        return DayLookForgotten(event_id=f"day-look-forgotten-{moment_id or 'all'}-{now.timestamp():.0f}", ts=now, moment_id=moment_id)
+        return DayLookForgotten(event_id=f"day-look-forgotten-{moment_id or member_id or 'all'}-{now.timestamp():.0f}", ts=now,
+                                moment_id=moment_id, member_id=None if moment_id else member_id)
 
     def said(self, kind: str, now: datetime) -> str | None:
         """An answer for the ear to "when did I last look this tired?" (`last`), "why do you think I'm tired?" (`why`)
@@ -372,7 +391,7 @@ class LookMemory:
             known = next((m for m in earlier if m.outcome.known and m.outcome.eased is not None), None)
             return memory.said_helped(known or (earlier[0] if earlier else None), today, tz, self.words)
         if kind == "why":
-            then = memory.similar(current.context, today, current.member_id, earlier) if current else None
+            then = memory.similar(current.context, today, current.member_id, earlier, current.look) if current else None
             return memory.said_why(current, then, today, tz, self.words)
         return None
 

@@ -2,7 +2,7 @@
 Pure: no clock, no model, no I/O. contexts/day/application/looks.py keeps the moments (a projection of the log).
 
     then = similar(context_now, today, member, moments)        # an earlier moment like this one, or None
-    said = callback(then, today, tz, words)                    # "That's the same look you had Tuesday afternoon, when ..."
+    said = callback(then, today, tz)                           # "That's the same look you had Tuesday afternoon, when ..."
     helped, lead = learned(then, words)                        # "Ten minutes away from the desk helped then.", "walk"
 
 The rules, in plain words (every time is event time):
@@ -10,8 +10,12 @@ The rules, in plain words (every time is event time):
 - A look is what the check-in already calls one: the last EXPR_WINDOW_MIN minutes of counted looks read as strained
   (contexts/day/domain/checkin.py `looked_strained`, its own thresholds). A stretch is that rule holding from one
   30-second-to-three-minute window to the next; ONE moment is remembered per stretch, with its context taken when the
-  stretch began to hold. The only label is "strained": what a small model read off a face's shape, never "tired",
-  never an emotion, never anything about health (narration.DIAGNOSIS applies to every sentence built here).
+  stretch began to hold. The kind of look is one of the two words Perception already uses for people on the People
+  screen (contexts/perception/domain/expression.py LOOKS): "tired" when most of the strained looks read as sad, "tense"
+  when most read as angry, disgusted or fearful. It is how a face looked to a small model: not an emotion and nothing
+  about health. A sentence that goes into a check-in (`callback`, `learned`, the card's lines) never uses either word:
+  narration.DIAGNOSIS holds there as it does for the rest of the check-in. The chip and the answers to a question
+  say "looked tired", as the People screen does.
 - The context is labels and whole numbers only: minutes at the desk, minutes since a drink was seen picked up, energy
   drinks so far against the limit, whether the resting heart rate was above the person's usual (a boolean, never the
   value), whether the night was short (a boolean), what they were doing (the plan block), a deadline within a day, the
@@ -39,7 +43,9 @@ from contexts.day.domain.coach import Span, stretches
 from contexts.day.domain.narration import WEEKDAYS, Words, cap, clock, hhmm, part_of_day, say_minutes, say_number
 from contracts.day import CheckinSuggestion
 
-LOOK = "strained"  # the one look stage one remembers; a trained model (stage two) may add more labels
+# The kinds of look stage one remembers, in the words Perception uses for people; a trained model (stage two) may add more.
+LOOK_WORDS = {"sad": "tired", "angry": "tense", "disgust": "tense", "fearful": "tense"}
+TIRED, TENSE = "tired", "tense"
 CALLBACK_DAYS = 21  # how far back a callback may reach
 KEEP_DAYS = 90  # how long a moment is kept at all (the examples a later training step would read)
 GOT_UP_MIN = 15  # "got up": left the desk within this many minutes of the moment
@@ -48,7 +54,7 @@ CLOCK_MIN = 240  # two times of day four hours apart are another part of the day
 SIMILAR_MAX = 0.5  # the largest distance that is still "the same look in the same kind of moment"
 NEAR_TIE = 0.1  # within this of the closest: the most recent wins
 MIN_SHARED = 2  # parts both moments must have: the time of day and one more, or the comparison means nothing
-RECENT = timedelta(hours=3)  # "why do you think I look strained?" is about a look this recent
+RECENT = timedelta(hours=3)  # "why do you think I look tired?" is about a look this recent
 WALK_KINDS = ("walk", "break")  # the check-in's two ways of saying "get up"
 
 DOING = {"study": "studying", "eat": "eating", "rest": "taking a break", "class": "in a lecture", "event": "at an event"}
@@ -93,10 +99,19 @@ class Moment:
     until: datetime  # the last window in which it still held
     day: date  # local
     context: Context
-    look: str = LOOK
+    look: str = TIRED  # "tired" or "tense" (`look_word`)
     checkin_id: str | None = None  # the check-in raised in this moment, if one was
     suggested: tuple[str, ...] = ()  # ... and the kinds of advice it gave
     outcome: Outcome = field(default_factory=Outcome)
+
+
+def look_word(shares: dict[str, float]) -> str:
+    """The kind of look in a stretch, from the labels' shares added up over its windows: "tired" or "tense"."""
+    by_word = {TIRED: 0.0, TENSE: 0.0}
+    for label, share in shares.items():
+        if label in LOOK_WORDS:
+            by_word[LOOK_WORDS[label]] += share
+    return TIRED if by_word[TIRED] >= by_word[TENSE] else TENSE
 
 
 def moment_id(member_id: str, at: datetime, tz: tzinfo) -> str:
@@ -146,8 +161,8 @@ def distance(a: Context, b: Context) -> float | None:
     return sum(parts) / len(parts) if len(parts) >= MIN_SHARED else None
 
 
-def similar(now: Context, today: date, member_id: str, moments: list[Moment], look: str = LOOK) -> Moment | None:
-    """The earlier moment to call back to, or None: never a forced one."""
+def similar(now: Context, today: date, member_id: str, moments: list[Moment], look: str = TIRED) -> Moment | None:
+    """The earlier moment to call back to, or None: never a forced one. `look`: the kind of look now."""
     scored = []
     for m in moments:
         if m.member_id != member_id or m.look != look or not 0 < (today - m.day).days <= CALLBACK_DAYS:
@@ -303,8 +318,8 @@ def said_last(m: Moment | None, today: date, tz: tzinfo) -> str:
 def said_why(now: Moment | None, then: Moment | None, today: date, tz: tzinfo, w: Words = Words()) -> str:
     """ "Why do you think I'm tired?": what was measured, never what it means. `now`: the look of the last hours, if any."""
     if now is None:
-        return "I don't think that right now: your face hasn't read as strained lately. I can only go by how you look to the camera."
-    c, seen = now.context, ["your face has read as strained for a while"]
+        return "I don't think that right now: your face hasn't looked tired or tense lately. I can only go by how you look to the camera."
+    c, seen = now.context, [f"your face has looked {now.look} for a while"]
     if c.sitting_min is not None and c.sitting_min >= rule.SIT_MIN:
         seen.append(f"you'd been at the {w.workplace} for {say_minutes(c.sitting_min)}")
     if c.since_drink_min is not None and c.since_drink_min >= rule.DRINK_GAP_MIN:

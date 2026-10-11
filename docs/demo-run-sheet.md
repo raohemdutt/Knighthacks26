@@ -407,6 +407,70 @@ Suggested once, added only after its card was approved, and told when to leave. 
 | --- | --- | --- | --- |
 | Pass: `contexts/demo/tests/test_optional_demo.py` (the lines above, the same for two directories, a gateway on the directory, a restart saying nothing again), `contexts/day/tests/test_optional_events.py`, `test_optional_suggest.py`, `tests/test_demo_walkthrough.py` | Pass, on a test gateway on the scene's own directory: `GET /api/day/plan` has the block (`fixed`, `origin: "optional"`, committed), `/api/day/now` has it as the next event with a 16 min walk and leave-by 4:59 PM, the brief has `latest.start` and `latest.suggest`, `check-api.mjs` all passed, the walkthrough's day and coach steps 16 PASS, 0 FAIL, 5 SKIP. On the seeded night (`seed --now`, today's plan made first) the whole walkthrough with `--approve-local` said yes to Board game night, the guard approved its card and the block was in the plan: 100 PASS, 1 FAIL (the known "while I was out" defect), 20 SKIP. The card read in Night and Day at 500x1000 and 1440x900. Simulated with: the invented day; template engine; fake model | Not run | Not run: nobody has heard the suggestion or answered it by voice; the card was read on screen in Night and Day |
 
+### 3b. The check-in, and the look Atlas remembers
+
+**Shows:** Atlas speaks up when several signals agree (a short night, resting heart rate up, a look
+that has held for twenty minutes, a long sitting, no drink seen), and calls back to an earlier time
+you looked like this: when it was, what was going on, and what helped then. It is stage one of
+"learning from it": remembered and said, in code, with no model. The memory is words and numbers on
+this box, never a picture.
+
+**Setup:** the seeded night, then the check-in story on top of it (all invented, and labelled so):
+
+    python -m contexts.demo circle --data-dir <dir>
+    python -m contexts.demo checkin --data-dir <dir> --onto
+
+The second command prints the sentence, the chips and the earlier day it calls back to. With no
+`--end` it picks the first afternoon time the night's own plan leaves clear (the rule stays quiet in
+a class and before a time to leave). On an empty directory, `python -m contexts.demo checkin
+--data-dir <empty dir>` shows the same afternoon alone. The demo owner is "Hemdutt", marked **Demo
+data**: scanned, expressions on.
+
+**Steps**
+1. Open **Now** (`/now/`). The check-in card is at the top: "Check-in · Atlas spoke up".
+2. Read the sentence, then tap the last chip, **Looked tired · like <day>**.
+3. Open **People** (`/people/`), the owner's card, under "Read my expressions": **Looks Atlas
+   remembers**.
+4. Ask: "When did I last look this tired?", "Why do you think I'm tired?", "What helped last time?"
+5. (Not in front of judges unless you mean it.) **Forget** on one row, or **Forget all**.
+
+**Expected** (seeded Sun 2026-10-11; the weekday is whatever day three days back really was)
+- Said aloud: "You slept about five hours, your resting heart rate is up, and you've looked strained
+  for the last twenty minutes. That's the same look you had Thursday afternoon, when you'd gone two
+  hours without moving. Ten minutes away from the desk helped then. You've been at the desk for an
+  hour and three quarters straight, and I haven't seen you pick up a drink since two o'clock. Take
+  ten minutes outside and drink some water." The advice that was followed by the look easing last
+  time is said first. On screen the paragraph also keeps "The last 3 times a day looked like this,
+  your study blocks fell apart by 4 PM"; aloud it is one look back, not two.
+- The chip opens two lines: "Thursday afternoon, around 2:45 PM. At the desk for two hours." and
+  "Ten minutes away from the desk helped: the look eased within half an hour."
+- People lists the most recent five: this afternoon ("Too soon to say how it went."), Thursday
+  afternoon, and the two strained afternoons of the demo people's week ("At the desk for fifteen
+  minutes." / "I couldn't see how it went after.": Atlas says what it did not see).
+- The answers: "The last time you looked this tired was Thursday afternoon, when you'd gone two hours
+  without moving."; "I can't know how you feel, only what I saw: your face has looked tired for a
+  while, you'd been at the desk for about an hour and three quarters, and I hadn't seen you pick up a
+  drink in about ninety minutes. That's the same look you had Thursday afternoon, …"; "Last time,
+  Thursday afternoon, ten minutes away from the desk helped: the look eased within half an hour."
+
+**What can go wrong**
+- No check-in: the rule is quiet outside 08:00 to 20:00, in a fixed block and before a time to
+  leave. The command says which ("held: during COP4533 study session"); leave `--end` out with
+  `--onto` and a clear time is picked.
+- "Check-in · in 10 h" on the card: the story was seeded to end later today than it is now. Seed it
+  with `--end` at a time that has passed, or say so.
+- No chip: nothing earlier was similar enough, or the remembered look was forgotten. That is the
+  rule ("never a forced callback"), not a fault.
+- The word on the chip is "tired" (or "tense"), the People screen's own two words for how a face
+  looked. The spoken check-in never says either: it says "looked strained" and "the same look".
+- Switching "Read my expressions" off clears every remembered look. Do not flip it mid-demo.
+
+**Verification**
+
+| tests | seeded app | Jetson | real hardware |
+| --- | --- | --- | --- |
+| Pass: `contexts/day/tests/test_looks.py` (the rule, the sentences, replay, forget, and that nothing of it reaches a push, a Circle share, an export or the info log), `contexts/demo/tests/test_checkin_demo.py` (alone and `--onto` the night, the night's closed days unchanged), `contexts/agent/tests/test_look_memory.py`, `tests/test_demo_walkthrough.py` | Pass, Sun 2026-10-11 on a test gateway on the circle seed with the check-in added `--onto`: the walkthrough's two new steps PASS ("the looks Atlas remembers", "the check-in calls back to an earlier look, on a real earlier day": Thursday 2026-10-08), 95 PASS, 0 FAIL, 33 SKIP read-only; the card with the chip opened and the People list read at 500 px and 1440 px in Night and Day. Simulated with: invented looks, nights and desk events; template engine; fake model | Not run | Not run: no camera or face model has read a real face into it, and nobody has heard the line said |
+
 ---
 
 ## 4. Study coach

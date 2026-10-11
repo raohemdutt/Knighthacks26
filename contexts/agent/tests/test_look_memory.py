@@ -7,8 +7,8 @@ from contexts.agent.application.talk import LOOK_ASKED, Talk, normal
 from contexts.agent.tests.test_talk import MEMORY, NOW
 from runtime import FakeRuntime
 
-SAID = {"last": "The last time you looked this strained was Friday afternoon, when you'd gone two hours without moving.",
-        "why": "I can't know how you feel, only what I saw: your face has read as strained for a while.",
+SAID = {"last": "The last time you looked this tired was Friday afternoon, when you'd gone two hours without moving.",
+        "why": "I can't know how you feel, only what I saw: your face has looked tired for a while.",
         "helped": "Last time, Friday afternoon, ten minutes away from the desk helped: the look eased within half an hour."}
 ASKED = {
     "last": ["When did I last look this tired?", "Atlas, when did I last look this tired", "when was the last time I looked this strained?",

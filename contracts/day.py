@@ -380,11 +380,11 @@ class CheckinCallback(BaseModel):
 
     moment_id: str  # the remembered moment ("look-<member>-<yyyymmdd>-<hhmm>"), looked up on the box
     day: date  # the earlier local day
-    look: str = "strained"  # the label of the look, as the check-in already words it
+    look: str = "tired"  # the kind of look, in the People screen's words: "tired" or "tense". Never in the spoken sentence.
     said: str  # the callback sentence, for the ear and the screen
     learned: str = ""  # what followed last time, when that is known: "Ten minutes away from the desk helped then."
     lead: CheckinSuggestionKind | None = None  # the advice that was followed by the look easing: it is said first
-    chip: str = ""  # "Looked strained · like Tue"
+    chip: str = ""  # "Looked tired · like Tue"
     lines: list[str] = []  # the remembered moment in one or two plain lines, for the chip
 
 

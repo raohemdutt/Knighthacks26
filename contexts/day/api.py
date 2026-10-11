@@ -34,10 +34,10 @@
 - POST /api/day/checkin/move   {id?} "Move the block": publishes a re-plan (`day.replan.proposed`) and its approval card.
                                The plan changes only when that card is approved.
 
-- GET  /api/day/looks?limit=   the look memory (contexts/day/application/looks.py): the most recent remembered looks, each
+- GET  /api/day/looks?limit=&member=  the look memory (contexts/day/application/looks.py): the most recent remembered looks, each
                                with when it was, what was going on and what helped, in plain lines. Labels and numbers
                                only: no picture, and a heart rate only as "above your usual". Box-only.
-- DELETE /api/day/looks/{id}   forget one remembered look; DELETE /api/day/looks forgets all of them. Each publishes the
+- DELETE /api/day/looks/{id}   forget one remembered look; DELETE /api/day/looks[?member=] forgets all of them. Each publishes the
                                box-only `day.look.forgotten`, so a replay of the log forgets them again.
 
 - GET  /api/day/optional       optional events ("Near you") for today and the next days, from Memory's `nearby:` calendar
@@ -248,9 +248,10 @@ def day_router(day: DayLoop, publish: Callable[[object], Awaitable] | None = Non
             day.looks.on_forgotten(event)
 
     @router.get("/looks")
-    async def get_looks(limit: int = Query(5, ge=1, le=50)) -> dict:
-        """The looks Atlas remembers, most recent first: when, what was going on, what helped. Labels and numbers only."""
-        return day.looks.view(clock(), limit)
+    async def get_looks(limit: int = Query(5, ge=1, le=50), member: str | None = None) -> dict:
+        """The looks Atlas remembers, most recent first: when, what was going on, what helped. Labels and numbers only.
+        `member`: one enrolled member's (the People screen asks per person)."""
+        return day.looks.view(clock(), limit, member)
 
     @router.delete("/looks/{moment_id}", dependencies=writes)
     async def forget_look(moment_id: str) -> dict:
@@ -261,11 +262,12 @@ def day_router(day: DayLoop, publish: Callable[[object], Awaitable] | None = Non
         return {"forgotten": moment_id, "left": len(day.looks.moments)}
 
     @router.delete("/looks", dependencies=writes)
-    async def forget_looks() -> dict:
-        """Forget all of them, in one tap. The event is box-only; a replay of the log forgets them again."""
+    async def forget_looks(member: str | None = None) -> dict:
+        """Forget all of them (one member's with `member`), in one tap. The event is box-only; a replay of the log
+        forgets them again."""
         had = len(day.looks.moments)
-        await forgotten(day.looks.forget(clock()))
-        return {"forgotten": had, "left": len(day.looks.moments)}
+        await forgotten(day.looks.forget(clock(), member_id=member))
+        return {"forgotten": had - len(day.looks.moments), "left": len(day.looks.moments)}
 
     @router.get("/coach")
     async def get_coach(day_: date | None = Query(None, alias="day")) -> dict:
