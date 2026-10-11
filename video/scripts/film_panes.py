@@ -202,7 +202,7 @@ def sources(s: Scene):
 
 
 def model(s: Scene):
-    s.card('<div class="pk">on the Jetson</div><div class="ph">Qwen · 4 billion parameters</div>', 140, 620, "0:0", w=620)
+    s.card('<div class="pk">on the Jetson</div><div class="ph">Qwen · 27 billion parameters</div>', 140, 620, "0:0", w=620)
     s.card('<div class="chips"><span class="site-chip">Fast</span><span class="site-chip">Accurate</span><span class="site-chip">Private</span></div>', 140, 820, "0:0.25")
     s.card('<div class="pk">demo questions</div><div class="big">48 / 48</div>', 1380, 640, "0:0.6", w=420)
 

@@ -29,9 +29,9 @@ export default function choreograph(tl, world, scene) {
   const openDur = Math.max(0.8, Math.min(1.4, firstPart - OPEN_AT - 0.1));
   tl.to(state, { xray: 1, duration: openDur, ease: "power2.inOut" }, OPEN_AT);
   tl.to(state, { explode: 1, duration: openDur, ease: "power2.out" }, OPEN_AT);
-  world.leg(tl, OPEN_AT, { x: 4.9, y: 2.3, z: 6.3, tx: 0.45, ty: 0.3, tz: -0.25, fov: 36 }, openDur + 0.2, "power2.inOut");
+  world.leg(tl, OPEN_AT, { x: 5.6, y: 2.8, z: 7.4, tx: 0.2, ty: 0.75, tz: -0.1, fov: 42 }, openDur + 0.2, "power2.inOut"); // the whole exploded stack, lid and webcam included
   const CLOSE = Math.max(word("agent") + 0.6, END - 1.8);
-  world.leg(tl, OPEN_AT + openDur + 0.2, { x: 4.4, y: 2.0, z: 5.8, tx: 0.45, ty: 0.3, tz: -0.25, fov: 35 }, Math.max(0.3, CLOSE - (OPEN_AT + openDur + 0.2)), "none");
+  world.leg(tl, OPEN_AT + openDur + 0.2, { x: 5.2, y: 2.6, z: 7.0, tx: 0.2, ty: 0.75, tz: -0.1, fov: 41 }, Math.max(0.3, CLOSE - (OPEN_AT + openDur + 0.2)), "none");
 
   // ---- Each part lights with its label as it is named; they stay up so the diagram reads as a whole. ----
   const off = (p, dx, dy, dz) => [p[0] + dx, p[1] + dy, p[2] + dz];

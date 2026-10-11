@@ -6,7 +6,7 @@ import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { SURFACE_3D, SHADE, LIGHT, INK, ACCENT, MUTED, ENV_INTENSITY, DESK_Y, hash, clamp01, smooth, softTexture, flat, matte } from "./sets/common.js";
-import { buildEnclosure, buildEnclosureLite } from "./sets/enclosure.js";
+import { buildAtlas as buildEnclosure, buildAtlasLite as buildEnclosureLite } from "./sets/device.js"; // the website's Atlas model (enclosure.js was the cardboard prototype)
 import { buildRoom } from "./sets/room.js";
 import { buildKitchen, KX } from "./sets/kitchen.js";
 import { buildControl, CX, CONTROL_SHOTS } from "./sets/control.js";

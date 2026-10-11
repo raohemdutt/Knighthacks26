@@ -37,7 +37,7 @@
 </style>
       <div id="root" data-composition-id="model" data-width="1920" data-height="1080">
         <div id="model-chapter" class="chip-ch soft-raised soft-muted">The model on the box</div>
-        <div class="card soft-raised" id="model-card1" style="left:140px;top:620px;width:620px"><div class="pk">on the Jetson</div><div class="ph">Qwen · 4 billion parameters</div></div>
+        <div class="card soft-raised" id="model-card1" style="left:140px;top:620px;width:620px"><div class="pk">on the Jetson</div><div class="ph">Qwen · 27 billion parameters</div></div>
         <div class="card soft-raised" id="model-card2" style="left:140px;top:820px"><div class="chips"><span class="site-chip">Fast</span><span class="site-chip">Accurate</span><span class="site-chip">Private</span></div></div>
         <div class="card soft-raised" id="model-card3" style="left:1380px;top:640px;width:420px"><div class="pk">demo questions</div><div class="big">48 / 48</div></div>
       </div>
@@ -47,11 +47,11 @@
           tl.fromTo("#model-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 0.15);
           tl.to("#model-chapter", { opacity: 0, duration: 0.4 }, 3.200);
           tl.fromTo("#model-card1", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 1.000);
-          tl.to("#model-card1", { opacity: 0, duration: 0.35, ease: "power2.in" }, 7.926);
-          tl.fromTo("#model-card2", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 2.794);
-          tl.to("#model-card2", { opacity: 0, duration: 0.35, ease: "power2.in" }, 7.926);
-          tl.fromTo("#model-card3", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 5.306);
-          tl.to("#model-card3", { opacity: 0, duration: 0.35, ease: "power2.in" }, 7.926);
+          tl.to("#model-card1", { opacity: 0, duration: 0.35, ease: "power2.in" }, 8.238);
+          tl.fromTo("#model-card2", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 2.872);
+          tl.to("#model-card2", { opacity: 0, duration: 0.35, ease: "power2.in" }, 8.238);
+          tl.fromTo("#model-card3", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 5.493);
+          tl.to("#model-card3", { opacity: 0, duration: 0.35, ease: "power2.in" }, 8.238);
           window.__timelines["model"] = tl;
         })();
       </script>

@@ -78,7 +78,7 @@ scenes:
   beat: 4
   lines:
   - who: N
-    text: 'A four-billion-parameter Qwen runs right here: fast, accurate, and private. Forty-eight demo questions, forty-eight right.'
+    text: 'A twenty-seven-billion-parameter Qwen runs right here: fast, accurate, and private. Forty-eight demo questions, forty-eight right.'
   lead_s: 1.0
 - id: desk
   title: At the desk

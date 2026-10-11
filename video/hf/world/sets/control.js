@@ -7,7 +7,7 @@
 import * as THREE from "three";
 import { SHADE, FLOOR_Y, DESK_Y, hash, clamp01, lerp, softTexture, FONT, flat, matte, tint, fadingSet, RoundedBoxGeometry } from "./common.js";
 import { makeHuman, LOOKS } from "./human.js";
-import { buildEnclosureLite } from "./enclosure.js";
+import { buildAtlasLite as buildEnclosureLite } from "./device.js";
 
 export const CX = 46;
 const F = FLOOR_Y, TOP = F + 7.5; // console top (75 cm)

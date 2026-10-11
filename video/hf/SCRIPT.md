@@ -11,6 +11,9 @@ v4.6 folds in Hemdutt's notes from Notion (Sun 3:21 AM, agreed by him): 48 of 48
 beat 13's "recognise each other", a new beat 15, one clause per sponsor track, and a new last line. It also names the
 Encompass data-capture story in beat 3.
 
+v4.9b (Dom, Sun 6:40 AM): beat 4 says a twenty-seven-billion-parameter Qwen runs on the box (Dom's call; config/models.yaml on
+main still lists Qwen3.5-4B for the Jetson).
+
 v4.9 (Dom, Sun 5:20 AM): voices back to 1.2x; "Looks good" without "lock it"; no tap to approve (he asked, Atlas
 just does it); the keys question pops up after he finishes asking.
 
@@ -68,8 +71,8 @@ seconds.
 examples it learns from.
 
 ### 4 · The model on the box (spec, as now)
-[The box goes see-through around the Jetson. Cards: "Qwen · on the Jetson", Fast, Accurate, Private, "48 / 48".]
-**N:** A four-billion-parameter Qwen runs right here: fast, accurate, and private. Forty-eight demo questions,
+[The box goes see-through around the Jetson. Cards: "Qwen · 27 billion parameters", Fast, Accurate, Private, "48 / 48".]
+**N:** A twenty-seven-billion-parameter Qwen runs right here: fast, accurate, and private. Forty-eight demo questions,
 forty-eight right.
 
 ### 5 · At the desk (demo)

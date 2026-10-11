@@ -5,7 +5,7 @@
 import * as THREE from "three";
 import { SHADE, INK, FLOOR_Y, DESK_Y, hash, clamp01, lerp, softTexture, FONT, flat, matte, tint, fadingSet, RoundedBoxGeometry } from "./common.js";
 import { makeHuman, LOOKS } from "./human.js";
-import { buildEnclosureLite } from "./enclosure.js";
+import { buildAtlasLite as buildEnclosureLite } from "./device.js";
 
 export const KX = -42;
 const WOOD = 0xe0d6c8, WALL = 0xe1e6ed;
