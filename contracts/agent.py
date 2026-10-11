@@ -8,7 +8,8 @@ from contracts.types import Citation
 
 # connector_write: target is the connector tool ("calendar.create_event"), params its arguments.
 # circle_share: target is the circle id, params the share payload.
-ActionKind = Literal["export_training_data", "send_message", "browse", "connector_write", "circle_share"]
+ActionKind = Literal["export_training_data", "send_message", "browse", "connector_write", "circle_share",
+                     "device_control"]  # device_control: the box itself (pause the cameras), after an approval
 
 
 @register
@@ -18,6 +19,15 @@ class AnswerGenerated(TypedEvent):
     answer: str
     citations: list[Citation] = []
     model_version: str
+    # Ask Atlas's tools (contexts/agent/application/ask_router.py), all optional: who answered ("the box", "the network
+    # brain", "the box's rules"), the tool it used, the tool's result for the Ask tab, a screen of the web app to open,
+    # and the approval card the tool proposed.
+    answered_by: str | None = None
+    tool: str | None = None
+    tool_args: dict | None = None
+    tool_result: dict | None = None
+    link: str | None = None
+    action_id: str | None = None
 
 
 @register

@@ -14,6 +14,7 @@ const KIND_TITLE: Record<string, string> = {
   browse: "Open a web page",
   connector_write: "Change something in a connected app",
   circle_share: "Share with your Circle",
+  device_control: "Change the box itself",
 };
 
 const TARGET_LABEL: Record<string, string> = {
@@ -22,6 +23,7 @@ const TARGET_LABEL: Record<string, string> = {
   browse: "Page",
   connector_write: "Tool",
   circle_share: "Circle",
+  device_control: "Device",
 };
 
 export default function ApprovalsPage() {

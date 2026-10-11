@@ -151,6 +151,9 @@ PREPARE_TOOL = {
         "parameters": {"type": "object", "properties": {"event": {"type": "string"}}, "required": ["event"]},
     },
 }
+# "Add a meeting ... called demo prep" is a calendar write, not a request for a study plan ("prep" is the planner's word)
+WRITE_ASK = re.compile(r"^\s*(?:please\s+)?(?:can you\s+)?(?:add|schedule|put|book|create|set up|make)\b.*"
+                       r"\b(?:meeting|event|appointment|call|calendar|reminder)\b", re.IGNORECASE)
 # A small model often refuses in its own words instead of saying NO_EVIDENCE: treat that as unsure too (A13)
 REFUSAL = re.compile(
     r"\b(?:can(?:no|['\u2019]?)t|unable to|not able to) (?:browse|access|check|search|look up|see)"
@@ -289,6 +292,14 @@ class Answer:
     text: str
     citations: list[Citation]
     model_version: str
+    # Set when a product tool answered (ask_router.py): who chose it, which tool, what it found, the screen to open,
+    # the approval card it proposed. QA's own paths leave them empty: the box's model answered.
+    answered_by: str | None = None
+    tool: str | None = None
+    tool_args: dict | None = None
+    tool_result: dict | None = None
+    link: str | None = None
+    action_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -397,11 +408,22 @@ class QA:
         self.day_plan: Callable[[], list[dict] | None] | None = None  # today's agreed plan from now (DayLoop.blocks); set by the composition root
         self.monotonic: Callable[[], float] = monotonic  # the web time budget (A13); tests replace it
         self.on_delta: Callable[[str, str], None] | None = None  # (question_id, text): streamed answer pieces (A11)
+        # Ask Atlas's router (ask_router.py): the model picks a product tool before any fixed path. Set by the
+        # composition root; None (tests, a laptop with no model) answers exactly as before.
+        self.router = None
+        self.last_window: tuple[datetime, datetime] | None = None  # when the last answer started and ended (energy tool)
 
     async def on_question(self, e: QuestionAsked) -> AnswerGenerated:
         stream = (lambda text: self.on_delta(e.question_id, text)) if self.on_delta else None
+        started = self.clock()
         a = await self.ask(e.text, stream=stream)
-        return AnswerGenerated(question_id=e.question_id, answer=a.text, citations=a.citations, model_version=a.model_version)
+        self.last_window = (started, self.clock())
+        extra = {}
+        if self.router is not None:  # the Ask tab shows who answered; only on a box that routes
+            extra = {"answered_by": a.answered_by or "the box", "tool": a.tool, "tool_args": a.tool_args,
+                     "tool_result": a.tool_result, "link": a.link, "action_id": a.action_id}
+        return AnswerGenerated(question_id=e.question_id, answer=a.text, citations=a.citations, model_version=a.model_version,
+                               **extra)
 
     async def ask(self, question: str, stream: Callable[[str], None] | None = None) -> Answer:
         # A few narrow questions about how the person looked ("when did I last look this tired?", "why do you think I'm
@@ -412,7 +434,16 @@ class QA:
         remembered = look(question, stream) if look else None
         if remembered is not None:
             return remembered
-        if self.planner and self.planner.wants(question):
+        if self.router is not None:  # the model decides first; None: not a question for the product tools
+            routed = await self.router.route(question)
+            if routed is not None:
+                if stream:
+                    stream(routed.text)
+                r = routed.result
+                return Answer(routed.text, [], routed.model_version, answered_by=routed.answered_by, tool=routed.tool,
+                              tool_args=routed.args, tool_result={"text": r.text, "ok": r.ok, **r.data}, link=r.link,
+                              action_id=r.proposal.action_id if r.proposal is not None else None)
+        if self.planner and self.planner.wants(question) and not WRITE_ASK.search(question):
             plan = await self.planner.answer(question)
             return Answer(plan.text or NO_EVIDENCE, plan.citations, plan.model_version)
         evidence = self.prefetch(question)
