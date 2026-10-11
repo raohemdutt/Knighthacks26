@@ -122,6 +122,38 @@ EXPECTED_SEED = [
     ("jetson.idle_watts", "jetson", {"rail": "VDD_IN", "period_ms": 1000}, 12.62, "W", True),
     ("student.watts_avg", "jetson", {"rail": "VDD_IN", "period_ms": 1000}, 17.536, "W", True),
     ("student.watts_peak", "jetson", {"rail": "VDD_IN", "period_ms": 1000}, 19.127, "W", True),
+    # R26: the batching sweep on the pod C teacher, attach mode, 3 repeats per concurrency (node pod-a, gfx1151)
+    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 1}, 2.7021, "tok/s", True),
+    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 1}, 2.6172, "tok/s", True),
+    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 1}, 1.1809, "s", True),
+    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 1}, 36.6587, "J/token", True),
+    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 1}, 96.0046, "W", True),
+    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 1}, 97.0, "W", True),
+    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 4}, 2.5218, "tok/s", True),
+    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 4}, 9.3153, "tok/s", True),
+    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 4}, 4.8672, "s", True),
+    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 4}, 10.3071, "J/token", True),
+    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 4}, 96.0126, "W", True),
+    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 4}, 97.0, "W", True),
+    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 8}, 2.319, "tok/s", True),
+    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 8}, 16.3616, "tok/s", True),
+    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 8}, 7.7821, "s", True),
+    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 8}, 5.8676, "J/token", True),
+    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 8}, 96.004, "W", True),
+    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 8}, 97.0, "W", True),
+    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 16}, 2.0712, "tok/s", True),
+    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 16}, 26.946, "tok/s", True),
+    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 16}, 14.9531, "s", True),
+    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 16}, 3.5628, "J/token", True),
+    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 16}, 96.0052, "W", True),
+    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 16}, 97.0, "W", True),
+    ("teacher_batching.decode_tok_s", "pod-a", {"batch_size": 64}, 0.8854, "tok/s", True),
+    ("teacher_batching.decode_tok_s_total", "pod-a", {"batch_size": 64}, 49.5288, "tok/s", True),
+    ("teacher_batching.ttft_s", "pod-a", {"batch_size": 64}, 24.3901, "s", True),
+    ("teacher_batching.joules_per_token", "pod-a", {"batch_size": 64}, 1.9384, "J/token", True),
+    ("teacher_batching.watts_avg", "pod-a", {"batch_size": 64}, 96.0499, "W", True),
+    ("teacher_batching.watts_peak", "pod-a", {"batch_size": 64}, 98.0, "W", True),
+    ("pod.idle_watts", "pod-a", {"server": "teacher loaded, no request"}, 10.44, "W", False),
 ]
 
 # The numbers the lab setup measured, by metric name.
@@ -179,7 +211,10 @@ def test_every_low_confidence_seed_row_says_why():
     assert {row["metric"] for row in flagged} == {
         "teacher.joules_per_token", "pod.idle_watts", "pod.balance_credits", "teacher.watts_avg", "teacher.watts_peak",
         "pod.settle_s", "pod.idle_state_share",
-        "telemetry.sampler_cpu_pct", "jetson.idle_watts", "student.watts_avg", "student.watts_peak"}
+        "telemetry.sampler_cpu_pct", "jetson.idle_watts", "student.watts_avg", "student.watts_peak"} | {
+        # R26: the sweep's medians are of 3 repeats, under the 5 verdict() asks for
+        "teacher_batching." + name
+        for name in ("decode_tok_s", "decode_tok_s_total", "ttft_s", "joules_per_token", "watts_avg", "watts_peak")}
     for row in flagged:
         if row["conditions"].get("sampler") == SAMPLER:  # the sampler's rows: its error is "unknown" until a reference run
             assert row["conditions"]["error"] == "unknown", row["metric"]
