@@ -49,7 +49,7 @@ def atlas_rows(path: Path = ATLAS) -> list[dict]:
 def wiki_rows(n: int) -> list[dict]:
     from datasets import load_dataset
 
-    ds = load_dataset("Salesforce/wikitext", "wikitext-103-raw-v1", split="train", streaming=True)
+    ds = load_dataset("Salesforce/wikitext", "wikitext-103-raw-v1", split="train")
     out: list[dict] = []
     for item in ds:
         text = item["text"].strip()
