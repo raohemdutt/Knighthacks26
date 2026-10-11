@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      <link rel="stylesheet" href="world/soft.css" />
+      <style>
+        #root { position: absolute; inset: 0; font-family: var(--font); }
+        #jetson-chapter { position: absolute; left: 96px; top: 72px; padding: 14px 28px; font-size: 28px; opacity: 0; }
+      </style>
+      <div id="root" data-composition-id="jetson" data-width="1920" data-height="1080">
+        <div id="jetson-chapter" class="soft-raised soft-muted">On the Jetson</div>
+      </div>
+      <script>
+        (function () {
+          const tl = gsap.timeline({ paused: true });
+          tl.fromTo("#jetson-chapter", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0.2);
+          window.__timelines["jetson"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

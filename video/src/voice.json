@@ -97,28 +97,28 @@
       "lines": [
         {
           "n": 0,
-          "text": "The lab is two AMD Radeon R9700 cards. One serves the teacher, a twenty-seven billion parameter Qwen. The other trains.",
+          "text": "The lab is two AMD Strix Halo pods, each a Radeon GPU with sixty-four gigabytes of shared memory. One serves the teacher, a twenty-seven billion parameter Qwen. The other trains.",
           "start": 1.5,
-          "duration": 9.62,
-          "file": "voice/3-0-51bc78a3b2.mp3"
+          "duration": 13.13,
+          "file": "voice/3-0-42c2080c7c.mp3"
         },
         {
           "n": 1,
           "text": "Labeling, training, testing and packaging run on ROCm, and every run is recorded, with its loss curve, its minutes and its watts.",
-          "start": 11.72,
+          "start": 15.23,
           "duration": 9.77,
           "file": "voice/3-1-dccd302947.mp3"
         },
         {
           "n": 2,
           "text": "The box and the lab share two files, a dataset out and a model package back. Nothing else crosses.",
-          "start": 22.09,
+          "start": 25.6,
           "duration": 6.98,
           "file": "voice/3-2-797db50b4f.mp3"
         }
       ],
-      "speech_s": 26.4,
-      "ends_at_s": 29.1
+      "speech_s": 29.9,
+      "ends_at_s": 32.6
     },
     "4": {
       "title": "Box and lab",

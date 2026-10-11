@@ -40,7 +40,7 @@ export const SCENES: Record<number, Scene> = {
     ],
   },
   3: {
-    groups: [{ label: "The lab: two AMD Radeon R9700s on ROCm", x: 560, y: 180, w: 1240, h: 680 }],
+    groups: [{ label: "The lab: two AMD Strix Halo pods on ROCm", x: 560, y: 180, w: 1240, h: 680 }],
     nodes: [
       { id: "box", label: "The box", sub: "Jetson on your desk", x: 80, y: 460, icon: "📦" },
       { id: "a", label: "GPU A: the teacher", sub: "27B Qwen, serving", x: 660, y: 290, w: 420, icon: "🧠" },

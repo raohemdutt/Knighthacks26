@@ -1,0 +1,249 @@
+{
+  "fps": 30,
+  "total_s": 194.3,
+  "scenes": [
+    {
+      "id": "intro",
+      "title": "Atlas",
+      "start": 0.0,
+      "duration": 31.376,
+      "lines": [
+        {
+          "n": 0,
+          "text": "This is Atlas. A small box that sits on your desk, with two camera eyes.",
+          "start": 3.0,
+          "duration": 5.208,
+          "file": "assets/voice/intro-0-a3d8390868.mp3"
+        },
+        {
+          "n": 1,
+          "text": "It watches your space, remembers what it saw, answers your questions, and learns new skills. All of it on the box. Your video never leaves.",
+          "start": 8.608,
+          "duration": 9.744,
+          "file": "assets/voice/intro-1-fcbfbd7170.mp3"
+        },
+        {
+          "n": 2,
+          "text": "Inside are four layers. Cameras that blur every face. A vision model that understands the scene. A memory. And an agent that never acts without asking you.",
+          "start": 18.752,
+          "duration": 11.424,
+          "file": "assets/voice/intro-2-b86e8a9303.mp3"
+        }
+      ],
+      "speech_s": 26.4
+    },
+    {
+      "id": "day",
+      "title": "It runs your day",
+      "start": 31.876,
+      "duration": 18.392,
+      "lines": [
+        {
+          "n": 0,
+          "text": "Point it at your week. Atlas reads your classes and deadlines, and watches how your day really goes at the desk.",
+          "start": 31.876,
+          "duration": 6.864,
+          "file": "assets/voice/day-0-48c41ea9ee.mp3"
+        },
+        {
+          "n": 1,
+          "text": "Each morning it writes one plan, with its reasons. When something slips, it re-plans.",
+          "start": 39.14,
+          "duration": 6.216,
+          "file": "assets/voice/day-1-eb3455581a.mp3"
+        },
+        {
+          "n": 2,
+          "text": "Nothing is written to your calendar until you tap approve.",
+          "start": 45.756,
+          "duration": 3.312,
+          "file": "assets/voice/day-2-8b0fd89a96.mp3"
+        }
+      ],
+      "speech_s": 16.4
+    },
+    {
+      "id": "learn",
+      "title": "It learns",
+      "start": 50.768,
+      "duration": 25.904,
+      "lines": [
+        {
+          "n": 0,
+          "text": "The model on the box is small. That is what makes it private and fast. But small models have gaps.",
+          "start": 50.768,
+          "duration": 6.432,
+          "file": "assets/voice/learn-0-2c909f1b48.mp3"
+        },
+        {
+          "n": 1,
+          "text": "Tap teach. A handful of blurred pictures go to the lab, a big open model labels them, and the small one is fine-tuned on the answers.",
+          "start": 57.6,
+          "duration": 8.856,
+          "file": "assets/voice/learn-1-61ec381340.mp3"
+        },
+        {
+          "n": 2,
+          "text": "A test decides if the new model is really better. Only then does it ship back to the box. Our adapter is public on Hugging Face.",
+          "start": 66.856,
+          "duration": 8.616,
+          "file": "assets/voice/learn-2-eeb48501e6.mp3"
+        }
+      ],
+      "speech_s": 23.9
+    },
+    {
+      "id": "lab",
+      "title": "The learning lab",
+      "start": 77.172,
+      "duration": 25.856,
+      "lines": [
+        {
+          "n": 0,
+          "text": "The lab is two AMD Strix Halo pods. One serves the teacher, a twenty-seven billion parameter Qwen. The other trains.",
+          "start": 77.172,
+          "duration": 8.328,
+          "file": "assets/voice/lab-0-d87bdb82a5.mp3"
+        },
+        {
+          "n": 1,
+          "text": "Labeling, training, testing and packaging run on ROCm, and every run is recorded with its loss curve and its watts.",
+          "start": 85.9,
+          "duration": 8.544,
+          "file": "assets/voice/lab-1-74d2f68c8d.mp3"
+        },
+        {
+          "n": 2,
+          "text": "The box and the lab share two files, a dataset out and a model package back. Nothing else crosses.",
+          "start": 94.844,
+          "duration": 6.984,
+          "file": "assets/voice/lab-2-797db50b4f.mp3"
+        }
+      ],
+      "speech_s": 23.9
+    },
+    {
+      "id": "swap",
+      "title": "Box and lab",
+      "start": 103.528,
+      "duration": 16.624,
+      "lines": [
+        {
+          "n": 0,
+          "text": "The new model arrives as one small package. The box checks it, swaps it in, and rolls back by itself if it does not answer.",
+          "start": 103.528,
+          "duration": 8.328,
+          "file": "assets/voice/swap-0-6380685362.mp3"
+        },
+        {
+          "n": 1,
+          "text": "We measure watts on the Jetson, watts on the GPUs, and joules per answer, so you can see what a question costs.",
+          "start": 112.256,
+          "duration": 6.696,
+          "file": "assets/voice/swap-1-64f60bd89c.mp3"
+        }
+      ],
+      "speech_s": 15.0
+    },
+    {
+      "id": "jetson",
+      "title": "On the Jetson",
+      "start": 120.652,
+      "duration": 17.872,
+      "lines": [
+        {
+          "n": 0,
+          "text": "Everything live runs on this Jetson. Cameras in, faces blurred, the on-device vision model understanding the scene, answers in seconds.",
+          "start": 120.652,
+          "duration": 9.456,
+          "file": "assets/voice/jetson-0-e92840ea55.mp3"
+        },
+        {
+          "n": 1,
+          "text": "Pull the network cable. It keeps seeing, remembering, alerting and answering. Only learning pauses.",
+          "start": 130.508,
+          "duration": 6.816,
+          "file": "assets/voice/jetson-1-fba6e6a0d6.mp3"
+        }
+      ],
+      "speech_s": 16.3
+    },
+    {
+      "id": "counts",
+      "title": "Data into counts",
+      "start": 139.024,
+      "duration": 18.424,
+      "lines": [
+        {
+          "n": 0,
+          "text": "The same cameras turn a room into data. Frames become events. Events become episodes you can ask about.",
+          "start": 139.024,
+          "duration": 7.128,
+          "file": "assets/voice/counts-0-9721218354.mp3"
+        },
+        {
+          "n": 1,
+          "text": "Point it at the bins, and a campus gets a number it can act on. How much was sorted right, before and after a nudge. Tables share counts, never pictures.",
+          "start": 146.552,
+          "duration": 9.696,
+          "file": "assets/voice/counts-1-c1fa0460ff.mp3"
+        }
+      ],
+      "speech_s": 16.8
+    },
+    {
+      "id": "friends",
+      "title": "Friends' Atlases",
+      "start": 157.948,
+      "duration": 16.024,
+      "lines": [
+        {
+          "n": 0,
+          "text": "Point it at your friends. Each person's Atlas keeps their own calendar private.",
+          "start": 157.948,
+          "duration": 4.512,
+          "file": "assets/voice/friends-0-6aba6ba40f.mp3"
+        },
+        {
+          "n": 1,
+          "text": "Ask for a time that works for everyone, and the boxes negotiate. Only free or busy leaves each box. The event lands after a tap.",
+          "start": 162.86,
+          "duration": 9.912,
+          "file": "assets/voice/friends-1-3966bb2525.mp3"
+        }
+      ],
+      "speech_s": 14.4
+    },
+    {
+      "id": "dayrun",
+      "title": "Day Run",
+      "start": 174.472,
+      "duration": 14.368,
+      "lines": [
+        {
+          "n": 0,
+          "text": "Point it at your habits. Day Run lets you play tomorrow before you live it, on a map of your own campus.",
+          "start": 174.472,
+          "duration": 6.504,
+          "file": "assets/voice/dayrun-0-8d616c5b4e.mp3"
+        },
+        {
+          "n": 1,
+          "text": "It is the same box, the same cameras, the same memory. Pointed at one more part of your life.",
+          "start": 181.376,
+          "duration": 6.264,
+          "file": "assets/voice/dayrun-1-ca501cf8c5.mp3"
+        }
+      ],
+      "speech_s": 12.8
+    },
+    {
+      "id": "end",
+      "title": "Atlas",
+      "start": 189.34,
+      "duration": 5.0,
+      "lines": [],
+      "speech_s": 0
+    }
+  ]
+}

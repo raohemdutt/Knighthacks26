@@ -7,6 +7,11 @@ import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.j
 const SURFACE = 0xe4e8ee, SHADE = 0xb7c0cd, LIGHT = 0xffffff, INK = 0x2b313b, ACCENT = 0xd9774a, MUTED = 0x6f7886;
 const W = 1920, H = 1080;
 
+// The box's geometry, shared by the box, the friends' boxes and the slot files (world.SLAB).
+const SLAB = { w: 2.4, h: 0.38, d: 1.6, r: 0.11, pitch: 0.4, boxY: -0.2, open: 0.55 };
+const slabY = (i) => i * SLAB.pitch - 0.6; // rest y of layer i inside the box group
+const DESK_Y = -1.0;
+
 /** Deterministic 0..1 hash of two integers (same every frame, every render). */
 export function hash(i, j = 0) {
   let n = (i * 374761393 + j * 668265263) | 0;
@@ -27,7 +32,7 @@ function softTexture(draw, w = 512, h = 512) {
 function shadowTexture() {
   return softTexture((ctx, w, h) => {
     const g = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
-    g.addColorStop(0, "rgba(183,192,205,0.55)"); g.addColorStop(0.6, "rgba(183,192,205,0.18)"); g.addColorStop(1, "rgba(183,192,205,0)");
+    g.addColorStop(0, "rgba(183,192,205,0.62)"); g.addColorStop(0.35, "rgba(183,192,205,0.34)"); g.addColorStop(0.7, "rgba(183,192,205,0.10)"); g.addColorStop(1, "rgba(183,192,205,0)");
     ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
   });
 }
@@ -46,68 +51,154 @@ function labelTexture(text, size) {
   }, w, h);
 }
 
+// The small "R9700" plate on each lab card.
+function plateTexture() {
+  return softTexture((ctx, w, h) => {
+    ctx.clearRect(0, 0, w, h);
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = "#2b313b"; ctx.font = `700 92px Inter, "Segoe UI", system-ui, sans-serif`; ctx.fillText("R9700", 24, 104);
+    ctx.fillStyle = "#6f7886"; ctx.font = `600 34px Inter, "Segoe UI", system-ui, sans-serif`; ctx.fillText("AMD RADEON", 28, 148);
+    ctx.fillStyle = "#b7c0cd"; ctx.fillRect(24, 118, 290, 3);
+  }, 512, 160);
+}
+
+// A tidy campus: a grid of blocks, paths between them, two avenues, a quad with a fountain in the middle.
 function campusTexture() {
   return softTexture((ctx, w, h) => {
-    ctx.fillStyle = "rgba(228,232,238,0)"; ctx.fillRect(0, 0, w, h);
-    ctx.strokeStyle = "rgba(111,120,134,0.35)"; ctx.lineWidth = 10; ctx.lineCap = "round";
-    const roads = [[[80, 520], [1000, 520]], [[540, 60], [540, 980]], [[200, 200], [860, 860]], [[160, 820], [900, 240]], [[300, 100], [300, 950]], [[800, 100], [800, 950]]];
-    for (const [[x1, y1], [x2, y2]] of roads) { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
-    ctx.fillStyle = "rgba(183,192,205,0.45)";
-    for (let i = 0; i < 26; i++) { const x = 90 + hash(i, 7) * 880, y = 90 + hash(i, 9) * 880, s = 40 + hash(i, 11) * 90; ctx.beginPath(); ctx.roundRect(x, y, s, s * (0.6 + hash(i, 3) * 0.8), 14); ctx.fill(); }
+    ctx.clearRect(0, 0, w, h);
+    const cell = 128, gap = 24, n = 8;
+    const line = (x1, y1, x2, y2) => { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); };
+    const rr = (x, y, ww, hh, r) => { ctx.beginPath(); ctx.roundRect(x, y, ww, hh, r); };
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    // Paths on the grid lines; the two central ones are avenues.
+    for (let k = 1; k < n; k++) {
+      const p = k * cell, main = k === 4;
+      ctx.strokeStyle = main ? "rgba(111,120,134,0.34)" : "rgba(111,120,134,0.22)"; ctx.lineWidth = main ? 16 : 7;
+      line(p, 36, p, h - 36); line(36, p, w - 36, p);
+    }
+    // The quad: the four centre cells, a lighter lawn with a ring path and a fountain.
+    const q0 = 3 * cell + gap * 0.5, qs = 2 * cell - gap;
+    ctx.fillStyle = "rgba(255,255,255,0.55)"; rr(q0, q0, qs, qs, 46); ctx.fill();
+    ctx.strokeStyle = "rgba(183,192,205,0.9)"; ctx.lineWidth = 5; rr(q0 + 14, q0 + 14, qs - 28, qs - 28, 36); ctx.stroke();
+    ctx.strokeStyle = "rgba(183,192,205,0.7)"; ctx.lineWidth = 5; line(q0 + 30, q0 + 30, q0 + qs - 30, q0 + qs - 30); line(q0 + qs - 30, q0 + 30, q0 + 30, q0 + qs - 30);
+    ctx.fillStyle = "rgba(255,255,255,0.9)"; ctx.beginPath(); ctx.arc(w / 2, h / 2, 30, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "rgba(183,192,205,0.95)"; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(w / 2, h / 2, 30, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = "rgba(183,192,205,0.8)"; ctx.beginPath(); ctx.arc(w / 2, h / 2, 9, 0, Math.PI * 2); ctx.fill();
+    // Blocks in every other cell: a rounded footprint with a light top-left edge, like the CSS cards.
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+      const inQuad = i >= 3 && i <= 4 && j >= 3 && j <= 4; if (inQuad) continue;
+      const x0 = i * cell + gap, y0 = j * cell + gap, size = cell - 2 * gap, k = i * 8 + j;
+      const kind = hash(k, 13);
+      if (kind < 0.18) continue; // a lawn
+      const parts = kind < 0.55 ? [[0, 0, 1, 1]] : kind < 0.8 ? [[0, 0, 1, 0.42], [0, 0.58, 0.55, 0.42]] : [[0, 0, 0.44, 1], [0.56, 0, 0.44, 0.62]];
+      for (const [px, py, pw, ph] of parts) {
+        const x = x0 + px * size, y = y0 + py * size, ww = pw * size, hh = ph * size;
+        ctx.fillStyle = "rgba(183,192,205,0.42)"; rr(x, y, ww, hh, 12); ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,0.85)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x + 8, y + hh - 10); ctx.lineTo(x + 8, y + 8); ctx.lineTo(x + ww - 10, y + 8); ctx.stroke();
+      }
+    }
+    // Trees along the avenues.
+    ctx.fillStyle = "rgba(183,192,205,0.55)";
+    for (let k = 0; k < 20; k++) { const p = 56 + k * 48; if (Math.abs(p - w / 2) < 150) continue; ctx.beginPath(); ctx.arc(p, 4 * cell - 24, 6, 0, Math.PI * 2); ctx.arc(4 * cell + 24, p, 6, 0, Math.PI * 2); ctx.fill(); }
   }, 1024, 1024);
+}
+
+// The privacy shell: a barely-there glass with a fresnel rim and one top-left glint.
+function shellMaterial(side = THREE.FrontSide, gain = 1) {
+  return new THREE.ShaderMaterial({
+    uniforms: { uOpacity: { value: 0 }, uGain: { value: gain }, uCore: { value: new THREE.Color(LIGHT) }, uRim: { value: new THREE.Color(SHADE) } },
+    vertexShader: `varying vec3 vN; varying vec3 vV;
+      void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform float uOpacity; uniform float uGain; uniform vec3 uCore; uniform vec3 uRim; varying vec3 vN; varying vec3 vV;
+      void main(){
+        vec3 n = normalize(vN), v = normalize(vV);
+        float f = pow(1.0 - abs(dot(n, v)), 2.4);
+        vec3 l = normalize(vec3(-0.55, 0.75, 0.6));
+        float spec = pow(max(dot(reflect(-l, n), v), 0.0), 70.0);
+        vec3 c = mix(uCore, uRim, f * 0.9) + spec * 0.5;
+        float a = (0.055 + 0.85 * f + spec * 0.45) * uOpacity * uGain;
+        gl_FragColor = vec4(c, a);
+        #include <colorspace_fragment>
+      }`,
+    transparent: true, depthWrite: false, side,
+  });
 }
 
 export async function createWorld(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true });
   renderer.setSize(W, H, false); renderer.setPixelRatio(1);
-  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.VSMShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(35, W / H, 0.1, 200);
 
-  // Light: one soft sky, one key from the top left (the same light the CSS shadows pretend).
-  scene.add(new THREE.HemisphereLight(LIGHT, SHADE, 2.2));
-  const key = new THREE.DirectionalLight(LIGHT, 1.6); key.position.set(-8, 12, 9); key.castShadow = true;
-  key.shadow.mapSize.set(2048, 2048); key.shadow.camera.left = -14; key.shadow.camera.right = 14; key.shadow.camera.top = 14; key.shadow.camera.bottom = -14; key.shadow.radius = 6; key.shadow.bias = -0.0005;
+  // Light: one soft sky, one key from the top left (the same light the CSS shadows pretend), a weak fill.
+  scene.add(new THREE.HemisphereLight(LIGHT, SHADE, 2.0));
+  const key = new THREE.DirectionalLight(LIGHT, 1.5); key.position.set(-8, 12, 9); key.castShadow = true;
+  key.shadow.mapSize.set(2048, 2048);
+  key.shadow.camera.left = -24; key.shadow.camera.right = 24; key.shadow.camera.top = 20; key.shadow.camera.bottom = -20; key.shadow.camera.near = 1; key.shadow.camera.far = 60;
+  key.shadow.radius = 5; key.shadow.blurSamples = 12; key.shadow.bias = -0.0002;
   scene.add(key);
-  const fill = new THREE.DirectionalLight(LIGHT, 0.5); fill.position.set(6, 4, -6); scene.add(fill);
+  const fill = new THREE.DirectionalLight(LIGHT, 0.45); fill.position.set(6, 4, -6); scene.add(fill);
 
-  // Desk: shadow receiver (invisible except for the shadow) + the soft contact shadow.
-  const desk = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.ShadowMaterial({ opacity: 0.22, color: SHADE }));
-  desk.rotation.x = -Math.PI / 2; desk.position.y = -1.0; desk.receiveShadow = true; scene.add(desk);
-  const contact = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 6.4), new THREE.MeshBasicMaterial({ map: shadowTexture(), transparent: true, depthWrite: false }));
-  contact.rotation.x = -Math.PI / 2; contact.position.y = -0.995; scene.add(contact);
+  const matte = (extra = {}) => new THREE.MeshStandardMaterial({ color: SURFACE, roughness: 0.86, metalness: 0, emissive: ACCENT, emissiveIntensity: 0, ...extra });
 
-  // The box: four layers, cameras at the bottom, agent at the top.
-  const box = new THREE.Group(); scene.add(box);
-  const slabGeo = new RoundedBoxGeometry(2.4, 0.36, 1.6, 5, 0.09);
-  const layers = [];
+  // Desk: shadow receiver (invisible except for the shadow) + the soft contact shadow under the box.
+  const desk = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.ShadowMaterial({ opacity: 0.2, color: SHADE }));
+  desk.rotation.x = -Math.PI / 2; desk.position.y = DESK_Y; desk.receiveShadow = true; desk.renderOrder = -5; scene.add(desk);
+  const contact = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 4.4), new THREE.MeshBasicMaterial({ map: shadowTexture(), transparent: true, depthWrite: false }));
+  contact.rotation.x = -Math.PI / 2; contact.position.set(0.12, DESK_Y + 0.004, 0.1); contact.renderOrder = -4; scene.add(contact);
+
+  // The box: four slabs, cameras at the bottom, agent at the top. One object: tight stack, soft radius, a faint seam.
+  const box = new THREE.Group(); box.position.y = SLAB.boxY; scene.add(box);
+  const slabGeo = new RoundedBoxGeometry(SLAB.w, SLAB.h, SLAB.d, 6, SLAB.r);
+  const seamGeo = new THREE.BoxGeometry(SLAB.w - 0.26, 0.05, SLAB.d - 0.26);
+  const layers = [], seams = [];
   for (let i = 0; i < 4; i++) {
-    const m = new THREE.Mesh(slabGeo, new THREE.MeshStandardMaterial({ color: SURFACE, roughness: 0.82, metalness: 0.0, emissive: ACCENT, emissiveIntensity: 0 }));
-    m.castShadow = true; m.receiveShadow = true; box.add(m); layers.push(m);
+    const m = new THREE.Mesh(slabGeo, matte()); m.castShadow = true; m.receiveShadow = true; m.position.y = slabY(i); box.add(m); layers.push(m);
+    if (i < 3) { const s = new THREE.Mesh(seamGeo, new THREE.MeshStandardMaterial({ color: SHADE, roughness: 0.9, transparent: true })); box.add(s); seams.push(s); }
   }
-  // Two camera eyes on the front of the bottom layer.
-  const eyeGeo = new THREE.CircleGeometry(0.09, 32), eyeMat = new THREE.MeshBasicMaterial({ color: INK });
-  const eyes = [-0.45, 0.45].map((x) => { const e = new THREE.Mesh(eyeGeo, eyeMat); e.position.set(x, 0, 0.81); layers[0].add(e); return e; });
+  // Two camera eyes on the front of the bottom layer: a bezel, a lens, a glint.
+  function makeEye(x) {
+    const g = new THREE.Group(); g.position.set(x, 0, SLAB.d / 2 + 0.003);
+    const bezel = new THREE.Mesh(new THREE.CircleGeometry(0.078, 40), new THREE.MeshStandardMaterial({ color: SHADE, roughness: 0.55 }));
+    const lens = new THREE.Mesh(new THREE.CircleGeometry(0.056, 40), new THREE.MeshBasicMaterial({ color: INK })); lens.position.z = 0.002;
+    const glint = new THREE.Mesh(new THREE.CircleGeometry(0.013, 16), new THREE.MeshBasicMaterial({ color: LIGHT })); glint.position.set(-0.02, 0.02, 0.004);
+    g.add(bezel, lens, glint); g.userData.lens = lens; return g;
+  }
+  const eyes = [-0.45, 0.45].map((x) => { const e = makeEye(x); layers[0].add(e); return e; });
+  const inkC = new THREE.Color(INK), accentC = new THREE.Color(ACCENT);
 
-  // The membrane: the privacy shell. Nothing leaves it uncounted.
-  const membrane = new THREE.Mesh(new THREE.SphereGeometry(2.6, 64, 48), new THREE.MeshPhysicalMaterial({
-    color: LIGHT, roughness: 0.15, metalness: 0, transparent: true, opacity: 0, transmission: 0, clearcoat: 1, clearcoatRoughness: 0.2, side: THREE.DoubleSide, depthWrite: false,
-  }));
-  membrane.position.y = 0.2; scene.add(membrane);
+  // The membrane: the privacy shell. Nothing leaves it uncounted. Front rim + a fainter back rim read as thickness.
+  const shellGeo = new THREE.SphereGeometry(2.6, 72, 48);
+  const membrane = new THREE.Mesh(shellGeo, shellMaterial(THREE.FrontSide, 1)); membrane.renderOrder = 10;
+  const membraneBack = new THREE.Mesh(shellGeo, shellMaterial(THREE.BackSide, 0.45)); membraneBack.renderOrder = 9;
+  membrane.add(membraneBack); membrane.position.y = 0.2; scene.add(membrane);
 
   // The time ring on the desk, and its beads.
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(4, 0.035, 12, 160), new THREE.MeshStandardMaterial({ color: MUTED, roughness: 0.6, transparent: true, opacity: 0 }));
-  ring.rotation.x = Math.PI / 2; ring.position.y = -0.98; scene.add(ring);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(4, 0.035, 12, 180), new THREE.MeshStandardMaterial({ color: MUTED, roughness: 0.7, transparent: true, opacity: 0 }));
+  ring.rotation.x = Math.PI / 2; ring.position.y = DESK_Y + 0.035; ring.renderOrder = -2; scene.add(ring);
   const BEADS = 48;
-  const beads = new THREE.InstancedMesh(new RoundedBoxGeometry(0.22, 0.22, 0.22, 3, 0.06), new THREE.MeshStandardMaterial({ color: SURFACE, roughness: 0.8, emissive: ACCENT, emissiveIntensity: 0.0 }), BEADS);
+  const beads = new THREE.InstancedMesh(new RoundedBoxGeometry(0.22, 0.22, 0.22, 3, 0.07), matte({ roughness: 0.8 }), BEADS);
   beads.castShadow = true; beads.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(beads);
 
-  // The lab, far to the right: two standing R9700 slabs and a loss ribbon.
+  // The lab, far to the right: two standing R9700 cards with vent grooves and a name plate, and the loss ribbon.
   const lab = new THREE.Group(); lab.position.set(14, 0, -2); scene.add(lab);
   const cardGeo = new RoundedBoxGeometry(0.5, 3.2, 5.2, 5, 0.12);
-  const cards = [-1.1, 1.1].map((x) => { const c = new THREE.Mesh(cardGeo, new THREE.MeshStandardMaterial({ color: SURFACE, roughness: 0.8, emissive: ACCENT, emissiveIntensity: 0 })); c.position.set(x, 0.6, 0); c.castShadow = true; lab.add(c); return c; });
+  const plateTex = plateTexture(), plateGeo = new THREE.PlaneGeometry(1.5, 0.47);
+  const grooveGeo = new THREE.BoxGeometry(0.016, 1.8, 0.07), grooveMat = new THREE.MeshStandardMaterial({ color: 0xa3adbb, roughness: 0.9 });
+  const grooves = new THREE.InstancedMesh(grooveGeo, grooveMat, 2 * 2 * 10); let gi = 0; const gm = new THREE.Matrix4();
+  const cards = [-1.1, 1.1].map((x) => {
+    const c = new THREE.Mesh(cardGeo, matte({ roughness: 0.8 })); c.position.set(x, 0.6, 0); c.castShadow = true; c.receiveShadow = true; lab.add(c);
+    for (const s of [-1, 1]) {
+      const plate = new THREE.Mesh(plateGeo, new THREE.MeshBasicMaterial({ map: plateTex, transparent: true, depthWrite: false }));
+      plate.position.set(s * 0.254, 1.05, 1.55); plate.rotation.y = s * Math.PI / 2; c.add(plate);
+      for (let k = 0; k < 10; k++) { gm.makeTranslation(x + s * 0.253, 0.6 - 0.35, -2.2 + k * 0.49); grooves.setMatrixAt(gi++, gm); }
+    }
+    return c;
+  });
+  lab.add(grooves);
   const curvePts = []; for (let i = 0; i <= 60; i++) { const u = i / 60; curvePts.push(new THREE.Vector3(-2.6 + u * 5.2, 2.9 + Math.exp(-u * 3.2) * 1.6 + Math.sin(u * 18) * 0.08 * (1 - u), 3.2)); }
   const curve = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(curvePts), 120, 0.05, 8, false), new THREE.MeshStandardMaterial({ color: ACCENT, roughness: 0.5, transparent: true, opacity: 0 }));
   lab.add(curve);
@@ -115,36 +206,47 @@ export async function createWorld(canvas) {
   // Friends' boxes around the desk, each in its own shell.
   const friends = new THREE.Group(); scene.add(friends);
   const friendBoxes = [0, 1, 2].map((i) => {
-    const a = (i / 3) * Math.PI * 2 + 0.6, g = new THREE.Group(); g.position.set(Math.cos(a) * 9, 0, Math.sin(a) * 9); g.rotation.y = -a;
-    for (let k = 0; k < 4; k++) { const m = new THREE.Mesh(slabGeo, new THREE.MeshStandardMaterial({ color: SURFACE, roughness: 0.82 })); m.position.y = k * 0.4 - 0.6; m.castShadow = true; g.add(m); }
-    const shell = new THREE.Mesh(new THREE.SphereGeometry(2.4, 48, 32), new THREE.MeshPhysicalMaterial({ color: LIGHT, roughness: 0.15, transparent: true, opacity: 0, clearcoat: 1, side: THREE.DoubleSide, depthWrite: false }));
-    shell.position.y = 0.2; g.add(shell); g.userData.shell = shell; friends.add(g); return g;
+    const a = (i / 3) * Math.PI * 2 + 0.6, g = new THREE.Group(); g.position.set(Math.cos(a) * 9, SLAB.boxY, Math.sin(a) * 9); g.rotation.y = -a;
+    for (let k = 0; k < 4; k++) { const m = new THREE.Mesh(slabGeo, matte()); m.position.y = slabY(k); m.castShadow = true; m.receiveShadow = true; g.add(m); if (k === 0) g.add(makeEye(-0.45), makeEye(0.45)); }
+    g.children[0].add(makeEye(-0.45), makeEye(0.45));
+    const shell = new THREE.Mesh(new THREE.SphereGeometry(2.4, 56, 36), shellMaterial(THREE.FrontSide, 1)); shell.renderOrder = 10;
+    shell.position.y = 0.2 - SLAB.boxY; g.add(shell); g.userData.shell = shell; friends.add(g); return g;
   });
   const linkGeo = new THREE.BufferGeometry(); const linkMat = new THREE.LineBasicMaterial({ color: ACCENT, transparent: true, opacity: 0 });
   const links = new THREE.LineSegments(linkGeo, linkMat); scene.add(links);
 
   // The campus map under everything, and the route drawn on it.
   const campus = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), new THREE.MeshBasicMaterial({ map: campusTexture(), transparent: true, opacity: 0, depthWrite: false }));
-  campus.rotation.x = -Math.PI / 2; campus.position.y = -0.99; scene.add(campus);
+  campus.rotation.x = -Math.PI / 2; campus.position.y = DESK_Y + 0.01; campus.renderOrder = -3; scene.add(campus);
   const routePts = [[-9, 8], [-9, 1], [-2, 1], [-2, -6], [6, -6], [6, -11], [11, -11]].map(([x, z]) => new THREE.Vector3(x, -0.9, z));
   const routeCurve = new THREE.CatmullRomCurve3(routePts, false, "catmullrom", 0.2);
   const route = new THREE.Mesh(new THREE.TubeGeometry(routeCurve, 200, 0.08, 8, false), new THREE.MeshStandardMaterial({ color: ACCENT, roughness: 0.5, transparent: true, opacity: 0 }));
   scene.add(route);
 
-  // The network cable out of the back-left of the box.
-  const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 6, 12), new THREE.MeshStandardMaterial({ color: INK, roughness: 0.6 }));
-  cable.rotation.z = Math.PI / 2; cable.position.set(-4.2, -0.6, -0.4); cable.castShadow = true; scene.add(cable);
+  // The network cable: a short lead out of the back-left of the bottom slab, drooping to the desk. Turns with the box.
+  const cableRig = new THREE.Group(); scene.add(cableRig);
+  const cableSlide = new THREE.Group(); cableRig.add(cableSlide);
+  const y0 = SLAB.boxY + slabY(0);
+  const cablePts = [[-1.0, y0, -0.5], [-1.52, y0 + 0.02, -0.62], [-2.05, y0 - 0.1, -0.86], [-2.65, DESK_Y + 0.046, -1.16], [-3.45, DESK_Y + 0.046, -1.5]].map((p) => new THREE.Vector3(...p));
+  const cable = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(cablePts, false, "catmullrom", 0.5), 48, 0.045, 10, false), new THREE.MeshStandardMaterial({ color: INK, roughness: 0.55, transparent: true }));
+  cable.castShadow = true;
+  const plug = new THREE.Mesh(new RoundedBoxGeometry(0.22, 0.11, 0.14, 2, 0.02), new THREE.MeshStandardMaterial({ color: INK, roughness: 0.5, transparent: true }));
+  plug.position.set(-1.24, y0, -0.5); plug.castShadow = true;
+  cableSlide.add(cable, plug);
 
   const HOME = { x: 0, y: 2.2, z: 8.5, tx: 0, ty: 0.2, tz: 0, fov: 35 };
   const cam = { ...HOME };
   const state = {
     open: 0, spin: 0, layer: [0, 0, 0, 0], membrane: 0, ring: 0, beads: 0, bars: 0,
     lab: 0, labGlow: 0, labCurve: 0, friends: 0, friendsLink: 0, campus: 0, route: 0, cable: 0, pulse: 0, blur: 0,
+    drop: 0, eyes: 0,
   };
   const P = {
     box: [0, 0.2, 0], lab: [14, 0.8, -2], friend: friendBoxes.map((g) => [g.position.x, 0.2, g.position.z]),
     ring: (a) => [Math.cos(a) * 4, -0.9, Math.sin(a) * 4],
   };
+  /** World-space rest height of layer i (0 = cameras … 3 = agent), before `open` lifts it. */
+  const layerY = (i) => SLAB.boxY + slabY(i);
 
   // Particle flows: declared once, driven by flows[id].progress / density.
   const flows = {}, flowMeshes = {};
@@ -152,7 +254,7 @@ export async function createWorld(canvas) {
   function flow(id, { from, to, count = 24, color = ACCENT, size = 1, lift = 2.2 }) {
     if (flows[id]) return flows[id];
     const mesh = new THREE.InstancedMesh(dot, new THREE.MeshStandardMaterial({ color, roughness: 0.4, emissive: color, emissiveIntensity: 0.35, transparent: true, opacity: 0 }), count);
-    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); mesh.castShadow = false; scene.add(mesh);
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); mesh.castShadow = false; mesh.renderOrder = 15; scene.add(mesh);
     const a = new THREE.Vector3(...from), b = new THREE.Vector3(...to);
     const mid = a.clone().lerp(b, 0.5); mid.y += lift;
     flowMeshes[id] = { mesh, curve: new THREE.QuadraticBezierCurve3(a, mid, b), count, size };
@@ -165,50 +267,67 @@ export async function createWorld(canvas) {
   function label(id, { text, at, size = 56, scale = 1 }) {
     if (labels[id]) return labels[id];
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture(text, size), transparent: true, opacity: 0, depthWrite: false }));
-    sp.scale.set(4 * scale, 1 * scale, 1); sp.position.set(...at); scene.add(sp);
+    sp.scale.set(4 * scale, 1 * scale, 1); sp.position.set(...at); sp.renderOrder = 20; scene.add(sp);
     labelSprites[id] = { sprite: sp, base: at.slice() }; labels[id] = { opacity: 0, lift: 0 };
     return labels[id];
   }
 
-  const m4 = new THREE.Matrix4(), v3 = new THREE.Vector3(), q = new THREE.Quaternion(), s3 = new THREE.Vector3();
+  const m4 = new THREE.Matrix4(), v3 = new THREE.Vector3(), q = new THREE.Quaternion(), s3 = new THREE.Vector3(), yAxis = new THREE.Vector3(0, 1, 0);
 
-  function render(t) {
+  function draw(t) {
     // Camera.
     camera.position.set(cam.x, cam.y, cam.z); camera.lookAt(cam.tx, cam.ty, cam.tz); camera.fov = cam.fov; camera.updateProjectionMatrix();
-    // The box: layers spread with `open`, the whole box turns with `spin`, each layer lights with `layer[i]`.
+    // The box: layers spread with `open`, fall in with `drop` (bottom lands first), the whole box turns with `spin`,
+    // each layer lights with `layer[i]`, and the box breathes half a percent.
     box.rotation.y = state.spin * Math.PI * 2;
+    box.scale.setScalar(1 + 0.005 * Math.sin(t * 0.8));
+    const d = state.drop;
     for (let i = 0; i < 4; i++) {
-      layers[i].position.y = i * 0.4 - 0.6 + state.open * i * 0.55;
-      layers[i].material.emissiveIntensity = state.layer[i] * 0.55 + state.pulse * 0.25 * (0.5 + 0.5 * Math.sin(t * 2.4 + i));
+      const lag = (3 - i) * 0.14, u = d <= 0 ? 0 : clamp01((d - lag) / (1 - lag));
+      const fall = u * (3.2 + i * 0.9), squash = d < 0 ? d * i * 0.5 : 0;
+      const L = layers[i];
+      L.position.y = slabY(i) + state.open * i * SLAB.open + fall + squash;
+      L.rotation.z = u * (hash(i, 21) - 0.5) * 0.26; L.rotation.x = u * (hash(i, 22) - 0.5) * 0.18;
+      L.material.emissiveIntensity = state.layer[i] * 0.55 + state.pulse * 0.25 * (0.5 + 0.5 * Math.sin(t * 2.4 + i));
     }
-    membrane.material.opacity = state.membrane * 0.28;
-    membrane.scale.setScalar(1 + state.membrane * 0.02 * Math.sin(t * 1.3));
+    for (let i = 0; i < 3; i++) { seams[i].position.y = layers[i].position.y + SLAB.pitch / 2; seams[i].material.opacity = 1 - state.open; seams[i].visible = state.open < 0.999; }
+    // Eyes: warm up with `eyes`, and blink now and then while awake.
+    const ph = (t + 1.7) % 5.3, blink = ph < 0.22 ? Math.sin((ph / 0.22) * Math.PI) : 0;
+    for (const e of eyes) { e.userData.lens.material.color.copy(inkC).lerp(accentC, state.eyes * 0.9); e.scale.y = Math.max(0.06, 1 - blink * clamp01(state.eyes * 3)); }
+    contact.material.opacity = 1 - clamp01(d * 1.6);
+    // The membrane drifts a little, like something alive.
+    membrane.material.uniforms.uOpacity.value = state.membrane; membraneBack.material.uniforms.uOpacity.value = state.membrane;
+    membrane.visible = state.membrane > 0.002;
+    membrane.position.y = 0.2 + 0.03 * Math.sin(t * 0.45); membrane.scale.setScalar(1 + 0.008 * Math.sin(t * 0.7 + 1));
     // The ring and its beads: beads appear in order; `bars` stretches them upward into columns.
-    ring.material.opacity = state.ring * 0.9;
+    ring.material.opacity = state.ring * 0.9; ring.visible = state.ring > 0.002;
+    beads.visible = state.beads > 0.001;
     for (let i = 0; i < BEADS; i++) {
       const a = (i / BEADS) * Math.PI * 2 - Math.PI / 2;
       const on = clamp01(state.beads - i), h = 0.22 + state.bars * (0.3 + hash(i, 1) * 1.6);
-      v3.set(Math.cos(a) * 4, -0.98 + (h / 2) * on, Math.sin(a) * 4); q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -a); s3.set(on, on * (h / 0.22), on);
+      v3.set(Math.cos(a) * 4, DESK_Y + (h / 2) * on, Math.sin(a) * 4); q.setFromAxisAngle(yAxis, -a); s3.set(on, on * (h / 0.22), on);
       m4.compose(v3, q, s3); beads.setMatrixAt(i, m4);
     }
     beads.instanceMatrix.needsUpdate = true; beads.material.emissiveIntensity = state.bars * 0.3;
     // The lab.
     lab.visible = state.lab > 0.001; lab.scale.setScalar(0.6 + 0.4 * state.lab); lab.position.y = (1 - state.lab) * -1.5;
-    cards.forEach((c, i) => { c.material.emissiveIntensity = state.labGlow * (0.35 + 0.1 * Math.sin(t * 3 + i)); c.material.opacity = 1; });
+    cards.forEach((c, i) => { c.material.emissiveIntensity = state.labGlow * (0.35 + 0.1 * Math.sin(t * 3 + i)); });
     curve.material.opacity = state.labCurve; curve.scale.set(Math.max(0.001, state.labCurve), 1, 1); curve.position.x = -2.6 * (1 - Math.max(0.001, state.labCurve));
     // Friends and their links.
     friends.visible = state.friends > 0.001;
-    friendBoxes.forEach((g, i) => { g.scale.setScalar(0.001 + state.friends); g.userData.shell.material.opacity = state.friends * 0.22; g.children.forEach((m, k) => { if (k < 4) m.position.y = k * 0.4 - 0.6; }); });
+    friendBoxes.forEach((g) => { g.scale.setScalar(0.001 + state.friends); g.userData.shell.material.uniforms.uOpacity.value = state.friends * 0.85; });
     if (state.friendsLink > 0) {
       const pts = []; const c = new THREE.Vector3(0, 0.2, 0);
-      friendBoxes.forEach((g, i) => { const f = new THREE.Vector3(g.position.x, 0.2, g.position.z); const e = c.clone().lerp(f, state.friendsLink); pts.push(c.x, c.y, c.z, e.x, e.y, e.z); });
+      friendBoxes.forEach((g) => { const f = new THREE.Vector3(g.position.x, 0.2, g.position.z); const e = c.clone().lerp(f, state.friendsLink); pts.push(c.x, c.y, c.z, e.x, e.y, e.z); });
       linkGeo.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3)); linkMat.opacity = 0.9; links.visible = true;
     } else links.visible = false;
     // Campus and route.
-    campus.material.opacity = state.campus * 0.9;
+    campus.material.opacity = state.campus * 0.9; campus.visible = state.campus > 0.002;
     route.material.opacity = state.route > 0 ? 1 : 0; route.geometry.setDrawRange(0, Math.floor(state.route * 200 * 8 * 6));
-    // The cable slides out and droops.
-    cable.position.x = -4.2 - state.cable * 2.2; cable.position.y = -0.6 - state.cable * 0.3; cable.rotation.y = state.cable * 0.25;
+    // The cable turns with the box, slides out and swings away with `cable`, and is not there while the slabs are in the air.
+    cableRig.rotation.y = box.rotation.y;
+    cableSlide.position.x = -state.cable * 1.6; cableSlide.position.y = -state.cable * 0.08; cableSlide.rotation.y = state.cable * 0.35;
+    cable.material.opacity = plug.material.opacity = 1 - clamp01(d * 2); cableRig.visible = d < 0.5;
     // Particle flows.
     for (const id in flowMeshes) {
       const { mesh, curve: cv, count, size } = flowMeshes[id], f = flows[id];
@@ -226,9 +345,15 @@ export async function createWorld(canvas) {
     renderer.render(scene, camera);
   }
 
+  // render(t) draws once per JavaScript task, after every tween of that tick has applied: the root timeline's clock
+  // tween (the one that calls render) is the first child of the timeline, so it would otherwise draw before the slot
+  // tweens of the same tick had updated cam/state. Still a pure function of (state, t); draw(t) is the synchronous form.
+  let queued = false, lastT = 0;
+  function render(t) { lastT = t; if (queued) return; queued = true; queueMicrotask(() => { queued = false; draw(lastT); }); }
+
   function leg(tl, at, to, dur = 1.6, ease = "power2.inOut") { tl.to(cam, { ...to, duration: dur, ease }, at); }
 
-  const world = { THREE, scene, camera, renderer, cam, HOME, state, P, flows, flow, labels, label, render, leg, box, layers, membrane, lab, friends: friendBoxes, hash };
-  render(0);
+  const world = { THREE, scene, camera, renderer, cam, HOME, state, P, flows, flow, labels, label, render, draw, leg, box, layers, membrane, lab, friends: friendBoxes, hash, SLAB, layerY };
+  draw(0);
   return world;
 }

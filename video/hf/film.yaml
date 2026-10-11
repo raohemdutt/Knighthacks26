@@ -1,0 +1,85 @@
+# The three-minute film: one continuous shot through the Atlas world, scene after scene, no keys, no app demo.
+# `python video/scripts/film_build.py` speaks every line (edge-tts, male voice, cached by text), lays the scenes
+# out back to back (a scene starts when the previous one ends plus `pad_s`, and lasts its speech plus `tail_s`,
+# never less than `min_s`), writes video/hf/film.json (the resolved starts) and video/hf/index.html.
+# Plain words, bird's-eye view. Change the words here, run the script, done.
+
+voice: en-US-AndrewMultilingualNeural
+rate: "+0%"
+gap_s: 0.4         # silence between lines inside a scene
+pad_s: 0.5         # silence between scenes
+tail_s: 1.2        # air after a scene's last word before the next scene starts
+
+scenes:
+  - id: intro
+    title: Atlas
+    lead_s: 3.0      # the title and the box assemble before the first word
+    min_s: 24
+    lines:
+      - This is Atlas. A small box that sits on your desk, with two camera eyes.
+      - It watches your space, remembers what it saw, answers your questions, and learns new skills. All of it on the box. Your video never leaves.
+      - Inside are four layers. Cameras that blur every face. A vision model that understands the scene. A memory. And an agent that never acts without asking you.
+
+  - id: day
+    title: It runs your day
+    min_s: 16
+    lines:
+      - Point it at your week. Atlas reads your classes and deadlines, and watches how your day really goes at the desk.
+      - Each morning it writes one plan, with its reasons. When something slips, it re-plans.
+      - Nothing is written to your calendar until you tap approve.
+
+  - id: learn
+    title: It learns
+    min_s: 24
+    lines:
+      - The model on the box is small. That is what makes it private and fast. But small models have gaps.
+      - Tap teach. A handful of blurred pictures go to the lab, a big open model labels them, and the small one is fine-tuned on the answers.
+      - A test decides if the new model is really better. Only then does it ship back to the box. Our adapter is public on Hugging Face.
+
+  - id: lab
+    title: The learning lab
+    min_s: 22
+    lines:
+      - The lab is two AMD Strix Halo pods. One serves the teacher, a twenty-seven billion parameter Qwen. The other trains.
+      - Labeling, training, testing and packaging run on ROCm, and every run is recorded with its loss curve and its watts.
+      - The box and the lab share two files, a dataset out and a model package back. Nothing else crosses.
+
+  - id: swap
+    title: Box and lab
+    min_s: 15
+    lines:
+      - The new model arrives as one small package. The box checks it, swaps it in, and rolls back by itself if it does not answer.
+      - We measure watts on the Jetson, watts on the GPUs, and joules per answer, so you can see what a question costs.
+
+  - id: jetson
+    title: On the Jetson
+    min_s: 15
+    lines:
+      - Everything live runs on this Jetson. Cameras in, faces blurred, the on-device vision model understanding the scene, answers in seconds.
+      - Pull the network cable. It keeps seeing, remembering, alerting and answering. Only learning pauses.
+
+  - id: counts
+    title: Data into counts
+    min_s: 16
+    lines:
+      - The same cameras turn a room into data. Frames become events. Events become episodes you can ask about.
+      - Point it at the bins, and a campus gets a number it can act on. How much was sorted right, before and after a nudge. Tables share counts, never pictures.
+
+  - id: friends
+    title: Friends' Atlases
+    min_s: 14
+    lines:
+      - Point it at your friends. Each person's Atlas keeps their own calendar private.
+      - Ask for a time that works for everyone, and the boxes negotiate. Only free or busy leaves each box. The event lands after a tap.
+
+  - id: dayrun
+    title: Day Run
+    min_s: 13
+    lines:
+      - Point it at your habits. Day Run lets you play tomorrow before you live it, on a map of your own campus.
+      - It is the same box, the same cameras, the same memory. Pointed at one more part of your life.
+
+  - id: end
+    title: Atlas
+    min_s: 5
+    lines: []
