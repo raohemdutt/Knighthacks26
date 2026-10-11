@@ -393,6 +393,8 @@ class QA:
         self.planner = None  # set by the composition root; answers "help me prep for ..." (A8)
         self.talk = None  # set by the composition root; small talk and simple questions (talk.py)
         self.names: dict[str, str] = {}  # how a course code is said: {"COP4533": "algorithms"} (agent.yaml `talk.names`)
+        self.listings = schedule.Listings()  # which stored items are campus listings, not the person's own (agent.yaml `listings:`)
+        self.day_plan: Callable[[], list[dict] | None] | None = None  # today's agreed plan from now (DayLoop.blocks); set by the composition root
         self.monotonic: Callable[[], float] = monotonic  # the web time budget (A13); tests replace it
         self.on_delta: Callable[[str, str], None] | None = None  # (question_id, text): streamed answer pieces (A11)
 
@@ -402,6 +404,13 @@ class QA:
         return AnswerGenerated(question_id=e.question_id, answer=a.text, citations=a.citations, model_version=a.model_version)
 
     async def ask(self, question: str, stream: Callable[[str], None] | None = None) -> Answer:
+        # Three narrow questions about how the person looked ("when did I last look this tired?", "why do you think I'm
+        # tired?", "what helped last time?") are the Day loop's look memory's, when this box keeps one: said from what
+        # it remembered, ahead of the camera recap that "last" and "when did" would otherwise pull them into.
+        look = getattr(self.talk, "answer_look", None)  # a stand-in conversation (tests) may not have it
+        remembered = look(question, stream) if look else None
+        if remembered is not None:
+            return remembered
         if self.planner and self.planner.wants(question):
             plan = await self.planner.answer(question)
             return Answer(plan.text or NO_EVIDENCE, plan.citations, plan.model_version)
@@ -624,13 +633,29 @@ class QA:
         ask = schedule.parse(q, now, tz)
         if ask is None:
             return
-        text, named = schedule.said(ask, self.memory, now, tz, names=self.names)
-        if self.talk is not None and named:  # "Want the rest?": a "yes" goes to the conversation, which then says all of it
+        text, named, found = schedule.said(ask, self.memory, now, tz, names=self.names, listings=self.listings, plan=self.plan())
+        if self.talk is not None and found:  # "Want the rest?": a "yes" goes to the conversation, which then says all of it
             self.talk.rest = (schedule.replace(ask, everything=True), now) if text.endswith(ear.MORE) else None
+        offer = getattr(self.talk, "offer", None)  # "Want me to plan your day?": remembered there, so "yes" starts the plan
+        if offer is not None:
+            text = offer(text, now)
+        elif text.endswith(ear.PLAN_OFFER):  # no conversation to take the "yes": an offer that works
+            text = text[: -len(ear.PLAN_OFFER)] + ear.PLAN_ELSEWHERE
         for i in named:
             extra = f" ({i.summary})" if i.summary else ""
             ev.add(f"{i.title}: {self._t(i.when)}{extra} [{i.connector}]", Citation(url=i.url, title=i.title, ts=i.when))
+        if found and not ev.lines:  # answered from the plan's blocks alone: nothing to cite, but it is an answer
+            ev.lines.append(text)
         ev.direct = text
+
+    def plan(self) -> list[dict] | None:
+        """Today's agreed plan through the Day context's port; None when there is none (or no port)."""
+        if not self.day_plan:
+            return None
+        try:
+            return self.day_plan()
+        except Exception:  # the plan is a nicety; an answer must not fail on it
+            return None
 
     def prefetch(self, question: str) -> Evidence | None:
         q = question.lower().strip()
@@ -654,18 +679,27 @@ class QA:
             ev.room_only = True
             self.visit(ev)
             return ev
+        # Ahead of the time-window path below, which takes anything that says "today" for a camera recap (on the box
+        # "what did you do for me today?" came back as 23 seconds of "Sat 8:00 PM: I saw ..."): small talk ("how are
+        # you doing today?"), Atlas's own work ("what did you do for me today?") and a question about the person's day
+        # ahead belong to the conversation (talk.owns). "What did you see today?", "what happened today?" and "what
+        # did I do today?" are not owned and stay with the cameras.
+        owns = getattr(self.talk, "owns", None)  # a stand-in conversation (tests) may not have it
+        if owns is not None and owns(question):
+            return None
+        # The calendar, for the ways people ask by voice ("what does my day look like?", "what do I have today?",
+        # "what's next?", "do I have anything this afternoon?"): the same answer in code as "what's on my calendar
+        # today?", when there is something to say. With nothing found the question goes on exactly as it always did.
+        # Also ahead of the time window: "what do I have today?" is the day's rundown, not what the cameras saw today.
+        if schedule.parse(question, self.clock(), self.sleep.tz):
+            self.upcoming_items(q, ev)
+            return ev if ev else None
         if window := time_window(q, self.clock(), self.sleep):
             self.episodes_between(*window, ev, question=q)
             return ev
         if LAST_WHEN.search(q):
             self.last_time(question, ev)
             return ev
-        # The calendar, for the ways people ask by voice ("what does my day look like?", "what's next?", "do I have
-        # anything this afternoon?"): the same answer in code as "what's on my calendar today?", when the calendar has
-        # something to say. With nothing found the question goes on exactly as it always did.
-        if schedule.parse(question, self.clock(), self.sleep.tz):
-            self.upcoming_items(q, ev)
-            return ev if ev else None
         return None
 
     async def _chat(self, messages: list[ChatMessage], tools: list[dict] | None = None,

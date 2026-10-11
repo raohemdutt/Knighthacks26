@@ -13,6 +13,7 @@ import ast
 import asyncio
 import hashlib
 import os
+import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -25,7 +26,7 @@ from contexts.gateway.app import create_app
 from contexts.gateway.bootstrap import Settings, build
 from contexts.learning.application.export import DatasetExporter, teach
 from contexts.memory.api import build_router
-from contexts.perception.infrastructure.face_blur import MODEL, FaceBlur
+from contexts.perception.infrastructure.face_blur import MODEL, STRICT, FaceBlur
 from contexts.vault import OutboundGate, Refused, jpeg_scrambler
 from contexts.workspace.domain.approvals import ActionRequest
 from contracts.learning import TaskSpec
@@ -125,6 +126,13 @@ def test_an_export_with_the_blur_switch_off_still_scrambles_the_face(box, tmp_pa
     result, written = export(box, tmp_path)
     assert result.startswith("exported 1 examples as desk-objects-") and "held back" not in result
     assert [f.read_bytes() for f in written] == [scrambled(STORED)]
+
+
+def test_the_wired_gate_blurs_again_while_a_face_is_still_found_with_the_strict_detector(box):
+    """One pass at the default settings left a face findable in 52 of 60 face frames from the box (#390)."""
+    [blur] = [cell.cell_contents for cell in box.outbound.scramble.__closure__ if callable(cell.cell_contents)]
+    assert blur.__func__ is FaceBlur.scrambled_until_clear
+    assert (blur.__self__.score, blur.__self__.margin) == (0.5, 0.6) == (STRICT["score"], STRICT["margin"])
 
 
 def test_an_export_leaves_out_a_picture_the_gate_refuses_and_says_so(box, tmp_path):
@@ -283,11 +291,12 @@ ALLOWED = {
     "contexts/memory/api.py":
         "the plain route is the owner's own app reading the stored file; ?view=out, the phone alert's copy, is gated",
     "contexts/capture/api.py":
-        "the owner's live view (snapshot and motion-JPEG), blurred by the local switch; no alert or export links it",
+        "the live view (snapshot and motion-JPEG): blurred unless the owner's signed-in screen holds a view ticket, "
+        "and always with ?blur=1; no alert or export links it",
     "runtime/llama.py":
         "the on-box model call: llama-server on loopback (config/models.yaml, jetson/atlas-gateway.service)",
     "jetson/record_clip.py":
-        "the fixture recorder: reads the box's own snapshot route and refuses to record while blur_faces is off",
+        "the fixture recorder: reads the box's own snapshot route with ?blur=1, which blurs whatever blur_faces or a ticket says",
 }
 
 
@@ -374,7 +383,9 @@ def test_only_the_gated_keyframe_link_is_ever_sent_to_a_phone():
     assert links and all("?view=out" in link for link in links), links
 
 
-def test_the_recorder_still_refuses_when_blur_is_off():
-    """record_clip.py is allowed because of this refusal; if the line goes, so does the reason."""
+def test_the_recorder_asks_for_blurred_frames():
+    """record_clip.py is allowed because it only asks for frames with ?blur=1; if that goes, so does the reason."""
     source = (REPO / "jetson/record_clip.py").read_text()
-    assert 'policy.get("blur_faces") is not True' in source and "nothing is recorded unblurred" in source
+    asks = re.findall(r'self\.get\(f?"(/capture/[^"]*snapshot\.jpg[^"]*)"', source)
+    assert asks and all(ask.endswith("?blur=1") for ask in asks), asks
+    assert "ticket" not in source  # and it never carries the owner's view ticket

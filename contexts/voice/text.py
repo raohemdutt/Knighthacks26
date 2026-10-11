@@ -3,7 +3,7 @@ frame refs or ids, times the way a person says them, and a few sentences at most
 
 import re
 
-MAX_SPOKEN_CHARS = 420
+MAX_SPOKEN_CHARS = 900  # room for a whole day walked through ("run me through my day" is said in full, never cut off); was 420
 NOTHING_TO_SAY = "I don't have an answer to read out for that."
 
 _URL = re.compile(r"\b(?:https?://|www\.)[^\s<>()\]]+", re.I)
@@ -56,9 +56,18 @@ def _strip_refs(t: str) -> str:
                   lambda m: f"the {m[1]} {m[2]} camera" if m[2] else f"the {m[1]} camera", t, flags=re.I)
 
 
+def _clock_24(m: re.Match) -> str:
+    """Only a clock that can only be a 24-hour one is reworded: 13:00 and later, a leading zero ("07:05"), "0:15", or one
+    with seconds. A bare "10:40" or "2:30" is already how a person says it (the answers written by contexts/day/domain/ear.py
+    say a morning time that way) and is spoken as written: appending "AM" to it was a guess."""
+    if 1 <= int(m[1]) <= 12 and not m[1].startswith("0") and m[0].count(":") == 1:
+        return m[0]
+    return _say_clock(int(m[1]), int(m[2]))
+
+
 def _natural_times(t: str) -> str:
     t = _ISO_STAMP.sub(lambda m: _say_clock(int(m[1]), int(m[2])), t)
-    return _CLOCK_24.sub(lambda m: _say_clock(int(m[1]), int(m[2])), t)
+    return _CLOCK_24.sub(_clock_24, t)
 
 
 def _tidy(t: str) -> str:
@@ -125,22 +134,24 @@ class SentenceStream:
     def __init__(self) -> None:
         self._buf = ""
         self._held = ""  # a sentence too short to say alone
+        self._gap = " "  # what stood between the held words and what follows: a line break is kept, so a short lead-in
+        #                  ("Here's the plan:") joined to a list item does not hide the "- " from clean_for_speech
 
     def feed(self, piece: str) -> list[str]:
         self._buf += piece
         out = []
         while m := _SENTENCE_END.search(self._buf):
-            sentence, self._buf = f"{self._held} {self._buf[:m.start()]}".strip(), self._buf[m.end():]
+            sentence, self._buf = f"{self._held}{self._gap}{self._buf[:m.start()]}".strip(), self._buf[m.end():]
             if len(sentence) >= MIN_SPOKEN_CHUNK:
                 out.append(sentence)
-                self._held = ""
+                self._held, self._gap = "", " "
             else:
-                self._held = sentence
+                self._held, self._gap = sentence, "\n" if "\n" in m[0] else " "
         return out
 
     def flush(self) -> str:
         """Whatever is left once the answer has ended."""
-        rest, self._buf, self._held = f"{self._held} {self._buf}".strip(), "", ""
+        rest, self._buf, self._held, self._gap = f"{self._held}{self._gap}{self._buf}".strip(), "", "", " "
         return rest
 
 
@@ -185,3 +196,41 @@ def clean_transcript(raw: str) -> str:
     if m := _REPEATED.match(t):
         t = m[1].rstrip(" .,!?") + (m[2] or ("?" if m[1].rstrip().endswith("?") else ""))
     return t
+
+
+# -- a conversation: after an answer the box keeps listening for a reply (session.py, `follow_up`) --------------------------
+
+_THANKS = r"thanks(?: a lot| so much)?|thank you(?: so much| very much)?|cheers"
+_CLOSING = re.compile(r"^\W*(?:(?:no|nope|nah|ok|okay|alright|all right)\W+)?(?:(" + _THANKS + r")|that's all|that is all|that's it"
+                      r"|that is it|that'll be all|never ?mind|stop|goodbye|good bye|bye(?: bye)?|no|nope|nah|i'm good|im good|i am good"
+                      r"|i'm done|we're done|all good)(?:\W+(?:for now|atlas|" + _THANKS + r"|bye))*\W*$", re.I)
+ECHO_MIN_WORDS = 3  # two words shared with the answer can be a real reply ("the desk?"); three in the same order are the answer
+ECHO_SHARE = 0.8  # this much of what was heard being words of the answer is the speaker's tail, misheard a little
+
+
+def closing_reply(text: str) -> str | None:
+    """The short line that ends a conversation when `text` is a goodbye said alone ("thanks", "that's all", "never mind",
+    "no"); None for anything else. "Thanks, and what about tomorrow?" is a question, not a goodbye."""
+    m = _CLOSING.match(text.replace("\u2019", "'"))
+    if not m:
+        return None
+    return "Any time." if m[1] or re.search(_THANKS, text, re.I) else "Okay."
+
+
+def _words(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9']+", text.lower().replace("\u2019", "'"))
+
+
+def is_echo(heard: str, spoken: list[str]) -> bool:
+    """True when what the microphone heard is (nearly) what Atlas just said: the whole answer, a run of its words, or
+    mostly its words. A reply that only shares a word or two with the answer ("which desk?") is not an echo."""
+    h, s = _words(heard), _words(" ".join(spoken))
+    if not h or not s:
+        return False
+    if h == s:
+        return True
+    if len(h) < ECHO_MIN_WORDS:
+        return False
+    if any(s[i:i + len(h)] == h for i in range(len(s) - len(h) + 1)):
+        return True
+    return len(h) > ECHO_MIN_WORDS and sum(w in s for w in h) / len(h) >= ECHO_SHARE

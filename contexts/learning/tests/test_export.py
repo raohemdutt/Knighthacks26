@@ -124,7 +124,7 @@ def test_a_check_in_in_the_log_is_never_part_of_the_export(tmp_path):
     raised = next(e for e in events if e.type == "day.checkin.raised")
     bus = EventBus(tmp_path / "events")
     asyncio.run(bus.publish_all(events))
-    assert len(list(bus.read_log())) == 2  # it is in the log, on the box
+    assert len(list(bus.read_log())) == len(BOX_ONLY_EVENTS) == 4  # the check-in, its answer, a yes to an optional event, a look forgotten: on the box
 
     out = tmp_path / "datasets"
     out.mkdir()
@@ -140,6 +140,7 @@ def test_a_check_in_in_the_log_is_never_part_of_the_export(tmp_path):
     said = [s.summary for s in raised.signals] + [s.detail for s in raised.signals] + [s.text for s in raised.suggestions] + [raised.text]
     assert not [line for line in said if line in written]
     assert not [word for word in ("strained", "Heart rate", "heart rate", "slept", "drink", "checkin", "check-in") if word in written]
+    assert "friends-dinner" not in written and "nearby:" not in written  # nor which optional event was said yes to
 
     # structural: nothing in the learning context imports the Day loop or names one of its events
     root = Path(__file__).resolve().parents[3]
@@ -147,3 +148,36 @@ def test_a_check_in_in_the_log_is_never_part_of_the_export(tmp_path):
         if "tests" not in path.parts:
             text = path.read_text(encoding="utf-8")
             assert not re.search(r"contracts\.day|contexts\.day|[\"']day\.|checkin|Checkin", text), path
+
+
+def test_an_accepted_optional_event_is_never_part_of_the_export(tmp_path):
+    """An optional event the person said yes to is a block of the day's plan (in the log, on the box), and the friends
+    its calendar item names are in Memory's items. The export reads camera episodes only: neither reaches a dataset."""
+    from bus import EventBus
+    from contexts.day.tests.test_optional_events import DINNER, FRIENDS, accepted
+    from contexts.play.domain.places import PlaceSet
+
+    b = accepted(PlaceSet.load("config/places"), tmp_path / "box")
+    assert b.optional.accepted == {DINNER}
+    logged = " ".join(e.model_dump_json() for e in EventBus(tmp_path / "box" / "events").read_log())
+    assert "optional:friends-dinner" in logged and "day.optional.answered" in logged  # it is all in the log, on the box
+    assert not [n for n in FRIENDS if n in logged]  # ... and even there no plan, card or narration names a friend
+    items = list(b.loop.memory.items(NOW - timedelta(days=1), NOW + timedelta(days=5)))
+    assert any("with Riley, Sam, Alex" in (i.summary or "") for i in items)  # Memory is where the names are
+
+    class EpisodesOnly(FakeMemory):
+        def items(self, start, end, kind=None):
+            raise AssertionError("the export must not read connector items")
+
+    out = tmp_path / "datasets"
+    out.mkdir()
+    published = []
+    memory = EpisodesOnly([episode("e1", "cam-desk", 2)], items=items)
+    approvals = Approvals({"export_training_data": DatasetExporter(memory, lambda ref: b"jpeg", published.append, out_dir=out)})
+    _, proposal = teach(SPEC, NOW)
+    approvals.on_proposed(proposal)
+    [done] = asyncio.run(approvals.on_decided(ApprovalDecided(ts=NOW, action_id=proposal.action_id, decision="approve")))
+    assert done.status == "done", done.result
+    files = [p for p in out.rglob("*") if p.is_file()]
+    written = b"".join(p.read_bytes() for p in files).decode() + published[0].model_dump_json() + proposal.model_dump_json()
+    assert not [word for word in (*FRIENDS, "dinner", "nearby:", "optional:", "63 South", "GroupMe") if word in written]

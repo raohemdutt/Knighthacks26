@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "circle": "circle-knights",
+  "task": "desk-objects",
+  "members": [
+    {
+      "member": "ilan",
+      "current_version": "atlas-base",
+      "exports": {}
+    },
+    {
+      "member": "dom",
+      "current_version": "atlas-base",
+      "exports": {}
+    },
+    {
+      "member": "rao",
+      "current_version": "atlas-base",
+      "exports": {}
+    }
+  ]
+}

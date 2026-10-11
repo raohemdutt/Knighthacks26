@@ -54,3 +54,43 @@ Its steps were posted by hand with these same reads and posts while it trained (
 finished run from the pod (`--save` kept `telemetry.jsonl`, 5462 bytes, and `run.json`) and posted that copy: 200, 0 new,
 18 already there. Tests: `tests/test_lab_lab_push.py`, against the lab's fake pod (`lab/proxy_fake.py`, and once
 `lab/hub_fake.py`) and a small HTTP server that answers the import route with the box's own parsing.
+
+## What the box holds for L16's run (Sun 2026-10-11, 3:10 AM ET)
+
+Everything L16's run has, pushed with this verb from `work/L27-live` in one call, then checked with the box's own API:
+
+```bash
+python -m lab lab-push --box http://<box>:8000 --run-dir <the --save copy of the pod's run folder> \
+  --eval fixtures/demo/l16-gate-scores.json --manifest fixtures/demo/l16-manifest.json --ledger <ledger>
+```
+
+| File | Kept here | Box answer |
+| --- | --- | --- |
+| steps, 18 lines | `fixtures/demo/l16-telemetry.jsonl` | 200, 0 new, 18 already there |
+| the gate's `scores.json` (pod D, 2:12 to 2:20 AM, `--run-id train-20261011T032149Z-7dd098`) | `fixtures/demo/l16-gate-scores.json` | 200, 0 new, 2 already there (first posted 2:21 AM) |
+| the package manifest, both sha256s | `fixtures/demo/l16-manifest.json` | 200, 0 new, 1 already there |
+| the lab's ledger, 151 rows | not committed (`lab/state` stays local) | 200 after the fix below, 5 experiments, no verdicts yet |
+
+`GET /api/learning/lab` then answers `sample: false`, `real_runs: 1`, and one run: `train-20261011T032149Z-7dd098`,
+task `tool-calling`, status `deployed`, scores current 1.0, candidate 1.0, teacher 0.9167 (24, 24 and 22 right of 24),
+decision `reject`, model `atlas-tool-calling-train-20261011T032149Z-7dd098`. The run's page has the 18 losses
+(0.1273 to 0.0095 over 717 s of step times), the 24 held-out questions before and after, the package's sha256 and the
+swap from `atlas-base`. `GET /api/learning/lab/experiments` says "5 experiments in the lab ledger".
+
+The teacher score on the box is the gate's own teacher (pod C, 22 of 24). The A100 teacher arm
+(`fixtures/learning/a100-2026-10-11/l4/scores.json`) scored the same 22 of 24 twice; the gate's event is posted as it
+is, so the box cites the gate.
+
+Not on the box, and why:
+
+- **The trainer's settings** (planned steps, batch 4 x 4, LoRA rank 16, samples per second). They come from `run.json`
+  through `kind=run` (L29, #380), and the box's build predates it: it knows telemetry, eval and manifest only. It needs
+  a pull and a gateway restart on the box, then `curl --data-binary @fixtures/demo/l16-run.json
+  ".../api/learning/lab/import?kind=run&run_id=train-20261011T032149Z-7dd098"`. Until then the screen says the
+  settings are not in the log.
+- **Power.** No sampler ran on pod D during the run (`trainer.steps_with_power` is 0, `socket_w` null in every step),
+  so there is nothing to push; the screen says so.
+- **The ledger as written.** The box runs Python 3.10, whose `datetime.fromisoformat` refuses a trailing `Z`, so its
+  ledger check refused every row (`line 1: ts is not what the lab's ledger accepts`). The copy pushed writes each
+  `ts` as `+00:00` instead of `Z`, the same instant; nothing else changed. A lasting fix is for `lab/machine/ledger.py`
+  `_parse_ts` to read `Z` itself on 3.10.

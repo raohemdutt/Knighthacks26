@@ -7,6 +7,21 @@ import { api, ApiError, fileUrl, uploadFile, type InboxFile } from "@/lib/api";
 import { useAtlasEvents } from "@/lib/atlas";
 import { dayTime } from "@/lib/format";
 import { useFetch } from "@/lib/useFetch";
+import fs from "./files.module.css";
+
+/** "pdf", "png": the extension shown on the file's badge, at most four letters. */
+function extOf(name: string): string {
+  const dot = name.lastIndexOf(".");
+  return dot > 0 && dot < name.length - 1 ? name.slice(dot + 1, dot + 5).toLowerCase() : "";
+}
+
+/** The badge's colour family, from the file's type. */
+function kindOf(f: InboxFile): "doc" | "image" | "text" | "other" {
+  if (f.content_type.startsWith("image/")) return "image";
+  if (f.content_type === "application/pdf" || /word|document|presentation|sheet/.test(f.content_type)) return "doc";
+  if (f.content_type.startsWith("text/")) return "text";
+  return "other";
+}
 
 function size(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -58,17 +73,28 @@ export default function FilesPage() {
       <div className={ui.pageHead}>
         <h1>Files</h1>
       </div>
-      <p className={ui.muted}>
-        Share a file from any app (or pick one here). Atlas keeps it encrypted on the box, reads its text and makes it searchable:
-        ask about it, or search for it on Timeline.
-      </p>
-      <div className={ui.row}>
-        <input ref={input} type="file" multiple hidden onChange={(e) => add(e.target.files)} aria-label="Choose files" />
-        <button type="button" className={`${ui.btn} ${ui.btnPrimary}`} onClick={() => input.current?.click()} disabled={busy}>
-          {busy ? "Adding..." : "Add files"}
-        </button>
-      </div>
-      {note ? <p className={ui.small}>{note}</p> : null}
+
+      <input ref={input} type="file" multiple hidden onChange={(e) => add(e.target.files)} aria-label="Choose files" />
+      <button type="button" className={fs.drop} onClick={() => input.current?.click()} disabled={busy} aria-busy={busy}>
+        <span className={fs.dropMark} aria-hidden="true">
+          {busy ? (
+            <span className={fs.spinner} />
+          ) : (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 16V4M7 9l5-5 5 5M4.5 15.5v3a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5v-3" />
+            </svg>
+          )}
+        </span>
+        <span className={fs.dropText}>
+          <span className={fs.dropTitle}>{busy ? "Adding…" : "Add files"}</span>
+          <span className={fs.dropSub}>Or share one from any app. Kept encrypted on the box, read, and searchable from Ask and Timeline.</span>
+        </span>
+      </button>
+      {note ? (
+        <p className={fs.note} role="status">
+          {note}
+        </p>
+      ) : null}
       {error ? <ErrorBox what="the file" error={error} /> : null}
 
       {files.error ? (
@@ -78,19 +104,26 @@ export default function FilesPage() {
       ) : files.data.length === 0 ? (
         <Empty title="No files yet">A syllabus, a screenshot of a flyer, lecture notes: shared files show up here, newest first.</Empty>
       ) : (
-        <ul className={ui.list}>
+        <ul className={fs.list}>
           {files.data.map((f: InboxFile) => (
-            <li key={f.file_id} className={ui.card}>
-              <div className={`${ui.row} ${ui.between} ${ui.wrap}`}>
-                <a href={fileUrl(f.file_id)} className={ui.breakWords}>
-                  <strong>{f.name}</strong>
-                </a>
-                <span className={ui.tag}>{size(f.size)}</span>
-              </div>
-              <p className={`${ui.muted} ${ui.small}`}>
-                {dayTime(f.added_at)} · {f.text_chars ? `${f.text_chars.toLocaleString()} characters read` : "kept, not searchable (no text found)"}
-              </p>
-              {f.excerpt ? <p className={ui.small}>{f.excerpt}</p> : null}
+            <li key={f.file_id}>
+              <a href={fileUrl(f.file_id)} className={fs.file}>
+                <span className={`${fs.kind} ${fs[`kind_${kindOf(f)}`] ?? ""}`} aria-hidden="true">
+                  {extOf(f.name) || "file"}
+                </span>
+                <span className={fs.body}>
+                  <span className={fs.name}>{f.name}</span>
+                  <span className={fs.meta}>
+                    {dayTime(f.added_at)} · {size(f.size)} ·{" "}
+                    {f.text_chars ? (
+                      `${f.text_chars.toLocaleString()} characters read`
+                    ) : (
+                      <span className={fs.unread}>kept, not searchable (no text found)</span>
+                    )}
+                  </span>
+                  {f.excerpt ? <span className={fs.excerpt}>{f.excerpt}</span> : null}
+                </span>
+              </a>
             </li>
           ))}
         </ul>

@@ -222,7 +222,7 @@ def load_room(path: str | Path) -> RoomPlan:
 
 
 def available(config_dir: str | Path) -> list[str]:
-    return sorted(p.stem for p in (Path(config_dir) / "rooms").glob("*.yaml"))
+    return sorted(p.stem for p in (Path(config_dir) / "rooms").glob("*.yaml") if not p.name.startswith("."))
 
 
 def room_path(config_dir: str | Path, name: str | None = None) -> Path | None:

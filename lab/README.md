@@ -30,6 +30,7 @@ adding one touches no shared file but this list.
 - [`eval-gate`](docs/eval-gate.md): Score current, candidate and teacher on the frozen held-out set and decide deploy or reject (L4).
 - [`experiment`](docs/experiment.md): Experiments as ledger rows: add, list, result (read by the verdict math), rank, and T0's checklist (--print).
 - [`gpu-power`](docs/gpu-power.md): Summarize pod GPU power samples, or store a window of them as a ledger row: summary | record.
+- [`group-finetune`](docs/group-finetune.md): Group fine-tune (L10): pool a Circle's opt-in exports, label, train one LoRA, gate per member, offer to all.
 - [`handoff`](docs/handoff.md): End the session: leave the owner a note (no sitting reads it) and record the handoff in the ledger.
 - [`interference`](docs/interference.md): Teacher decode and a LoRA run on one chip: alone and together (plan, pod script, collect).
 - [`lab-push`](docs/lab-push.md): Post a training run's steps, a gate's scores, a package's manifest and the lab's ledger to the box's Learning lab.
@@ -38,6 +39,7 @@ adding one touches no shared file but this list.
 - [`link-speed`](docs/link-speed.md): Measure push and pull speed of a synthetic package on a pod through the hub, and write the table.
 - [`metrics`](docs/metrics.md): Report each metric's latest reading against its previous one, or compare a metric across a time window.
 - [`mirror`](docs/mirror.md): Mirror the lab digest to Overnight Status and the refinement plan changes to Ilan's Team Comms page.
+- [`optimize`](docs/optimize.md): Optimize engine or trainer settings to the night configuration (R45).
 - [`package`](docs/package.md): Package a LoRA adapter for the Jetson: merge, GGUF, Q4_K_M, manifest, scores, dry-run install.
 - [`placement`](docs/placement.md): Which pod serves the teacher and where the sampler, benchmarks, Ax trials and LoRA jobs go (--check a request).
 - [`pool`](docs/pool.md): Keep sittings running under the 16-unit budget (Sonnet 1, Opus 2, Fable 8); pool status shows the units.
@@ -56,6 +58,7 @@ adding one touches no shared file but this list.
 - [`sampler-overhead`](docs/sampler-overhead.md): The pod sampler's own cost on pod B, measured with and without it (T9).
 - [`sit`](docs/sit.md): Start one headless agent sitting for a task, a pass, the merge or the referee, and record it.
 - [`slot`](docs/slot.md): The GPU queue for pod B: request, start, extend, done, complain, status.
+- [`speculative-estimate`](docs/speculative-estimate.md): Estimate n-gram (prompt lookup) speculative decoding acceptance offline on the teacher's real outputs.
 - [`spot-score`](docs/spot-score.md): Score a model on the held-out SPOT questions (L26): split joins the set's two folders, score scores.
 - [`stop`](docs/stop.md): Create the STOP file: every verb but ready, resume and stop is refused.
 - [`sweep-request`](docs/sweep-request.md): Request-side settings sweep of the teacher on one spawn: the dry run, the pod script, the pod run, collect.
@@ -1193,6 +1196,63 @@ On a machine with no GPU, `python -m lab chipsheet self-check` (or `python3 lab/
 self-check`) parses the recorded tool output in `fixtures/lab/chipsheet/`, writes a sheet marked self-check to a
 temporary folder, reads it back and exits 0; it measures nothing and `ingest` refuses its sheet.
 
+## Wavefront microbenchmarks: `lab/kernels/wavefront/` (R42)
+
+One kernel class of the student's training step per file, one lever per class, timed on a gfx1151 pod in the chip
+sheet's style: each row is one lever setting with its median, every repeat and their spread, the first call timed
+apart (compilation, MIOpen find steps, lazy loading), and for a Triton kernel the compiled `n_regs`, `n_spills` and
+shared bytes with the occupancy they imply on gfx1151 (waves per SIMD by VGPRs from LLVM's table, workgroups per WGP
+by LDS, whether the grid covers the 20 WGPs). The predictions each class tests, and the order to run them in, are in
+`lab/refine/research/kernels/wavefront_training_gfx1151.md`. No pod run has happened yet.
+
+| File | Class and lever |
+|---|---|
+| `gdn.py` | Gated DeltaNet chunk rule, one layer, forward plus backward; `impl` torch (transformers' reference) or fla |
+| `conv.py` | depthwise causal conv (8,192 channels, kernel 4), forward plus backward; `impl` torch (MIOpen) or fla (Triton) |
+| `launch.py` | per-op cost of a 2,000-op chain of tiny kernels; `mode` eager or graph (one HIP graph replay) |
+| `tile.py` | a Triton tile shaped like fla's state scan (512 workgroups); `num_stages` 1 or 2 at `num_warps` 4 |
+| `lora.py` | the LoRA A projection x @ A at rank 16; `split_k` torch (reference), 1 or 4 (Triton) |
+| `wavefront.py` | `run --node pod-b --only <class> [--quick]`, the no-GPU `self-check`, `pod-script` and `occupancy` |
+| `wavefront_format.py` | the sheet's JSON format (`atlas.wavefront/1`), its Markdown, the gfx1151 occupancy arithmetic and the parsers for Triton compile records, hipcc resource remarks and rocprofv3 kernel traces |
+| `pod_wavefront.sh` | what `run-script` runs on the pod: copies the uploaded files to `~/wavefront` and runs the class there |
+
+```bash
+python -m lab.kernels.wavefront.wavefront self-check                  # no GPU: fixtures, invented timings, write and re-read
+python -m lab.kernels.wavefront.wavefront pod-script --only gdn       # the one-line controller command and its slot minutes
+python -m lab.kernels.wavefront.wavefront occupancy <dir>/kernel_trace.csv --top 25   # top kernels of an R34 trace
+```
+
+`pod-script --only gdn` prints (account D is the trainer pod, node pod-b; 20 slot minutes):
+
+```bash
+python -m lab.controller run-script --account D --timeout 1200 --with lab/kernels/wavefront/wavefront.py --with lab/kernels/wavefront/wavefront_format.py --with lab/kernels/wavefront/gdn.py --with lab/kernels/wavefront/conv.py --with lab/kernels/wavefront/launch.py --with lab/kernels/wavefront/tile.py --with lab/kernels/wavefront/lora.py --with lab/kernels/chipsheet/chipsheet_format.py lab/kernels/wavefront/pod_wavefront.sh run --node pod-b --only gdn
+```
+
+The run refuses (exit 2) unless `--node` is pod-a or pod-b, the machine is x86_64 and rocminfo names gfx1151. A full
+run of one class stays inside 900 s of GPU time and `--quick` inside 240 s; a case past the budget, or whose package
+is missing (fla is not in the stock image, so the fla arms of `gdn` and `conv` are skipped with the reason until it
+is installed into the training venv), is written as skipped. The pod script runs the harness with the trainer's own
+Python when the pod has it (`~/venvs/atlas-train`, the venv L16 left, without the user site) and with the image's
+`python3` otherwise; it installs nothing. The sheet lands in `~/wavefront/wavefront-gfx1151-<date>.json`
+and `.md` on the pod. The fixtures in `fixtures/lab/wavefront/` are synthetic; occupancy from LDS assumes four SIMDs
+per WGP, which no opened source states.
+### Lookup-table dequant GEMV: `lab/kernels/lut_gemv.py` (R62)
+
+A Triton GEMV for 2-, 3- and 4-bit weight-only layers (BITS constexpr, groups of 128 along K) that turns each code
+into a weight by a table lookup on chip (`tl.gather`), with the plain scale-and-zero path and a per-channel table
+(FLUTE's layout, mode 4) in the same kernel. `quantize` / `quantize_channel_lut` pack a weight, `reference` is the
+torch answer, `lut_gemv(a, packed, mode)` runs it. The pod bench reuses the chip sheet's timing helper and power
+reader; files go up under an `r62_` prefix so nothing in the Jupyter root is overwritten:
+
+```
+python -m lab.controller run-script --account D --timeout 620 --with <stage>/r62_lut_gemv.py     --with <stage>/r62_chipsheet.py --with <stage>/r62_chipsheet_format.py --with <stage>/r62_pod_power.py     lab/kernels/pod_lut_gemv.sh bench --node pod-b --budget-s 420
+python -m lab.transfer pull-file --account D r62_lut/lut_gemv-gfx1151-<date>.json fixtures/lab/lut_gemv/lut_gemv-gfx1151-<date>.json
+python -m lab.kernels.lut_gemv ingest --result fixtures/lab/lut_gemv/lut_gemv-gfx1151-<date>.json --account D
+```
+
+The 2026-10-11 run (125 s of GPU), its `lut_gemv.*` rows and what they mean: `lab/refine/research/kernels/lut_dequant_gfx1151.md`.
+Tests: `tests/test_lab_lut_gemv.py` (packing and reference on the CPU; the kernel at the decode shapes on a GPU).
+
 ## The LoRA trainer: `lab/train.py`
 
 LoRA SFT of the student (`Qwen/Qwen3.5-4B`, the base the Jetson runs) on the rows `lab/format_traces.py --split`
@@ -1379,6 +1439,58 @@ attach-mode numbers on pod C within 3 percent.
   (node pod-b), recomputed from the fixture in `tests/test_lab_pod_b_llamacpp.py`. The first session's rows had the
   checkpoint path rewritten by Git Bash on the box (`C:/Program Files/Git/home/...`); the fixture carries the pod path,
   and the harness calls now set `MSYS_NO_PATHCONV=1`.
+#### Engine table holes: Vulkan at 4 and 16 streams, HIP at 64 (E29b, 2026-10-11)
+
+R58's llama.cpp runs on pod C were never pushed; they are now in the repo, with this session's runs. R58 ran on pod C
+(account C, node `pod-a`) from 03:44 to 04:24 UTC with the April teacher stopped, as cold spawns on the pod (`lab/bench.py
+run`, one spawn per repeat shared by 1 and 8 streams, 3 repeats, `-np 8 --ctx-size 16384`, watts from the harness's own
+amd-smi reader). Its handoff called the ROCm arm not done; the arm in fact finished at 04:24 (3 spawns), so its rows are
+here too. This session (E29b) ran from the box through the hub proxy in attach mode, like E29, with the T6 sampler on
+port 8790 (1 s): the Vulkan server on pod C port 8101 beside the serving v0.31.0 teacher on 8000 (never touched; its
+`/metrics` counters were read before and after each call), and the HIP server on pod D in one 15-minute GPU Queue slot.
+Prompt set bench-v1 (sha256 b25ab2bd...b760), 128 tokens with `ignore_eos`, greedy, thinking off, per-request nonce.
+
+| Streams | Engine, pod | tok/s per stream | tok/s total | TTFT s | avg W | J/token gross | runs | rows (`lab/refine/metrics.jsonl`) |
+|---|---|---|---|---|---|---|---|---|
+| 1 | llama.cpp Vulkan, pod C, teacher stopped (R58) | 12.14 | 10.48 | 1.45 | 109.9 | 10.40 | 3 | 227-232 |
+| 1 | llama.cpp Vulkan, pod C, beside the teacher | 12.17 | 10.30 | 1.74 | 98.7 | 9.59 | 1 | 251-256 |
+| 1 | llama.cpp HIP, pod C, teacher stopped (R58) | 11.96 | 10.43 | 1.26 | 98.2 | 9.43 | 3 | 239-244 |
+| 4 | llama.cpp Vulkan, pod C, beside the teacher | 5.29 | 18.41 | 8.11 | 109.3 | 5.94 | 1 | 257-262 |
+| 8 | llama.cpp Vulkan, pod C, teacher stopped (R58) | 6.83 | 34.07 | 15.01 | 95.5 | 2.82 | 3 | 233-238 |
+| 8 | llama.cpp HIP, pod C, teacher stopped (R58) | 5.45 | 30.13 | 14.03 | 95.7 | 3.18 | 3 | 245-250 |
+| 16 | llama.cpp Vulkan, pod C, beside the teacher | 3.17 | 32.05 | 31.36 | 105.7 | 3.30 | 1 | 263-268 |
+| 64 | llama.cpp HIP, pod D (see below) | 1.35 | 40.15 | 98.57 | 91.5 | 2.28 | 1, failed | 269-274 |
+
+For the same stream counts: llama.cpp HIP on pod D (E29 above) made 23.42 total at 4 (4.68 J), 21.52 at 8 and 41.98 at
+16 (2.27 J); vLLM v0.31.0 on pod C (R60) 29.54 at 4 (3.27 J), 36.53 at 8 (2.69 J) and 51.09 at 16 (1.88 J); the April
+vLLM (R26) 49.53 total at 64 (1.94 J).
+
+- **Vulkan beside the teacher.** The teacher holds 54.4 GB of the 64 GB VRAM carve-out. Loaded with defaults, the
+  Vulkan server filled the carve-out to 150 MB of free VRAM (14 GB VRAM plus 6.8 GB GTT), which could starve the
+  teacher, so it was restarted at once with `GGML_VK_PREFER_HOST_MEMORY=1`: weights and KV cache then sit in GTT (21 to
+  23 GB) and the teacher's VRAM did not move. That costs nothing at one stream: 12.17 tok/s against R58's 12.14 with the
+  card to itself. The teacher was idle through the 1- and 4-stream runs (its token counters unchanged) and served one
+  small request (27 prompt and 28 generated tokens) early in the 16-stream run's warm-up. The loaded-idle reads
+  include the idle teacher: 10.0 W and 17.4 W.
+- **Vulkan batches poorly here.** 4 streams gave 18.4 tok/s total, under R58's 34.1 at 8 and E29's HIP 23.4 at 4; 16
+  gave 32.0, under R58's 34.1 at 8. One run each, so the dip at 4 may be noise (E29's HIP had one batch-4 run at 5.32 per
+  stream against 9.09 in the other two, the same per-stream rate as this one), but neither run beats vLLM v0.31.0 at the
+  same width (29.5 at 4, 51.1 at 16).
+- **HIP at 64 streams.** `lab/pod_b_llamacpp.sh serve 64 131072` (64 slots of 2,048 tokens), one run, 2 requests per stream
+  instead of 4 and no warm-up round (one short text request warmed the server), to fit the 15-minute slot. 5 of the 128
+  requests got the hub's 524 gateway timeout: with 64 prompts (32 of them images) queued for prefill, they sent no byte in
+  125 s (median TTFT 98.6 s), so the harness marked the run `fail`. The numbers are over the 123 requests that finished
+  (15,744 tokens): 40.1 tok/s total at 2.28 J/token, below the April vLLM's 49.5 tok/s and 1.94 J at 64 and barely above
+  HIP's own 42.0 at 16. Through this proxy, 64 streams of this workload are past what llama.cpp HIP serves usefully.
+- **Not run, by order (2026-10-11 3:20 AM ET, to free both pods for other seats).** Vulkan at 64 streams; second and
+  third repeats of Vulkan at 4 and 16 (the batch-8 anchor beside the teacher was stopped mid-run and is not kept);
+  the HIP repeats at 8 and 16 on pod D; vLLM v0.31.0 at 64 streams. Every row is `low_confidence`; the ones with 1 run
+  say so in `low_confidence_reason`.
+- **Files.** R58's raw rows, summaries and pod-side metrics in `fixtures/lab/bench/pod-c-llamacpp-2026-10-11/r58-*`, its
+  greedy token-id records (4 prompts x 128 tokens, Vulkan and HIP) in `fixtures/lab/correctness/r58-2026-10-11/`; this
+  session's Vulkan rows in `fixtures/lab/bench/pod-c-llamacpp-2026-10-11/e29b-*` and the HIP 64 row in
+  `fixtures/lab/bench/pod-b-llamacpp-2026-10-11/e29b/`. Every metrics row carries the sampler, `period_ms`, `samples`,
+  `error`, hub, account, engine version, prompt set sha256, `streams` and its fixture.
 ### The teacher on vLLM v0.31.0 with the RDNA hybrid W4A16 kernel (R60, pod C)
 
 Since 2026-10-11 04:41 UTC the pod C teacher runs from `~/venv-vllm-new`: vLLM `0.31.2.dev0+gdb9527a46.gfx1151` (tag
@@ -1395,7 +1507,7 @@ The same sweep as R26's above, run the same way against the new server (`python 
 --node pod-a --batches 1,4,8,16 --no-64 --repeats 3 --no-probe --idle-s 30 --max-len 16384 --quantization
 compressed-tensors-W4A16-INT4 --metric-prefix teacher_batching --metrics-file lab/refine/metrics.jsonl`, session
 `bench-20261011T044643Z-6240`, 04:46 to 05:21 UTC, one warm-up round, medians of 3 repeats, low confidence like R26's).
-The stock lines are R26's rows (`lab/refine/metrics.jsonl:67-90`), the new ones `lab/refine/metrics.jsonl:161-184`:
+The stock lines are R26's rows (`lab/refine/metrics.jsonl:67-90`), the new ones `lab/refine/metrics.jsonl:187-210`:
 
 | Concurrent | Build | tok/s per stream (min to max) | tok/s total | TTFT s | avg / peak W | J/token gross |
 |---|---|---|---|---|---|---|
@@ -1418,7 +1530,7 @@ The stock lines are R26's rows (`lab/refine/metrics.jsonl:67-90`), the new ones 
   before the sweep).
 - **Outputs.** `python -m lab correctness compare` against the April build's baseline
   (`fixtures/lab/correctness/vllm-gfx1151-2026-10-11.json`) matches 1 prompt of 4 token for token
-  (`lab/refine/metrics.jsonl:160`): the kitchen text matches; the schedule text diverges at token 106 by a logprob gap
+  (`lab/refine/metrics.jsonl:186`): the kitchen text matches; the schedule text diverges at token 106 by a logprob gap
   of 0.06, the token where the April build diverged from itself; the two image prompts diverge at tokens 0 and 3, the
   places where stock v0.31.0 on the A100 does (R57). Against the A100's v0.31.0 record
   (`fixtures/lab/bench/a100-2026-10-10/vllm-a100-2026-10-10.json`) it matches 2 of 4 (the kitchen text and the bars
@@ -1520,7 +1632,7 @@ sizes are in the R60 table above.
 | | Build | Configuration | Batch | tok/s per stream | tok/s total | Avg W | J/token gross | J/token above idle | Conditions |
 |---|---|---|---|---|---|---|---|---|---|
 | Before | April build: vLLM 0.19.2 at b1388b1 plus `lab/vllm-gfx1201.diff`, Conch W4A16, `RedHatAI/Qwen3.8-27B-INT4` | stock serve line, thinking off, greedy | 1 | 2.70 | 2.62 | 96.0 | 36.66 | 32.67 | R26 attach sweep, pod C (SJC, account C), bench-v1, 4 x 128 tokens a stream, 3 repeats, idle 10.44 W, PR #269 (081c496) |
-| After | v0.31.0 build: vLLM 0.31.2.dev0 at db9527a46 plus `lab/patches/vllm-main-gfx1151-platform.diff`, torch 2.12.0+rocm7.14.0, `RDNAHybridW4A16LinearKernel`, the same checkpoint | stock serve line, thinking off, greedy | 1 | 12.33 | 10.96 | 96.7 | 8.82 | 7.91 | R60 attach sweep, pod C (SJC, account C), bench-v1, 4 x 128 tokens a stream, 3 repeats, idle 9.93 W, session `bench-20261011T044643Z-6240` (`lab/refine/metrics.jsonl:161-166`) |
+| After | v0.31.0 build: vLLM 0.31.2.dev0 at db9527a46 plus `lab/patches/vllm-main-gfx1151-platform.diff`, torch 2.12.0+rocm7.14.0, `RDNAHybridW4A16LinearKernel`, the same checkpoint | stock serve line, thinking off, greedy | 1 | 12.33 | 10.96 | 96.7 | 8.82 | 7.91 | R60 attach sweep, pod C (SJC, account C), bench-v1, 4 x 128 tokens a stream, 3 repeats, idle 9.93 W, session `bench-20261011T044643Z-6240` (`lab/refine/metrics.jsonl:187-192`) |
 
 For reference, the April build's own batch-1 smoke on pod C read 2.88 tok/s at 120 W, about 41.7 J/token
 (teacher section above); the R26 row is the before number because it ran through the same harness the after row will.
@@ -1855,3 +1967,105 @@ and downloads the base at its pinned commit to `~/models/Qwen3.5-4B`; `train <ru
 and leaves the adapter, telemetry, `run.json`, the log and the ledger rows in `~/adapters/l16-<run id>/`.
 `fixtures/demo/` holds what came back: the trainer log, the loss curve, the ledger rows and the screen recording the
 "It learns" fallback uses (owner ruling 7).
+
+## Group fine-tune (L10)
+
+`python -m lab group-finetune` trains one LoRA on the pooled opt-in exports of a Circle's members on the network GPU
+(pod D) and offers the packaged group model to every box in the Circle, with rollback. `lab/group_finetune.py` holds
+the steps (pool, merge, split, label, rows, train, package, gate, offer, delete); `lab/docs/group-finetune.md` the
+arguments; `lab/pod_b_group_finetune.sh` the pod side; `tests/test_lab_group_finetune.py` runs the whole flow on the
+two-member fixture pool `fixtures/learning/group-pool/` with every outside call faked (teacher, trainer, packaging
+toolchain, gate scorer, model servers, boxes).
+
+The pool on pod D is `~/pool/<circle>/<task>/`: `pool.json` is the roster (every member of the Circle, an uploader or
+not, and the model version each box serves now, which is that box's rollback version), and `<member>/<dataset_id>/`
+is one approved export as the box wrote it (`manifest.json` with the approval's action id, `examples.jsonl`, the
+blurred `images/`). The run labels the pooled set with the teacher through `lab/label.py` (L13's path), trains with
+`lab/train.py` (L3's flags, R36's baseline), packages with `lab/package.py` (L5), and runs `lab/eval_gate.py` (L4)
+once per member against that member's current model on the pooled held-out side (each uploader's frames are on it).
+A desk-objects run is scored by `lab/desk_score.py` through `DeskGateClient` (the gate has no registered desk
+scorer); the teacher's score goes through the hub proxy with the token. `group_offer.json` in the package folder lists
+every member with their gate decision (`recommended` when the gate deploys against their current model, `available`
+when it does not, `unscored` when their current model could not be served) and rollback version. The pooled exports
+and every copy are deleted on every way out, and a `group-finetune.delete` row says so; `--keep` is refused on a pod.
+
+Live sequence (pod D is account D; the teacher is pod C at `https://sjc.aupcloud.io/user/roscon01/proxy/8000`):
+
+```
+# 0. prerequisites on pod D, once: the L16 venv and base (bash lab/l16_run.sh prep), a llama.cpp tree and build (LLAMA_SRC,
+#    LLAMA_BUILD; on pod D today ~/e29/llama.cpp and its build-hip, prep links them and builds llama-quantize on the CPU),
+#    the base projector at ~/models/Qwen3.5-4B-GGUF/mmproj-F16.gguf, and each member's current model as a package
+#    under ~/data/packages/<current version>/ (atlas-base: the stock Q4_K_M and mmproj, manifest by jetson/make_manifest.py)
+# 1. workstation: the bundle, pushed to pod D, unpacked
+bash lab/pod_b_group_finetune.sh bundle
+python -m lab.transfer push-file --account D ../L10-data/l10-bundle.tar.gz l10/l10-bundle.tar.gz
+python -m lab.controller run-script --account D lab/pod_b_group_finetune.sh prep
+# 2. pod D: the Circle's roster (the third member uploads nothing)
+python -m lab.controller run-script --account D lab/pod_b_group_finetune.sh roster circle-knights desk-objects \
+    ilan=atlas-base dom=atlas-base rao=atlas-base
+# 3. box 1 and box 2: each person approves the export card on the phone (Teach -> export), then the box uploads it
+python -m lab.transfer push-dataset --account D data/exports/<dataset_id> --to pool/circle-knights/desk-objects/<member>
+# 4. pod D: the plan, with each member's count
+python -m lab.controller run-script --account D lab/pod_b_group_finetune.sh status circle-knights desk-objects
+# 5. the GPU Queue slot, then the run inside it (TEACHER_TOKEN is the pod C hub token; never printed or written)
+python -m lab slot request --task L10 --what "group fine-tune: one LoRA on pooled exports" --kind lora --minutes 60 \
+    --why "label, train, package and gate run as one job" --measured "<L16 wall time>"
+python -m lab slot start --row <row>
+GPU_SLOT=<row> TEACHER_TOKEN=<token> bash ~/l10/src/lab/pod_b_group_finetune.sh run circle-knights desk-objects g1
+# a smoke inside a 15-minute row: L10_STEPS=4 GATE=fake MIN_HELD_OUT=1 GPU_SLOT=... TEACHER_TOKEN=... bash ... run ... s1
+python -m lab slot done --row <row> --result "<members, examples, scores per member>"
+# 6. pod D: serve the package to the boxes
+bash ~/l10/src/lab/pod_b_group_finetune.sh serve
+# 7. every box, including rao who uploaded nothing: the offer, then take it (pull, swap, rollback on a failed swap)
+python -m lab.transfer pull-file --account D data/packages/atlas-group-desk-objects-g1/group_offer.json data/group_offer.json
+python -m lab group-finetune take --offer data/group_offer.json --member <member> --account D
+python -m lab group-finetune take --offer data/group_offer.json --member <member> --rollback     # back to the old model
+```
+
+What the demo shows: two phones approve an export card for the same task; the pod D log shows the pool (2 uploaders,
+their example counts, a third member with none), the teacher labeling, one LoRA training, the gate's current,
+candidate and teacher scores for each member, and `ls ~/pool/circle-knights/desk-objects` holding only `pool.json`
+afterwards; then the third box, which uploaded nothing, takes the group model and switches back with one command.
+`~/group-runs/<run id>/` keeps the log, the gate's scores, `metrics.jsonl` and a copy of the ledger rows.
+
+## Symmetric pods, the role switch and the two-pod LoRA (R65)
+
+Since 2026-10-11 both SJC pods hold the same things, so either can be the teacher or the trainer: the teacher's
+checkpoint `~/models/Qwen3.8-27B-INT4` (identical files), a vLLM v0.31 build with the RDNA hybrid W4A16 kernel in
+`~/venv-vllm-new` (pod C serves the v0.31.0 tag, db9527a46; pod D holds main at 5281e4990 from R60's first build), the
+training venv `~/venvs/atlas-train` (the same 34 packages at the same versions over the image's torch) and the student
+base `~/models/Qwen3.5-4B` at 851bf6e. `lab/refine/research/plumbing/symmetric-pods.md` has every number below.
+
+```
+python -m lab.controller run-script --account D --with lab/vllm_upgrade.sh --with lab/pod_a_teacher.sh lab/pod_role.sh status D
+python -m lab.controller run-script --account D --timeout 900 --with lab/vllm_upgrade.sh --with lab/pod_a_teacher.sh \
+    lab/pod_role.sh teacher D --apply          # inside a GPU Queue slot; then LAB_POD_ROLES=D:pod-a,C:pod-b on the workstation
+python -m lab.controller run-script --account C lab/pod_role.sh auto C   # the friend check and the plain decision, printed
+```
+
+- **Role switch.** `pod_role.sh teacher D --apply` brought the teacher up on pod D in 451 s (same model, names, flags and
+  port as pod C; a tools request returned structured `tool_calls`); stopping one takes about 60 s. So a switch is about
+  8 minutes without a teacher plus the `LAB_POD_ROLES` line, which the box's teacher link and the lab verbs follow.
+  The script never stops a teacher it did not start and refuses `trainer` while one serves.
+- **Friend detection.** `pod_role.sh beacon <letter>` answers `GET /status` on port 29555 (what the pod holds);
+  `pod_role.sh auto <letter> [addr]` looks for the other pod at the address given, `~/.atlas_friend`, or the tailnet peer
+  named `pod-c` or `pod-d` in `tailscale status`, asks its beacon (through tailscaled's SOCKS5 for a tailnet address),
+  and prints its inputs and the decision: two training ranks when the friend answers, one otherwise; the teacher alone
+  unless a pod-to-pod network exists (`POD_TO_POD=yes`), which R65 found nowhere on this cluster.
+- **No pod-to-pod network.** The hub's network policy refuses every connection between the pods, and their outbound UDP
+  is blocked. Tailscale in userspace mode (`lab/pod_tailscale.sh up pod-c|pod-d`, the auth key read from a file next to
+  the script and deleted at once) still joins them, through the DERP relay only: 10 ms and 2.7 MB/s. The hub's in-cluster
+  proxy reaches the other pod at about 90 MB/s with the other account's hub token. Neither carries torch.distributed or
+  vLLM's multi-node executor, so the model split was dropped. `lab/pod_tailscale.sh stop` takes a pod off the tailnet.
+- **The two-pod LoRA.** `lab/r65_local_sgd.py` wraps `lab/train.py` unchanged: each pod trains on half the rows, the ranks
+  agree over a Tailscale control channel, and every 4 optimizer steps each fetches the other's int8-coded LoRA delta
+  (32.5 MB) through the hub proxy and merges it one step late; a last synchronous round leaves both ranks on the same
+  weights. `lab/r65_rank.sh <rank> <run id> <peer tailnet IP> <peer hub user>` runs one rank inside its slot, with the
+  peer account's token uploaded as `tokpeer.txt` (read and deleted at start).
+- **What the pair measured (2026-10-11).** Same examples as L16 split in two: 431 s against 785 s. L16's 18 steps on
+  each pod (twice L16's examples): 766 to 771 s, 0.75 samples/s for the pair against 0.367, last-step loss 0.012 to
+  0.016 against 0.0095 and run mean 0.039 to 0.047 against 0.054; packaged like L5 and asked the golden questions, the
+  adapter passed the same 24 of 24 held-out items as L16's package. A round's 32.5 MB code took 0.5 to 0.9 s over
+  the proxy and about 15 s over the Tailscale relay. `python lab/r65_rows.py --write` rebuilds the rows from
+  `fixtures/lab/r65-2026-10-11/`; they are named `trainer.split.*` so the box's single-pod figures stay single-pod.
+  `lab/r65_score.sh` packages and serves an adapter for that check.

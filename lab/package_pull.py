@@ -22,7 +22,12 @@ http.server cannot send a Range part. Files land in DIR/<version>/ as NAME.part 
 matches; manifest.json is written last, so a half-pulled package is never mistaken for an installed version. A pull
 that stops (a dropped connection, a pod relaunch) continues from the bytes already on disk; a copy that fails its
 checksum after a resume is fetched once more from the start; a pull whose files are all there and correct sends
-nothing. The proxy answering with a gateway error (502, 503, 504, 52x, 599, 429) or the connection dropping is
+nothing. Once every file has matched, the pull writes DIR/<version>/.verified.json (runtime/modelstore.py's
+VERIFIED_RECORD): per file the name, size, sha256 and mtime_ns it had when it was hashed, written_by
+lab/package_pull.py. The record is removed before the files are touched and written again only after all of them
+matched, so it never vouches for a file this pull did not check. The swap (jetson/atlas_swap.py --trust-verified) and
+the deploy verb (lab/deploy.py) trust it instead of hashing again while the size and mtime still match; the pull
+itself always hashes. The proxy answering with a gateway error (502, 503, 504, 52x, 599, 429) or the connection dropping is
 tried again, with growing pauses; a login redirect (the token), 403, 404, 424 (the pod is stopped) and 500 (nothing
 listens on the port) are not.
 
@@ -88,9 +93,10 @@ from lab.hub import Account, Hub, MissingCredentials, PodRoleError, load_account
 from lab.machine import record
 from lab.machine import stop as kill_switch
 from lab.machine.record import recorded
+from runtime.modelstore import VERIFIED_RECORD, write_verified_record
 
 __all__ = ["PackageClient", "PullError", "Transient", "pull_package", "probe_whole_file", "fetch_manifest", "package_files",
-           "serve_start", "serve_stop", "curl_lines", "run", "main", "build_parser"]
+           "serve_start", "serve_stop", "curl_lines", "run", "main", "build_parser", "write_verified"]
 
 log = logging.getLogger("lab.package_pull")
 
@@ -385,6 +391,8 @@ class FileResult:
     parts: int = 0
     resumed_from: int = 0
     outcome: str = "pulled"
+    sha256: str = ""
+    mtime_ns: int | None = None      # the file's mtime when it was hashed, for the .verified.json record
 
     def view(self) -> dict[str, Any]:
         return {"name": self.name, "bytes": self.size, "transferred": self.transferred, "parts": self.parts,
@@ -473,8 +481,9 @@ def pull_file(client: PackageClient, version: str, name: str, checksum: str, fol
     final = folder / name
     partial = folder / f"{name}.part"
     if final.is_file():
+        st = final.stat()                  # taken before the hash: a file changed while it is hashed fails the record later
         if not force and sha256_file(final) == checksum:
-            return FileResult(name, final.stat().st_size, outcome="present")
+            return FileResult(name, st.st_size, outcome="present", sha256=checksum, mtime_ns=st.st_mtime_ns)
         final.unlink()
     if force and partial.exists():
         partial.unlink()
@@ -493,11 +502,19 @@ def pull_file(client: PackageClient, version: str, name: str, checksum: str, fol
             raise
         if digest.hexdigest() == checksum:
             os.replace(partial, final)
-            return FileResult(name, size, tally.bytes - before, parts, resumed)
+            return FileResult(name, size, tally.bytes - before, parts, resumed, sha256=checksum,
+                              mtime_ns=final.stat().st_mtime_ns)
         partial.unlink()
         if resumed == 0:
             break                          # a clean download from byte 0 that does not match: the pod's copy is wrong
     raise PullError("checksum_mismatch", None, f"{name} does not match the sha256 in the manifest")
+
+
+def write_verified(folder: Path, version: str, files: Sequence[FileResult]) -> Path:
+    """Write <folder>/.verified.json: the files this pull hashed and found matching, with the size and mtime each had
+    then (runtime/modelstore.py's write_verified_record, the writer the swap uses too)."""
+    return write_verified_record(folder, version, [{"name": item.name, "size": item.size, "sha256": item.sha256,
+                                                    "mtime_ns": item.mtime_ns} for item in files])
 
 
 def _row(client: PackageClient, verb: str, outcome: str, *, metrics: Mapping[str, Any] | None = None,
@@ -563,9 +580,11 @@ def pull_package(client: PackageClient, version: str, dest: str | os.PathLike[st
         raw, manifest = fetch_manifest(client, version, sleep=sleep)
         wanted = package_files(manifest)
         folder.mkdir(parents=True, exist_ok=True)
+        (folder / VERIFIED_RECORD).unlink(missing_ok=True)    # vouches only for files this pull checks
         for name, checksum in wanted:
             files.append(pull_file(client, version, name, checksum, folder, part_bytes=part_bytes, force=force,
                                    clock=clock, sleep=sleep, progress=progress, tally=tally))
+        write_verified(folder, version, files)
         target = folder / package_server.MANIFEST
         if not target.is_file() or target.read_bytes() != raw:
             scratch = folder / f"{package_server.MANIFEST}.tmp"

@@ -25,6 +25,10 @@ card's kind, target and parameters, and anything it does not recognise counts as
 raised itself and may not approve are denied again, so the box is left without stale cards. With --read-only
 nothing is raised, approved, denied, pushed or changed.
 
+Optional events ("Near you", use case 3) are read in every mode. A yes to one is said only with --approve-local:
+the box records it and raises a re-plan with its approval card, which goes through the same guard (approved only
+when it stays on the box, else denied). A no is never said: it would stop Atlas from suggesting that event.
+
 It does not repeat the pre-flight (`python -m contexts.demo preflight --gateway ...`, contexts/gateway/preflight.py):
 it reads GET /api/preflight and reports the count, and the run sheet says when to run the real one. The shapes
 of the answers are checked in depth by `node web/scripts/check-api.mjs`; here only what a presenter would see.
@@ -41,7 +45,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -442,6 +446,43 @@ def uc_talk(run: Run) -> None:
                 f"{len(links)} link(s) cited" if links else "answered without a link: from the model, or the box has no web right now")
 
 
+WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+
+def look_fields(moments: list[dict]) -> str | None:
+    """A complaint when a remembered look carries anything but labels, numbers and plain lines: no picture, no heart value."""
+    blob = json.dumps(moments)
+    found = [word for word in ("frames:", "frame_ref", "bpm", "resting_hr", "image", "jpeg") if word in blob]
+    return f"a remembered look carries {', '.join(found)}" if found else None
+
+
+def look_back(card: dict | None, moments: list[dict]) -> tuple[str, str]:
+    """(status, note) for the look memory's callback on the newest check-in: its sentence is in what the card says,
+    the moment it names is one the box really remembers from an earlier day, and the day it says is that day's own
+    (never a fixed weekday). SKIP when there is no check-in, no look among its signals, or nothing similar enough."""
+    if not card:
+        return SKIP, "no check-in on this box (python -m contexts.demo checkin --data-dir <the seeded directory> --onto)"
+    if "expression" not in {s.get("kind") for s in card.get("signals") or []}:
+        return SKIP, "the check-in has no look among its signals"
+    back = card.get("callback")
+    if not back:
+        return SKIP, "no earlier look was similar enough (or it was forgotten): nothing is said about the past"
+    said, text = back.get("said") or "", f"{card.get('display') or ''} {card.get('spoken') or ''} {card.get('text') or ''}"
+    then = next((m for m in moments if m.get("id") == back.get("moment_id")), None)
+    if said not in text or not said:
+        return FAIL, f"the callback line is not in what the card says: {said!r}"
+    if then is None:
+        return FAIL, f"the callback names a moment the box does not remember: {back.get('moment_id')}"
+    if then["day"] != back["day"] or then["day"] >= card["day"]:
+        return FAIL, f"the callback's day {back['day']} is not an earlier remembered day (the moment is {then['day']}, the check-in {card['day']})"
+    gap = (date.fromisoformat(card["day"]) - date.fromisoformat(then["day"])).days
+    named = WEEKDAYS[datetime.fromisoformat(then["at"]).weekday()]
+    right = ("yesterday" in said or "last night" in said) if gap == 1 else named in said if gap <= 13 else "weeks ago" in said
+    if not right:
+        return FAIL, f"the callback does not say the day it was ({named}, {gap} days before): {said!r}"
+    return PASS, f"{said} {back.get('learned') or ''}".strip() + f" [{then['day']}, a {named}]"
+
+
 def uc_day(run: Run) -> None:
     run.screen("/now/")
     now = run.fetch("the day as the box sees it", "/api/day/now", ("day", "plan", "status"), missing="the Day loop is not on this box",
@@ -449,9 +490,16 @@ def uc_day(run: Run) -> None:
                     note=lambda d: f"{len(d['plan']['moves'])} blocks; next: {((d.get('status') or {}).get('next_block') or {}).get('title')}")
     if now is None:
         return
-    run.fetch("the check-in card (raise one with: python -m contexts.demo checkin)", "/api/day/checkin", ("enabled", "latest", "watching", "rule"),
-              missing="this build has no check-in",
-              note=lambda d: (d["latest"] or {}).get("text") or f"none raised; held: {(d['watching'] or {}).get('held') or 'nothing agrees yet'}")
+    checkin = run.fetch("the check-in card (raise one with: python -m contexts.demo checkin)", "/api/day/checkin", ("enabled", "latest", "watching", "rule"),
+                        missing="this build has no check-in",
+                        note=lambda d: (d["latest"] or {}).get("text") or f"none raised; held: {(d['watching'] or {}).get('held') or 'nothing agrees yet'}")
+    looks = run.fetch("the looks Atlas remembers (People)", "/api/day/looks?limit=50", ("on", "count", "moments"), missing="this build has no look memory",
+                      check=lambda d: look_fields(d["moments"]),
+                      note=lambda d: (f"{d['count']} remembered; latest: {d['moments'][0]['when']}: {d['moments'][0]['helped']}" if d["moments"]
+                                      else "none remembered" + ("" if d["on"] else " (nobody has expressions switched on)")))
+    if checkin is not None and looks is not None:
+        status, note = look_back(checkin.get("latest"), looks["moments"])
+        run.add("the check-in calls back to an earlier look, on a real earlier day", status, None, note)
     run.fetch("today's plan", "/api/day/plan", ("moves", "blocks", "outcome"),
               note=lambda d: f"{d['outcome'].get('summary', '')} committed={d['committed']}")
     brief = run.fetch("the day in words", "/api/day/brief", ("mode", "engine", "latest"),
@@ -712,11 +760,23 @@ def uc_sortit(run: Run, scene_pushed: bool) -> None:
                 f"simulated: last result {_result((live or {}).get('result'))}" if played else "the scene was pushed but no round shows in /api/room/live or /api/play/accuracy")
     else:
         run.add("a round started from the fake scene", SKIP, None, "run with --scene (python -m contexts.demo fake perception --gateway ... --realtime)")
+    run.fetch("the face loop's state (counts only)", "/api/play/state", ("phase", "faces", "held_s", "idle_s", "rounds"), missing="Sort It is not configured",
+              check=lambda d: None if d["phase"] in ("looking", "holding", "round", "ending") else f"unknown phase {d['phase']!r}",
+              note=lambda d: f"{d['phase']}; {d['faces']} facing the camera; {d['rounds']['played']} round(s) this sitting"
+                             + (f"; round {d['rounds']['latest']['round']} took {d['rounds']['latest']['seconds']} s against round 1's {d['rounds']['first']['seconds']} s" if d["rounds"].get("latest") else ""))
     run.manual("a face-started round", "hold an item up to the bin camera for two seconds with recognition on (table-day checklist)")
     if room:
         clear = run.fetch("route to the bin, against par", "/api/play/room-route?item=can", ("reachable", "points", "distance_m", "par_s"),
                           check=lambda d: None if d["reachable"] else "the bin is not reachable",
                           note=lambda d: f"can -> {d['bin']}: {d['distance_m']} m, par {d['par_s']} s, {len(d['points'])} points")
+        run.fetch("how the route was found (A* on the floor grid)", "/api/play/room-route?item=can&search=1", ("search", "around", "obstacles"),
+                  check=lambda d: None if d["search"] and d["search"]["explored"] and set(d["search"]["path"]) <= set(d["search"]["explored"])
+                  else "no search record, or a path cell the search never looked at",
+                  note=lambda d: f"{d['search']['algorithm']} on a {d['search']['cols']} by {d['search']['rows']} grid of {round(d['search']['cell_m'] * 100)} cm cells: "
+                                 f"looked at {d['search']['explored_total']} cells, kept {len(d['search']['path'])}; around: {', '.join(a['label'] for a in d['around']) or 'nothing'}")
+        run.fetch("the last round's plans, each with its search", "/api/play/route-search", ("live", "plans"),
+                  note=lambda d: "; ".join(f"{p['reason']}{' (' + str((p.get('rerouted') or {}).get('label') or (p.get('rerouted') or {}).get('why')) + ')' if p.get('rerouted') else ''}: "
+                                           f"{p['distance_m']} m" for p in d["plans"]) or "no round has been planned since this box started")
         tracks = (live or {}).get("tracks") or []
         if clear and tracks:
             run.add("route around a person", PASS, None, f"{len(tracks)} person(s) in the room; the route above was planned with them as obstacles")
@@ -781,12 +841,23 @@ def uc_identity(run: Run) -> None:
 
 def uc_privacy(run: Run) -> None:
     run.screen("/privacy/")
-    run.fetch("the privacy policy", "/vault/policy", ("blur_faces", "offline"), missing="the vault is not on this box",
-              check=lambda d: None if d["blur_faces"] else "face blur is OFF: stored pictures would show faces",
-              note=lambda d: f"blur faces on; offline={d['offline']}; paused cameras: {', '.join(d['paused_cameras']) or 'none'}; keep {d.get('keep_days') or 'for ever'}")
+    # The three "Faces" rows of the Privacy screen. Saved pictures are always blurred: a box with blur_faces off FAILS.
+    run.fetch("saved pictures are always blurred", "/vault/policy", ("blur_faces", "offline"), missing="the vault is not on this box",
+              check=lambda d: None if d["blur_faces"] is True else (
+                  "blur_faces is OFF: this box is saving pictures with faces showing. Privacy -> \"Blur saved pictures from now on\", "
+                  "then jetson/reblur_stored.py for what it already saved"),
+              note=lambda d: f"blur_faces on; offline={d['offline']}; paused cameras: {', '.join(d['paused_cameras']) or 'none'}; keep {d.get('keep_days') or 'for ever'}")
+    run.fetch("your live view: faces only on your own signed-in screen", "/vault/policy", ("live_faces",), missing="the vault is not on this box",
+              check=lambda d: None if d["live_faces"] in ("clear", "blurred") else f"live_faces is {d['live_faces']!r}, not clear or blurred",
+              note=lambda d: ("clear on the owner's signed-in screen, blurred for everyone else" if d["live_faces"] == "clear"
+                              else "blurred for everyone: the owner switched the clear view off"))
     run.fetch("what left the box (egress proof)", "/vault/egress", ("allowed", "blocked", "enforced"), missing="the vault is not on this box",
               note=lambda d: f"firewall {'enforced' if d['enforced'] else 'NOT enforced on this box'}; {len(d['allowed'])} allowed destinations, {d['blocked']} blocked")
-    run.manual("a stored frame shows blurred faces", "open a keyframe with a face in it on Timeline and look (table-day checklist)")
+    run.manual("a saved frame shows blurred faces", "open a keyframe with a face in it on Timeline and look (table-day checklist)")
+    run.manual("anything that leaves this box is blurred", "open an alert photo on the phone and an image in a lab dataset export "
+               "(data/exports/<id>/images) with a face in it and look")
+    run.manual("the live view shows faces only on your own signed-in screen", "Live on the signed-in phone shows you; the same address "
+               "in a private window (not signed in) shows the blur")
     run.manual("wipe scopes (Everything / Pictures only / Memory only)", "Privacy -> Delete…, on a throwaway box only; this script never wipes")
 
 
@@ -798,13 +869,13 @@ def uc_teach(run: Run) -> None:
                     note=lambda d: f"{d['real_runs']} real run(s); showing {len(d['runs'])} {'SAMPLE ' if d['sample'] else ''}run(s)")
     if lab is not None:
         run.screen("/lab/")
-        sample = run.fetch("Learning lab: the labelled sample run", "/api/learning/lab?sample=1", ("runs", "sample"),
-                           check=lambda d: None if d["sample"] and d["runs"] and all(r.get("sample") for r in d["runs"]) else "the sample run is missing or not labelled as a sample",
-                           note=lambda d: f"simulated: run {d['runs'][0]['run_id']} ({d['runs'][0].get('status')}), labelled sample")
-        if sample:
-            rid = urllib.parse.quote(sample["runs"][0]["run_id"], safe="")
-            run.fetch("Learning lab: the run's story", f"/api/learning/lab/{rid}?sample=1", ("training", "eval", "power", "dataset"),
-                      note=lambda d: f"simulated: gate {((d.get('eval') or {}).get('verdict') or (d.get('eval') or {}).get('decision') or d.get('status'))}")
+        # No sample run is ever shown (#421): the list is only what the box recorded, and says so when it is empty.
+        run.add("Learning lab: no sample run is shown", FAIL if lab["sample"] or any(r.get("sample") for r in lab["runs"]) else PASS, None,
+                "only runs the box recorded" if lab["runs"] else "none recorded yet: the screen says so instead of showing a sample")
+        if lab["runs"]:
+            rid = urllib.parse.quote(lab["runs"][0]["run_id"], safe="")
+            run.fetch("Learning lab: the newest run's story", f"/api/learning/lab/{rid}", ("training", "eval", "power", "dataset"),
+                      note=lambda d: f"test: {((d.get('eval') or {}).get('verdict') or (d.get('eval') or {}).get('decision') or d.get('status'))}")
     if not run.writes:
         run.add("teach a task -> export approval card", SKIP, None, "read-only: teaching raises a card")
         return
@@ -925,6 +996,70 @@ def uc_operator(run: Run) -> None:
     run.manual("draw a zone, watch Live", "Zones -> pick camera and zone, drag a box, Save zone; Live shows the camera (owner: teammates' screens)")
 
 
+def uc_day_optional(run: Run) -> None:
+    """Optional events ("Near you") and Atlas suggesting one: use case 3, after the re-plan step. The list and the
+    suggestion are read. A yes is said only with --approve-local: it is recorded on the box and raises a re-plan
+    with its approval card, which is then approved only when the guard says it stays on the box, else denied. A no
+    is never said here: it would stop Atlas from ever suggesting that event."""
+    listed = run.fetch("optional events near you", "/api/day/optional", ("now", "plan_id", "events"),
+                       missing="no optional events on this box (no Day loop, or a build without them)",
+                       note=lambda d: (f"{len(d['events'])} event(s): " + ", ".join(f"{e['slug']} {e['state']}/{e['fit']['fits']}" for e in d["events"][:6]))
+                       if d["events"] else "none in Memory for today or the next days")
+    if listed is None:
+        return
+    brief = run.api.get("/api/day/brief")
+    said = ((brief.data.get("latest") or {}).get("suggest") if isinstance(brief.data, dict) else None) or None
+    if said:
+        run.add("Atlas suggested one", PASS, brief.seconds, said.get("display", ""))
+    else:
+        run.add("Atlas suggested one", SKIP, brief.seconds, "no suggestion in this log yet: Atlas brings one up 90 to 30 minutes before an "
+                "event that fits and names somebody (play one with: python -m contexts.demo optional --data-dir <empty dir>)")
+    step = "say yes to an optional event"
+    if not run.writes:
+        run.add(step + " + its approval card", SKIP, None, "read-only: a yes is recorded on the box and raises a card")
+        return
+    if not run.approve_local:
+        run.add(step + " + its approval card", SKIP, None, "only with --approve-local: a yes is recorded on the box and raises a card")
+        return
+    open_ = [e for e in listed["events"] if e["state"] == "suggested" and e["fit"]["fits"] != "no" and not e["awaiting_approval"]]
+    open_.sort(key=lambda e: (e.get("suggested_at") is None, e["start"]))  # the one Atlas brought up first, else the soonest
+    if not open_:
+        run.add(step, SKIP, None, "no optional event is on offer and fits right now")
+        return
+    event = open_[0]
+    before = run.api.get("/api/day/plan")
+    plan_before = before.data.get("plan_id") if isinstance(before.data, dict) else None
+    r = run.api.post("/api/day/optional/" + urllib.parse.quote(event["id"], safe=""), {"answer": "yes"}, timeout=60)
+    if r.status in (404, 409):
+        run.add(step, SKIP, r.seconds, r.detail)
+        return
+    if r.status != 200 or not isinstance(r.data, dict):
+        run.add(step, FAIL, r.seconds, f"HTTP {r.status}: {r.detail}")
+        return
+    if not r.data.get("proposed"):
+        run.add(step, PASS, r.seconds, f"{event['title']}: noted, nothing proposed ({r.data.get('reason') or 'no reason given'})")
+        return
+    after = run.api.get("/api/day/plan")
+    plan_after = after.data.get("plan_id") if isinstance(after.data, dict) else None
+    if not r.data.get("action_id") or plan_after != plan_before:
+        run.add(step, FAIL, r.seconds, "a yes must raise an approval card and leave the plan as it is until that card is approved")
+        return
+    run.add(step, PASS, r.seconds, f"{event['title']}: a re-plan with its card; {len(r.data.get('moves') or [])} block(s) would change; the plan itself is unchanged")
+    card = run.card(r.data["action_id"])
+    expect = bool(card) and local_only_card(card)[0]  # local only when the box has no calendar connector
+    approved = run.settle_card("the yes's approval card", r.data["action_id"], expect_local=expect)
+    time.sleep(1.0)
+    plan = run.api.get("/api/day/plan")
+    blocks = plan.data.get("blocks") if isinstance(plan.data, dict) else None
+    mine = [b for b in blocks or [] if b.get("origin") == "optional" and b.get("title") == event["title"]]
+    if approved:
+        run.add("the event is a block of today's plan", PASS if mine else FAIL, plan.seconds,
+                f"{mine[0]['title']} at {mine[0].get('place_name')}, fixed, origin optional" if mine else "approved, but no block with origin optional in GET /api/day/plan")
+    else:
+        run.add("without the approval the plan is unchanged", PASS if not mine else FAIL, plan.seconds,
+                "the event is still on offer" if not mine else "the event is in the plan although its card was not approved")
+
+
 def walk(run: Run, only: set[str] | None, scene_pushed: bool, expect_profile: str | None) -> None:
     steps = {"ask": uc_ask, "talk": uc_talk, "day": uc_day, "coach": uc_coach, "dayrun": uc_dayrun, "circle": uc_circle,
              "sortit": lambda r: uc_sortit(r, scene_pushed), "impact": uc_impact, "identity": uc_identity, "privacy": uc_privacy,
@@ -939,6 +1074,7 @@ def walk(run: Run, only: set[str] | None, scene_pushed: bool, expect_profile: st
         todo = [(key, steps[key])]
         if key == "coach" and (only is None or "day" in only):
             todo.append(("day", uc_day_replan))  # use case 3's last step, after the coach has been looked at
+            todo.append(("day", uc_day_optional))  # ... and then the optional events: a yes there raises a re-plan as well
         for case, step in todo:
             run.case = case
             try:

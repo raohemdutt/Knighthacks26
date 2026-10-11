@@ -263,3 +263,107 @@
   letter-spacing: 0.04em;
   overflow-wrap: anywhere;
 }
+
+/* ---------- where things stand, and who is in the list ---------- */
+
+/* One plain line above the sections: recognition on or off, or no face model on this machine. */
+.stateLine {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 20px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+}
+
+.stateLine p {
+  margin: 0;
+}
+
+.demoLine {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+/* "Demo data": the same pill as every tag, with a dashed outline so it reads as a label, not a state. */
+.demoTag {
+  outline: 1px dashed var(--muted);
+  outline-offset: -1px;
+}
+
+/* A name with its state next to it; the tags drop under the name on a narrow phone. */
+.nameRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+/* The first-run prompt (Live and People): one line, the way to the scan, and a way to put it aside. */
+.scanPrompt {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  padding: 14px 20px;
+  margin-bottom: 16px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+}
+
+.scanPrompt > div {
+  flex: 1 1 220px;
+}
+
+.scanPrompt p {
+  margin: 2px 0 0;
+}
+
+/* "You", not scanned yet: the one big first step. */
+.firstStep {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.firstStep .bigBtn {
+  font-size: 1.05rem;
+  padding: 14px 26px;
+}
+
+/* "Your group": one row per person who shares the network's GPUs. */
+.headline {
+  margin: 0;
+  font-size: 1.1rem;
+  line-height: 1.35;
+}
+
+.group {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.groupRow {
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.groupRow p {
+  margin: 4px 0 0;
+}
+
+/* A part of one person's story inside the page: a small heading over its card. */
+.part {
+  margin: 18px 0 8px;
+}
+
+/* A wrapper that only carries a guide hook: its sections lay out as if it were not there. */
+.contents {
+  display: contents;
+}

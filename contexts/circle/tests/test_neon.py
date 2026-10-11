@@ -49,6 +49,19 @@ def test_rows_come_back_as_agent_messages():
     assert "created_at > %s" in sql and "ORDER BY created_at" in sql and params == ("c", NOW)
 
 
+def test_record_event_writes_the_event_and_everyone_in_it_as_one_statement():
+    neon = FakeNeon()
+    invited = STUDY.model_copy(update={"invitees": ["hemdutt", "ana"]})
+    assert NeonCircleStore(NeonDb(neon.connect)).record_event("c", "t1", invited, "dom") is None
+    assert neon.commits == 1 and neon.tables() == ["circles", "members", "members", "members"]  # then the one statement
+    sql, params = neon.statements[-1]
+    assert sql.startswith("WITH new_event AS (INSERT INTO events ") and sql.count("INSERT INTO") == 2
+    assert "ON CONFLICT DO NOTHING RETURNING id" in sql and "ON CONFLICT (event_id, member_id) DO NOTHING" in sql
+    assert "NOT EXISTS (SELECT 1 FROM rsvps" in sql  # an event left with nobody listed is filled in by a repeat
+    assert params == ("t1", "c", "t1", "Study session", invited.start, invited.end, "Library", "dom", "t1", "c",
+                      ["ana", "dom", "hemdutt"])
+
+
 def test_a_dropped_connection_is_reopened_once():
     neon = FakeNeon()
     store = NeonCircleStore(NeonDb(neon.connect))
@@ -143,6 +156,43 @@ def test_record_event_keeps_the_first_record_for_a_thread(circle_store):
     events, rsvps = store.db.run(read)
     assert events == [("Study session", invited.start, "Library")]
     assert rsvps == [(f"{c}-dom", "free"), (f"{c}-hemdutt", "free")]
+
+
+@needs_neon
+def test_real_record_event_fills_in_an_event_left_with_nobody_listed():
+    """The record the https transport could leave before the event and its RSVPs were one statement. The member
+    ids hold what an array parameter must carry unharmed: a comma, quotes, braces, a backslash, non-ASCII."""
+    db, c = open_test_circle()
+    try:
+        store, thread = NeonCircleStore(db), f"{c}-t1"
+        awkward = [f"{c}-Lee, Ana", f'{c}-the "boss"', f"{c}-{{curly}}", f"{c}-back\\slash", f"{c}-Zoë 日本"]
+        invited = STUDY.model_copy(update={"invitees": awkward})
+        everyone = sorted([*awkward, f"{c}-dom"])
+
+        def half_written(cur):  # the event alone, as the first of the two old requests left it
+            db.ensure(cur, c, *everyone)
+            cur.execute("INSERT INTO events (id, circle_id, thread_id, title, starts_at, ends_at, location, created_by)"
+                        " VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                        (thread, c, thread, "Study session", invited.start, invited.end, "Library", f"{c}-dom"))
+
+        def read(cur):
+            cur.execute("SELECT title FROM events WHERE circle_id = %s", (c,))
+            titles = [t for (t,) in cur.fetchall()]
+            cur.execute("SELECT member_id, answer FROM rsvps WHERE event_id = %s", (thread,))
+            return titles, sorted(cur.fetchall())
+
+        db.run(half_written)
+        assert db.run(read) == (["Study session"], [])
+        [nobody] = CircleBoard(db).upcoming_events(c, invited.start)
+        assert nobody["member_id"] is None  # what the calendar showed
+
+        store.record_event(c, thread, invited.model_copy(update={"title": "Changed"}), f"{c}-dom")
+        assert db.run(read) == (["Study session"], [(m, "free") for m in everyone])  # listed; the first title stays
+        store.record_event(c, thread, STUDY.model_copy(update={"invitees": [f"{c}-someone-else"]}), f"{c}-dom")
+        assert db.run(read) == (["Study session"], [(m, "free") for m in everyone])  # a complete record is never added to
+        assert len(CircleBoard(db).upcoming_events(c, invited.start)) == len(everyone)
+    finally:
+        assert drop_test_circle(db, c) == 0
 
 
 @needs_neon

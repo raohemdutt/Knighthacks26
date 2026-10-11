@@ -249,6 +249,7 @@ def test_clear_empties_every_table_the_index_and_the_vectors_and_reopen_starts_a
     store.clear()
     assert all(rows == [] for rows in store.dump().values()) and set(store.dump()) == set(TABLES)
     assert store.vector_count() == 0
-    path.unlink()  # what the wiper does next
+    store.close()  # what the wiper does next: close, remove, reopen (Windows cannot remove a file a connection holds)
+    path.unlink()
     store.reopen()
     assert path.exists() and store.first_time("e1")  # the same event projects again into the new file

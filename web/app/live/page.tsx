@@ -1,5 +1,6 @@
 "use client";
 
+import { ScanPrompt } from "@/components/people/ScanPrompt";
 import { useEffect, useState } from "react";
 import live from "@/components/live/live.module.css";
 import { Empty, ErrorBox, Loading } from "@/components/States";
@@ -7,13 +8,16 @@ import ui from "@/components/ui.module.css";
 import { api, snapshotUrl, type CameraStatus, type LiveTracks } from "@/lib/api";
 import { cameraName, humanize } from "@/lib/format";
 import { useFetch } from "@/lib/useFetch";
+import { liveViewLine, useLiveView } from "@/lib/useLiveView";
 import { useZones } from "@/lib/useZones";
 
 /**
  * Live: every camera the box reads, with what the detector sees drawn on top.
  *
- *  - The picture is GET /capture/{camera}/snapshot.jpg, refreshed about twice a second (faces are blurred by the
- *    box). It is a still, not a video stream: the MJPEG endpoint (C5) can replace the <img> later.
+ *  - The picture is GET /capture/{camera}/snapshot.jpg, refreshed about twice a second. The box blurs the faces in
+ *    it for everyone except the owner's own signed-in screen while "Your live view" is on (Privacy); the line under
+ *    the heading says which of the two this screen is getting. Saved pictures are blurred either way. It is a
+ *    still, not a video stream: the MJPEG endpoint (C5) can replace the <img> later.
  *  - Boxes and track ids are GET /capture/{camera}/tracks (normalized 0..1). Zone outlines come from
  *    config/zones.yaml, read from GET /api/zones (the build-time copy, lib/zones.generated.ts, until it answers).
  *  - Tap a camera to make it full width.
@@ -114,6 +118,7 @@ export default function LivePage() {
   const cameras = useFetch((signal) => api.captureStatus(signal));
   const clock = useClock(3000);
   const [open, setOpen] = useState<string | null>(null);
+  const view = useLiveView();
   const { reload } = cameras;
   useEffect(() => reload(), [clock, reload]);
 
@@ -122,7 +127,9 @@ export default function LivePage() {
     <>
       <div className={ui.pageHead}>
         <h1>Live</h1>
+        <p className={ui.muted} data-live-view={view}>{liveViewLine(view)}</p>
       </div>
+      <ScanPrompt />
       {cameras.loading && !cameras.data ? <Loading what="the cameras" /> : null}
       {cameras.error && !cameras.data && !cameras.error.notConfigured ? <ErrorBox what="the cameras" error={cameras.error} onRetry={cameras.reload} /> : null}
       {(cameras.data && entries.length === 0) || (cameras.error && !cameras.data && cameras.error.notConfigured) ? (

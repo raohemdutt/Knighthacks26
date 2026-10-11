@@ -188,6 +188,9 @@ JOIN members m ON m.id = i.member_id;
 -- header and ciphertext readable only by to_member's box. face_revoke: a signed header.
 -- `kind` has no CHECK on purpose: a box skips kinds and versions it does not know, so
 -- later kinds stay additive. Rows are small and deleted by the boxes when used or revoked.
+-- expires_at is the expiry in a face_share's signed header, copied out so the database side can act on it
+-- without reading the body: the inbox leaves out a row that is past it and the sender's box sweeps it.
+-- NULL: the row has no expiry of its own (a key, a revoke) or a box from before this column wrote it.
 CREATE TABLE IF NOT EXISTS sealed_messages (
     id           text PRIMARY KEY,
     v            integer NOT NULL DEFAULT 1,
@@ -197,7 +200,11 @@ CREATE TABLE IF NOT EXISTS sealed_messages (
     kind         text NOT NULL,
     body         jsonb NOT NULL,
     created_at   timestamptz NOT NULL DEFAULT now(),
+    expires_at   timestamptz,
     CHECK (pg_column_size(body) <= 400000)
 );
+-- A database created before expires_at gets it here: CREATE TABLE IF NOT EXISTS does not add a column.
+-- Nullable with no default, so adding it rewrites nothing and existing rows read NULL.
+ALTER TABLE sealed_messages ADD COLUMN IF NOT EXISTS expires_at timestamptz;
 
 CREATE INDEX IF NOT EXISTS sealed_messages_inbox ON sealed_messages (circle_id, to_member, created_at);

@@ -123,6 +123,7 @@ class DayRun:
         self.walks = Walks(places)
         self.memory, self.habits, self.presence, self.hub = memory, habits, presence, hub
         self.agreed = agreed  # plans the Circle agreed: fixed blocks of the real day, never of a scripted one
+        self.listed = None  # (item) -> bool: a public listing, never a fixed block (set by the composition root; agent.yaml `listings:`)
         self.plans_dir = Path(data_dir) / "dayrun" / "plans"
         self.fixtures_dir = Path(fixtures_dir)
         self.scenarios_dir = profile.scenarios_dir() if profile is not None else None
@@ -193,7 +194,7 @@ class DayRun:
         if sc and sc.start_place and not over.start_place:
             over = over.model_copy(update={"start_place": sc.start_place})
         state = initial_state(self.cfg, start, self._habit_rows(sc, start.date(), start), over, origin="scenario" if sc else "habits")
-        return build_board(self.cfg, self.walks, start, list(items), state, self._friends(sc, start), over)
+        return build_board(self.cfg, self.walks, start, list(items), state, self._friends(sc, start), over, listed=self.listed)
 
     def _logged_items(self, start: datetime, items: list[Item]) -> list[Item]:
         """A board asked for at the very start of a plan the log holds for an earlier day is that plan's own day: the

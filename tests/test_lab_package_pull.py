@@ -161,7 +161,8 @@ def test_a_pull_fetches_each_file_in_range_parts_and_checks_its_sha256(world):
     assert (folder / "model.gguf").read_bytes() == GGUF
     assert (folder / "mmproj-model.gguf").read_bytes() == MMPROJ
     assert (folder / "manifest.json").read_bytes() == (world.on_pod / "manifest.json").read_bytes()
-    assert sorted(item.name for item in folder.iterdir()) == ["manifest.json", "mmproj-model.gguf", "model.gguf"]
+    assert sorted(item.name for item in folder.iterdir()) == [
+        ".verified.json", "manifest.json", "mmproj-model.gguf", "model.gguf"]
     assert [(item.path, item.range, item.status) for item in world.proxy.seen] == [
         (f"/{VERSION}/manifest.json", None, 200),
         (f"/{VERSION}/model.gguf", "bytes=0-16383", 206),
@@ -229,6 +230,22 @@ def test_the_row_of_a_pull_that_sent_nothing_holds_no_speed(world):
     assert [f["outcome"] for f in again["files"]] == ["present", "present"]
 
 
+def test_each_pull_records_the_files_it_hashed_with_their_size_and_mtime(world):
+    world.pull()
+    folder = world.dest / VERSION
+    st = (folder / "model.gguf").stat()
+    os.utime(folder / "model.gguf", ns=(st.st_atime_ns, st.st_mtime_ns + 7_000_000_000))
+
+    again = world.pull()                       # present files: hashed again, and recorded as they are now
+
+    assert again["outcome"] == "already_present"
+    record = json.loads((folder / ".verified.json").read_text(encoding="utf-8"))
+    assert (record["written_by"], record["version"]) == ("lab/package_pull.py", VERSION)
+    assert [(f["name"], f["size"], f["sha256"], f["mtime_ns"]) for f in record["files"]] == [
+        ("model.gguf", 50_000, hashlib.sha256(GGUF).hexdigest(), st.st_mtime_ns + 7_000_000_000),
+        ("mmproj-model.gguf", 7_000, hashlib.sha256(MMPROJ).hexdigest(), (folder / "mmproj-model.gguf").stat().st_mtime_ns)]
+
+
 def test_force_pulls_everything_again(world):
     world.pull()
 
@@ -259,7 +276,7 @@ def test_the_manifest_is_written_last_so_a_half_pulled_package_is_not_taken_for_
 
     folder = world.dest / VERSION
     assert (failed["ok"], failed["kind"], failed["status"]) == (False, "missing", 404)
-    assert sorted(item.name for item in folder.iterdir()) == ["model.gguf"]
+    assert sorted(item.name for item in folder.iterdir()) == ["model.gguf"]     # and no .verified.json
     resumed = world.pull()
     assert (resumed["ok"], [f["outcome"] for f in resumed["files"]]) == (True, ["present", "pulled"])
     assert (folder / "manifest.json").is_file()

@@ -119,8 +119,14 @@ curl localhost:8000/runtime/models                  # current model version and 
 
 Cameras are listed in `config/cameras.yaml` (id, `/dev/video0` or a video file, fps). Capture starts only where
 `yolo11n.engine` exists (section 6), so laptops and CI skip it; `ATLAS_CAPTURE=0` turns it off. A camera that is not
-plugged in is retried every 2 s and shows as `down`. The Vault policy is honoured live: faces are blurred before a
-keyframe is stored unless `blur_faces` is off, and a paused camera is not looked at. Settings and secrets go in the
+plugged in is retried every 2 s and shows as `down`. Saved pictures are always blurred: every keyframe is blurred
+before it is stored, again until the face detector finds no face (`keyframe_blur: fast` in `config/cameras.yaml` sets
+one camera back to a single pass). The live view is blurred for everyone except the owner's own signed-in screen (clear there on
+every box, also one upgraded from before the clear view, until the owner switches "Your live view" off in Privacy), and
+every picture that leaves the box (a lab dataset export, an alert photo, a recorded clip) has its faces blurred
+whatever is on disk. The Vault policy is honoured live: a paused camera is not looked at, and a box whose policy has
+`blur_faces` off saves unblurred pictures (the app has no switch for that; see section 13 to put it right).
+Settings and secrets go in the
 repo's `.env` (never in git). The unit sets `ATLAS_MEMORY_FIXTURE=` empty, so a real box holds only what its cameras
 saw; put `ATLAS_MEMORY_FIXTURE=fixtures/memory/memory.yaml` in `.env` for the canned demo night.
 
@@ -223,22 +229,58 @@ downloads anything; from a laptop with internet:
 curl localhost:8000/identity/settings       # available: true (SFace), expressions_available: true, photos_available: true (OpenCV)
 ```
 
-Without SFace recognition cannot be switched on; without the expression model "Read my expressions" and the anonymous
-room mode stay unavailable and everything else works. `./jetson/push.sh` leaves the box's model files alone. Everything is
-off until someone switches it on in the app, and stored pictures are blurred in every mode.
+Without SFace recognition cannot be switched on; without the expression model "Read my expressions" stays unavailable
+and everything else works. `./jetson/push.sh` leaves the box's model files alone. Everything is off until someone
+switches it on in the app, and saved pictures are blurred in every mode.
 
 
 ## 12. Recording camera clips (for the lab and for replay)
 
 The gateway keeps the webcam open, so nothing else can read `/dev/video0`. `jetson/record_clip.py` records through the
-gateway instead: it polls the blurred `GET /capture/<camera>/snapshot.jpg`, keeps every new frame and has GStreamer join
-them into an mp4, without a video device, a stopped service or sudo. It also picks frames from recorded clips into a
+gateway instead: it polls `GET /capture/<camera>/snapshot.jpg?blur=1` (faces always blurred, until the detector finds
+none, whatever the policy says and whoever is signed in), keeps every new frame and has GStreamer join
+them into an mp4, without a video device, a stopped service or sudo. That blur takes about twice as long on a frame with
+a face in it; if the box then gives fewer frames a second than `--fps`, record with `--fps auto`. It also picks frames from recorded clips into a
 dataset folder in the box's export layout. The commands that were used, the clips they made and where the frames go next
 are in `lab/README.md` (section "Camera clips") and `fixtures/clips/README.md`.
 
 ```bash
 ssh -o BatchMode=yes alexander@<ip> python3 - clip keys-on-desk --seconds 10 < jetson/record_clip.py
 ```
+
+## 13. A box that saved pictures with the blur off
+
+Saved pictures are always blurred, but a box can have run with `blur_faces` off (the branch of PR #390 made that the
+default), and keyframes saved before the blur was repeated until clear may still show a small or half-hidden face.
+Three steps, on the box, from the repo root, with the gateway's Python:
+
+```bash
+# 1. The policy: blur_faces must be true. If it is false, switch it on (the app: Privacy -> "Blur saved pictures from now on").
+curl -s localhost:8000/vault/policy                 # {"blur_faces": true, ..., "live_faces": "clear"}
+curl -s -X PUT localhost:8000/vault/policy -H 'Content-Type: application/json' \
+     -H "Authorization: Bearer $ATLAS_TOKEN" -d '{"blur_faces": true}'       # only if it said false (the header: if a token is set)
+
+# 2. What is on disk: a dry run. It changes nothing and prints counts per camera and per day.
+python jetson/reblur_stored.py data
+python jetson/reblur_stored.py data --since 2026-10-10T18:00 --names   # only from that (local) time on, with file names
+
+# 3. Blur those files again, in place, then look once more: the second dry run should count 0 with a face.
+python jetson/reblur_stored.py data --apply
+python jetson/reblur_stored.py data
+```
+
+`reblur_stored.py` looks at `data/frames/<camera>/<ts_ms>.jpg` with the strict face detector (score 0.5, margin 0.6).
+`--apply` blurs each file with a face again until no face is found (at most five passes) and replaces it through a
+temporary file and a rename; a file with no face is never written, and a second run does nothing to files that came
+clear. A file where the detector still fires afterwards (it can fire on the blurred patch itself) is counted as
+"still found" and named: look at it, or delete it. It opens no network connection, and the gateway can keep running.
+Exit code 0: no saved picture with a findable face is left; 2: some are; 1: a file could not be read or written.
+The last line of the table says how long a file took, which is the cost of one detector pass on this box.
+
+It covers saved keyframes only. A dataset exported earlier (`data/exports/`) and a clip recorded earlier were blurred
+with one pass, as the gate and the recorder then did, and are not touched by this tool: look at them before they
+are shared again, or export and record them again.
+
 
 ## Firmware update (boards with old factory firmware)
 

@@ -51,6 +51,8 @@ KEEPALIVE = {"keepalives": 1, "keepalives_idle": 10, "keepalives_interval": 5, "
              "tcp_user_timeout": 20000}
 
 MESSAGE_COLUMNS = "id, circle_id, thread_id, from_member, kind, proposal, reply, created_at"
+UNDEFINED_COLUMN = "42703"  # Postgres's code for a statement that names a column the table does not have
+SEALED_EXPIRY = "sealed_messages.expires_at"  # added to schema.sql after sealed_messages: see NeonDb.run_with
 
 
 def _tcp_connect(url: str):
@@ -138,7 +140,7 @@ class NeonDb:
 
     Over https "one transaction per `run`" holds for work that is one statement, or several writes with nothing
     read in between (they are sent together at the end). Work that reads an answer and then writes again is two
-    transactions there; the two places that do it, record_event and NeonCleanup.sweep, say what that costs."""
+    transactions there; the one place that does it, NeonCleanup.sweep, says what that costs."""
 
     def __init__(self, connect: Callable[[], object] | None = None, names: dict[str, str] | None = None,
                  retry_s: float = RETRY_S, busy_timeout_s: float = BUSY_TIMEOUT_S,
@@ -151,6 +153,7 @@ class NeonDb:
         self.offline: str | None = None  # why the last attempt failed; None once one succeeds
         self.retry_s, self.busy_timeout_s, self._monotonic = retry_s, busy_timeout_s, monotonic
         self._retry_at = 0.0  # while offline: no new attempt before this (monotonic seconds)
+        self.lacks: set[str] = set()  # "table.column" names schema.sql has and this database was found not to have
 
     def run(self, work: Callable):
         """Run `work(cursor)` in a transaction and return its result. Reconnects and retries once."""
@@ -190,6 +193,24 @@ class NeonDb:
                 if self._conn is not None:
                     self._conn.rollback()
                 raise
+
+    def run_with(self, column: str, work: Callable, before: Callable):
+        """`run(work)`, where `work` uses `column` ("table.column"), which schema.sql gained after some databases were
+        created. Against a database that does not have it yet (the box was updated before the owner ran
+        `python -m contexts.circle.schema --apply`), Postgres refuses the statement (SQLSTATE 42703) and nothing of
+        `work` is kept; `before`, the same work as it was before the column, runs instead. Found out once: from
+        then on this process goes straight to `before`, and one log line says so. A restart looks again."""
+        if column not in self.lacks:
+            try:
+                return self.run(work)
+            except Exception as e:  # psycopg's UndefinedColumn and NeonHttpsError both carry the code
+                if getattr(e, "sqlstate", None) != UNDEFINED_COLUMN:
+                    raise
+            self.lacks.add(column)
+            # never the exception's own text: nothing here names the database, and the column name is ours
+            log.warning("Circle database: the column %s is not there yet, so this box works without it. The owner runs"
+                        " `python -m contexts.circle.schema --apply` once; restart this box afterwards.", column)
+        return self.run(before)
 
     def close(self) -> None:
         with self._lock:
@@ -263,31 +284,41 @@ class NeonCircleStore:
     def record_event(self, circle_id: str, thread_id: str, proposal: Proposal, created_by: str) -> None:
         """The agreed event goes on the shared calendar once; the first record for a thread wins.
 
-        Over https this is two transactions, because `rowcount` is read between the event and its RSVPs: the
-        circle, member and event rows are committed first, the RSVP rows after. If the second request is lost,
-        the event stays without RSVP rows, and a repeat does not add them (the event is "already recorded").
-        The calendar then shows that event with nobody listed (upcoming_events returns it once, answer None).
-        Over tcp it is one transaction and this cannot happen."""
-        attendees = sorted({*proposal.invitees, created_by})
+        The event and its RSVP rows are ONE statement (RECORD_EVENT), so on either transport they are written
+        together or not at all: no request can be lost between them. Over https the circle and member rows before
+        it travel in the same request, which is one transaction, as over tcp.
+
+        A repeat for a thread that is already recorded changes nothing, with one exception: an event that has no
+        RSVP row at all gets this call's attendees. That is the half-written record the https transport could
+        leave before this was one statement (the event committed, the request with its RSVPs lost). It is safe
+        because nothing else writes RSVP rows and a complete record always has at least the proposer's, so "none"
+        only ever means "never written"; and it is idempotent, because once the rows are there the next repeat
+        finds them and adds nothing. The title, times and place of the first record are never touched."""
+        attendees = sorted({*proposal.invitees, created_by})  # agreement means every invitee answered free
 
         def work(cur):
             self.db.ensure(cur, circle_id, *attendees)
-            cur.execute(
-                "INSERT INTO events (id, circle_id, thread_id, title, starts_at, ends_at, location, created_by)"
-                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
-                (thread_id, circle_id, thread_id, proposal.title, proposal.start, proposal.end, proposal.location,
-                 created_by),
-            )
-            if cur.rowcount != 1:
-                return  # already recorded
-            for m in attendees:  # agreement means every invitee answered free
-                cur.execute(
-                    "INSERT INTO rsvps (event_id, member_id, answer) VALUES (%s, %s, 'free')"
-                    " ON CONFLICT (event_id, member_id) DO NOTHING",
-                    (thread_id, m),
-                )
+            cur.execute(RECORD_EVENT, (thread_id, circle_id, thread_id, proposal.title, proposal.start, proposal.end,
+                                       proposal.location, created_by, thread_id, circle_id, attendees))
 
         self.db.run(work)
+
+
+# The event, and an RSVP row per attendee for it, in one statement. `listed` is the event to list people for: the
+# one just inserted, or one recorded earlier that has nobody listed (see record_event). The two cannot both be
+# there: a statement does not see the rows it inserts itself, so `unlisted` never finds the new event.
+RECORD_EVENT = (
+    "WITH new_event AS ("
+    "INSERT INTO events (id, circle_id, thread_id, title, starts_at, ends_at, location, created_by)"
+    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING RETURNING id"
+    "), unlisted AS ("
+    "SELECT e.id FROM events e WHERE e.id = %s AND e.circle_id = %s"
+    " AND NOT EXISTS (SELECT 1 FROM rsvps r WHERE r.event_id = e.id)"
+    "), listed AS (SELECT id FROM new_event UNION SELECT id FROM unlisted)"
+    " INSERT INTO rsvps (event_id, member_id, answer)"
+    " SELECT listed.id, m.id, 'free' FROM listed, unnest(%s::text[]) AS m(id)"
+    " ON CONFLICT (event_id, member_id) DO NOTHING"
+)
 
 
 class NeonShares:
@@ -465,20 +496,29 @@ class NeonCleanup:
     - `agent_messages` this member sent more than `keep` ago (the conversation view reads back 14 days);
     - `shares` this member pushed more than `keep` ago (the receipt; the summary rows they fed are kept);
     - this member's `presence` row once it has been expired for longer than `keep`.
-    Agreed events, habit summaries, counters, scores and the League's weeks are history the Circle reads: kept."""
+    Agreed events, habit summaries, counters, scores and the League's weeks are history the Circle reads: kept.
 
-    def __init__(self, db: NeonDb, limit: int = 500) -> None:
+    With `sealed_keep` (the box has face share switched on; it is `circle.face_share_days`), also the sealed rows
+    this member ADDRESSED TO SOMEONE that are dead: past their own `expires_at`, or, where that is NULL (a revoke,
+    or a share written by a box from before the column), older than `sealed_keep`. A friend whose box never polls
+    would otherwise leave that ciphertext in the table for good. Public key records (addressed to nobody) are not
+    swept: a box takes its own key out when face share is switched off. Without `sealed_keep` the table is never
+    touched, so a box with face share off still reads and writes nothing there."""
+
+    def __init__(self, db: NeonDb, limit: int = 500, sealed_keep: timedelta | None = None) -> None:
         self.db = db
         self.limit = limit
+        self.sealed_keep = sealed_keep
 
     def sweep(self, circle_id: str, member_id: str, keep: timedelta) -> dict[str, int]:
-        """Rows removed per table. `keep` is measured on the database's clock.
+        """Rows removed per table. `keep` and `sealed_keep` are measured on the database's clock.
 
-        Over https each of the three deletes is its own transaction (`rowcount` is read after each). Nothing
-        depends on them happening together: a sweep that stops half-way has removed some old rows, the next
-        one removes the rest; only the count in the log line is lost."""
+        Over https each delete is its own transaction (`rowcount` is read after each). Nothing depends on them
+        happening together: a sweep that stops half-way has removed some old rows, the next one removes the
+        rest; only the count in the log line is lost. The sealed rows are a transaction of their own on tcp
+        too, so a database without `sealed_messages.expires_at` costs that one statement, not the others."""
         if keep <= timedelta(0):
-            return {}
+            return {}  # circle.keep_days: 0 means this box removes nothing, sealed rows included
 
         def work(cur):
             removed = {}
@@ -494,4 +534,26 @@ class NeonCleanup:
             removed["presence"] = cur.rowcount
             return removed
 
-        return self.db.run(work)
+        removed = self.db.run(work)
+        if self.sealed_keep is not None and self.sealed_keep > timedelta(0):
+            removed["sealed_messages"] = self._sweep_sealed(circle_id, member_id)
+        return removed
+
+    def _sweep_sealed(self, circle_id: str, member_id: str) -> int:
+        def delete(dead: str) -> Callable:
+            def work(cur):
+                cur.execute(
+                    "DELETE FROM sealed_messages WHERE id IN (SELECT id FROM sealed_messages WHERE circle_id = %s"
+                    f" AND from_member = %s AND to_member IS NOT NULL AND {dead} ORDER BY created_at LIMIT %s)",
+                    (circle_id, member_id, self.sealed_keep, self.limit),
+                )
+                return cur.rowcount
+
+            return work
+
+        # without the column every row is as a NULL one: only its age can say it is dead
+        return self.db.run_with(
+            SEALED_EXPIRY,
+            delete("(expires_at < now() OR (expires_at IS NULL AND created_at < now() - %s))"),
+            before=delete("created_at < now() - %s"),
+        )

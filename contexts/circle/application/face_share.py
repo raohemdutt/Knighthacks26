@@ -97,7 +97,9 @@ class SealedStore(Protocol):
 
 
 class InMemorySealedStore:
-    """Two boxes in one process (tests, one laptop). Same behaviour as the Neon table."""
+    """Two boxes in one process (tests, one laptop). Same behaviour as the Neon table, with one difference: it has
+    no clock, so a share past its expiry is still handed out (the Neon inbox leaves it out). Either way the
+    receiving box checks the signed header's own expiry before it offers or accepts anything."""
 
     def __init__(self) -> None:
         self.rows: list[SealedMessage] = []

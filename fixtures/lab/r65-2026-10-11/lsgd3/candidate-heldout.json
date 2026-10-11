@@ -1,0 +1,14 @@
+{
+  "package": "atlas-tool-calling-r65-lsgd3 (Q4_K_M, base mmproj; lab package build on pod D, 60 s)",
+  "adapter": "~/adapters/r65-lsgd3-rank1/adapter on pod D",
+  "server": "llama-server (E29's HIP build) on pod D, jetson/atlas-llm.sh flags plus --top-k 1 (greedy), reasoning budget 0",
+  "scorer": "python -m contexts.agent.eval --runtime llama --base-url http://<pod D tailnet IP>:8091, from the workstation over Tailscale",
+  "split_sha256": "59227ead6c24d0b7b525ba99c6e2c06f1f7178d2c6f20bd8d556bc16d2c3de39",
+  "held_out": 58,
+  "scored": 24,
+  "passed": 24,
+  "outside_split": 24,
+  "overall": "48/48",
+  "l16_package_candidate": "24/24 (lab/L5_RESULT.md, Still open)",
+  "note": "the gate's candidate arm only, matched to the split with lab/eval_gate.py::_match; no current or teacher arm, no decision row"
+}

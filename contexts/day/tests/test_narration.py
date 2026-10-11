@@ -3,6 +3,7 @@ fallbacks, the cache and the rate limit, replay, the API and the push."""
 
 import asyncio
 import json
+import threading
 import time as clocktime
 from datetime import date, datetime, timedelta
 
@@ -308,16 +309,17 @@ def test_the_model_is_told_little_and_its_reply_is_bounded():
 
 
 class StubRuntime:
-    """A model that rewrites the draft with `rewrite(draft)`, after `delay` seconds, or raises."""
+    """A model that rewrites the draft with `rewrite(draft)`, or raises. With `gate`, it answers only once the test
+    sets the gate (a model that is slow for as long as the test says, not for a number of seconds)."""
 
-    def __init__(self, rewrite=None, delay: float = 0.0, error: Exception | None = None) -> None:
-        self.rewrite, self.delay, self.error = rewrite or good, delay, error
+    def __init__(self, rewrite=None, gate: threading.Event | None = None, error: Exception | None = None) -> None:
+        self.rewrite, self.gate, self.error = rewrite or good, gate, error
         self.calls: list[dict] = []
 
     def chat(self, messages, tools=None, priority="chat", json_schema=None, on_text=None) -> ChatResult:
         self.calls.append({"messages": messages, "priority": priority, "json_schema": json_schema, "tools": tools, "on_text": on_text})
-        if self.delay:
-            clocktime.sleep(self.delay)
+        if self.gate is not None:
+            assert self.gate.wait(30), "the test never opened the gate"
         if self.error:
             raise self.error
         draft = messages[-1].content.split("\nDRAFT: ", 1)[1]
@@ -411,24 +413,27 @@ def test_an_invented_fact_a_timeout_and_a_runtime_error_all_fall_back_to_the_tem
     assert morning.engine == "template" and "quiz" not in morning.spoken and morning.spoken.startswith("Morning. You got")
     assert loop.narrator.stats["rejected"] == 1 and "half past four" in loop.narrator.stats["last_problem"]
 
-    slow = StubRuntime(delay=1.5)
+    slow = StubRuntime(gate=threading.Event())
     loop, bus, seen = build(items, places, tmp_path / "b", runtime=slow, narration={"narration_timeout_s": 0.05})
     assert loop.narrator.config.timeout_s == 0.05
 
-    async def timed() -> float:
-        started = clocktime.monotonic()
-        await bus.publish_all(loop.planner.plan(at(8, 10)))
-        while not by_moment(seen, "morning"):
+    async def until(ready, what: str) -> None:
+        deadline = clocktime.monotonic() + 30.0  # only turns a bug into a failure instead of a hang
+        while not ready():
+            assert clocktime.monotonic() < deadline, what
             await asyncio.sleep(0.01)
-        waited = clocktime.monotonic() - started
+
+    async def timed() -> None:
+        await bus.publish_all(loop.planner.plan(at(8, 10)))
+        await until(lambda: by_moment(seen, "morning"), "no morning narration")  # the template, while the model is still busy
         assert loop.narrator.inflight  # the runtime is still busy: the one slot stays taken
         await settle()
-        await asyncio.sleep(1.6)  # the late reply lands
-        return waited
+        slow.gate.set()  # the late reply lands now
+        await until(lambda: not loop.narrator.inflight, "the late reply never freed the slot")
 
-    waited = run(timed())
+    run(timed())
     (morning,) = by_moment(seen, "morning")
-    assert morning.engine == "template" and waited < 1.2 and loop.narrator.stats["timeouts"] == 1  # well under the model's 1.5 s, with room for a slow CI box
+    assert morning.engine == "template" and loop.narrator.stats["timeouts"] == 1
     assert not loop.narrator.inflight and loop.narrator.cache  # the late, grounded reply is kept for the next time these facts come up
 
     loop, bus, seen = build(items, places, tmp_path / "c", runtime=StubRuntime(error=RuntimeError("llama-server is down")))
@@ -564,6 +569,7 @@ def test_an_approval_card_is_asked_in_plain_words(items, places, tmp_path):  # n
                                             reason="Start a League dare: No energy drinks for 3 days, inviting Maya", expires_at=at(8, 16)))
         await bus.publish(ApprovalRequested(ts=at(8, 12), action_id="msg", kind="send_message", target="dom", reason="Package at the door",
                                             expires_at=at(8, 17)))
+        await bus.publish_all(loop.tick(at(8, 12)))  # the dare's ask waited for the arbiter's gap after the plan's narration
         await settle()
         return plan, card
 

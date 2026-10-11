@@ -189,6 +189,7 @@ gave a cited answer that still began "I didn't see that."; "while I was out" gav
 | Laptop, seeded | `python -m contexts.demo circle --data-dir /tmp/atlas-demo` (includes the twelve earlier days for Today's Plan), then the command it prints, with `ATLAS_WEB_DIR=web/out` after `cd web && npm run build` |
 | Laptop, with an evening review | `python -m contexts.demo seed --history --data-dir /tmp/atlas-night` (the scripted time, Sun 9:30 AM; `--history` adds the earlier days on Today's Plan's date strip), then `ATLAS_DATA_DIR=/tmp/atlas-night ATLAS_MEMORY_FIXTURE= ATLAS_CONNECTORS=0 python -m contexts.gateway` |
 | The box, T-15 | `python -m contexts.demo preflight --gateway http://<jetson>:8000 --reset` |
+| Laptop, an optional event suggested and said yes to | `python -m contexts.demo optional --data-dir /tmp/atlas-optional` (an invented day; it prints each line Atlas says), then the command it prints (use case 3a) |
 | Live features without a camera | `python -m contexts.demo fake perception --gateway http://<box>:8000 --realtime` (a throwaway box only) |
 
 The phone app's tab bar is **Ask Atlas, Calendar, Today's Plan, More**. **More** lists: Everyday (Ask Atlas, Calendar,
@@ -326,6 +327,150 @@ evening review: a closed day in the log (the scripted-time seed, or the box afte
 | --- | --- | --- | --- |
 | ✅ `contexts/day/tests/test_day.py`, `test_narration.py`, `test_choose.py`; watch sleep `contexts/habits/tests/test_watch_sleep.py`, `contexts/connectors/tests/test_health.py` (synthetic `fixtures/health/freereps.yaml`) | ✅ run A: plan, narration, "Brief me", leave-by route (41 points, 680 m), re-plan, card approved by the guard, plan committed. Evening review + Waste Watch clause PASS on the scripted-time seed (port 8955). Simulated with: the seeded night; template engine. `final/03-now-500.png`, `03-now-route-500.png`, `16-approvals-500.png`, `03-evening-now-500.png` | ⚠️ run B: plan (Win, 3 stars), model-written brief 2.7 s, route PASS; no evening review yet; re-plan not run (read-only) | ❌ the walk has not been walked against "leave by"; sleep from a watch is not connected (Now says "watch: no night measured") |
 
+### 3a. An optional event Atlas suggests, and the reminder when a planned block starts
+
+**Shows:** Atlas brings up an optional "Near you" event once, when it fits, and says who is going.
+"Add it" never changes the plan by itself: it raises a new plan with one approval card, and only
+once that card is approved is the event a block of the day, with its walk, its leave-by and "Time to
+go". On the same day Atlas says when a planned block starts.
+
+**Setup:** `python -m contexts.demo optional --data-dir /tmp/atlas-optional` (an invented day,
+everything in it labelled demo). It prints the lines under **Expected** and, on stderr, the command
+that runs the app on that directory. For the card on a live box instead: a plan for today, and an
+optional event 90 to 30 minutes ahead that fits and names somebody, between 8 AM and 8 PM, with no
+approval card open.
+
+**Steps** (the scene plays them in event time; on a live box they are these taps)
+1. Morning, **Approvals**: **Approve** the day's plan. Block reminders are for a plan that was approved.
+2. When a planned block starts Atlas says so (a "Next up" toast; spoken with "speak up on its own").
+3. 90 to 30 minutes before the event the card "NEAR YOU · Atlas suggests" opens over whatever screen
+   is up, and the same sentence is spoken. Tap **Add it**, or say "yes" / "add it" within 30 seconds
+   of the spoken line.
+4. The card now lists what would move and one button, **Review and approve** → **Approvals** →
+   **Approve**. Voice never approves.
+5. **Calendar** (`/now/`): the event is a block of the day. Ten minutes before the time to leave
+   Atlas says "Time to go".
+
+**Not today** at step 3 instead: the card goes away, the box records the no, and Atlas never
+suggests that event again.
+
+**Expected** (the scene's output; the same lines on every run for the same day, whatever the directory)
+
+```
+An invented Monday (2026-10-12), through the real app. Nothing here happened to anybody.
+
+   8:05 AM  Atlas  Morning. Today looks like this: breakfast first, then a long study block before COP4533 lecture at twenty to eleven. Leave by half past ten for that; it's an eight-minute walk. Project Milestone 1 is due tomorrow, and this plan covers the five hours it still needs. Want me to keep this as today's plan?
+   8:06 AM  You    Approve (demo, approved locally: no calendar connector on this box, nothing is written)
+   1:01 PM  Atlas  It's one o'clock: your study block on Project Milestone 1, ninety minutes. You're at the desk already.
+   4:00 PM  Atlas  Riley, Sam and Alex are having dinner at '63 South at quarter past five. It's a sixteen-minute walk and it fits before your study block. Want me to add it?
+   4:02 PM  You    Add it (yes to Friends' dinner)
+   4:02 PM  Plan   would change: Eat at Kitchen at 6:30 PM (dropped)
+   4:02 PM  Plan   would change: Study at Desk at 7:01 PM (dropped)
+   4:02 PM  Plan   would change: Rest at Desk at 8:31 PM (dropped)
+   4:02 PM  Plan   would change: Study at Desk at 9:16 PM (dropped)
+   4:02 PM  Atlas  Okay, I've worked Friends' dinner in: first up is Friends' dinner at quarter past five. Leave by five to five for that; it's a sixteen-minute walk. Want me to switch to that?
+   4:03 PM  You    Approve (demo, approved locally: no calendar connector on this box, nothing is written)
+   4:03 PM  Plan   Friends' dinner, 5:15 PM to 6:15 PM at '63 South, is a block of the day
+   4:50 PM  Atlas  Time to go. Friends' dinner starts at quarter past five at '63 South, a sixteen-minute walk from here; leave in five minutes.
+
+Suggested once, added only after its card was approved, and told when to leave. Every line Atlas says above is the app's own.
+```
+
+- With the app running on that directory: `GET /api/day/plan?day=2026-10-12` has the block
+  `Friends' dinner` with `fixed: true` and `origin: "optional"`; `GET /api/day/brief` has
+  `latest.suggest` and `latest.start`; `GET /api/day/optional` (on the scene's own day) says `accepted`.
+- The block-start line is the afternoon study block's. After the yes is approved the next block of
+  the day is the dinner itself, and an accepted event with a walk is announced by "Time to go", not by
+  a block-start line.
+- Nothing is written anywhere: both approvals are "keep this as today's plan" on a box with no
+  calendar connector.
+
+**What can go wrong**
+- No suggestion on a live box: `GET /api/day/optional` says why in `suggest_held` for each event
+  ("not within the suggestion window", "nobody is named", "does not fit: ...", "an approval card is
+  open", "outside waking hours", "already suggested"). Fallback: play the scene and read its lines.
+- The yes is refused (HTTP 409, the reason in words): there is no plan for today yet (make one on
+  Now first), or the event no longer fits.
+- The card expired: every approval card lasts 5 minutes. The event is still on offer: tap **Add it**
+  again.
+- A yes less than 90 seconds after the suggestion: the card on screen is there at once, but the
+  spoken "Okay, I've worked it in" waits for the arbiter's gap between two unasked lines. The scene
+  answers after two minutes for that reason.
+- With a calendar connector the same card writes real events. Then it is the owner's tap: the scene
+  stops and says so, and the walkthrough denies the card.
+- The box's cameras are at home: after "Time to go" Atlas cannot see the walk, so the scene ends at
+  the time to leave.
+
+**Verification**
+
+| tests | seeded app | Jetson | real hardware |
+| --- | --- | --- | --- |
+| Pass: `contexts/demo/tests/test_optional_demo.py` (the lines above, the same for two directories, a gateway on the directory, a restart saying nothing again), `contexts/day/tests/test_optional_events.py`, `test_optional_suggest.py`, `tests/test_demo_walkthrough.py` | Pass, on a test gateway on the scene's own directory: `GET /api/day/plan` has the block (`fixed`, `origin: "optional"`, committed), `/api/day/now` has it as the next event with a 16 min walk and leave-by 4:59 PM, the brief has `latest.start` and `latest.suggest`, `check-api.mjs` all passed, the walkthrough's day and coach steps 16 PASS, 0 FAIL, 5 SKIP. On the seeded night (`seed --now`, today's plan made first) the whole walkthrough with `--approve-local` said yes to Board game night, the guard approved its card and the block was in the plan: 100 PASS, 1 FAIL (the known "while I was out" defect), 20 SKIP. The card read in Night and Day at 500x1000 and 1440x900. Simulated with: the invented day; template engine; fake model | Not run | Not run: nobody has heard the suggestion or answered it by voice; the card was read on screen in Night and Day |
+
+### 3b. The check-in, and the look Atlas remembers
+
+**Shows:** Atlas speaks up when several signals agree (a short night, resting heart rate up, a look
+that has held for twenty minutes, a long sitting, no drink seen), and calls back to an earlier time
+you looked like this: when it was, what was going on, and what helped then. It is stage one of
+"learning from it": remembered and said, in code, with no model. The memory is words and numbers on
+this box, never a picture.
+
+**Setup:** the seeded night, then the check-in story on top of it (all invented, and labelled so):
+
+    python -m contexts.demo circle --data-dir <dir>
+    python -m contexts.demo checkin --data-dir <dir> --onto
+
+The second command prints the sentence, the chips and the earlier day it calls back to. With no
+`--end` it picks the first afternoon time the night's own plan leaves clear (the rule stays quiet in
+a class and before a time to leave). On an empty directory, `python -m contexts.demo checkin
+--data-dir <empty dir>` shows the same afternoon alone. The demo owner is "Hemdutt", marked **Demo
+data**: scanned, expressions on.
+
+**Steps**
+1. Open **Now** (`/now/`). The check-in card is at the top: "Check-in · Atlas spoke up".
+2. Read the sentence, then tap the last chip, **Looked tired · like <day>**.
+3. Open **People** (`/people/`), the owner's card, under "Read my expressions": **Looks Atlas
+   remembers**.
+4. Ask: "When did I last look this tired?", "Why do you think I'm tired?", "What helped last time?"
+5. (Not in front of judges unless you mean it.) **Forget** on one row, or **Forget all**.
+
+**Expected** (seeded Sun 2026-10-11; the weekday is whatever day three days back really was)
+- Said aloud: "You slept about five hours, your resting heart rate is up, and you've looked strained
+  for the last twenty minutes. That's the same look you had Thursday afternoon, when you'd gone two
+  hours without moving. Ten minutes away from the desk helped then. You've been at the desk for an
+  hour and three quarters straight, and I haven't seen you pick up a drink since two o'clock. Take
+  ten minutes outside and drink some water." The advice that was followed by the look easing last
+  time is said first. On screen the paragraph also keeps "The last 3 times a day looked like this,
+  your study blocks fell apart by 4 PM"; aloud it is one look back, not two.
+- The chip opens two lines: "Thursday afternoon, around 2:45 PM. At the desk for two hours." and
+  "Ten minutes away from the desk helped: the look eased within half an hour."
+- People lists the most recent five: this afternoon ("Too soon to say how it went."), Thursday
+  afternoon, and the two strained afternoons of the demo people's week ("At the desk for fifteen
+  minutes." / "I couldn't see how it went after.": Atlas says what it did not see).
+- The answers: "The last time you looked this tired was Thursday afternoon, when you'd gone two hours
+  without moving."; "I can't know how you feel, only what I saw: your face has looked tired for a
+  while, you'd been at the desk for about an hour and three quarters, and I hadn't seen you pick up a
+  drink in about ninety minutes. That's the same look you had Thursday afternoon, …"; "Last time,
+  Thursday afternoon, ten minutes away from the desk helped: the look eased within half an hour."
+
+**What can go wrong**
+- No check-in: the rule is quiet outside 08:00 to 20:00, in a fixed block and before a time to
+  leave. The command says which ("held: during COP4533 study session"); leave `--end` out with
+  `--onto` and a clear time is picked.
+- "Check-in · in 10 h" on the card: the story was seeded to end later today than it is now. Seed it
+  with `--end` at a time that has passed, or say so.
+- No chip: nothing earlier was similar enough, or the remembered look was forgotten. That is the
+  rule ("never a forced callback"), not a fault.
+- The word on the chip is "tired" (or "tense"), the People screen's own two words for how a face
+  looked. The spoken check-in never says either: it says "looked strained" and "the same look".
+- Switching "Read my expressions" off clears every remembered look. Do not flip it mid-demo.
+
+**Verification**
+
+| tests | seeded app | Jetson | real hardware |
+| --- | --- | --- | --- |
+| Pass: `contexts/day/tests/test_looks.py` (the rule, the sentences, replay, forget, and that nothing of it reaches a push, a Circle share, an export or the info log), `contexts/demo/tests/test_checkin_demo.py` (alone and `--onto` the night, the night's closed days unchanged), `contexts/agent/tests/test_look_memory.py`, `tests/test_demo_walkthrough.py` | Pass, Sun 2026-10-11 on a test gateway on the circle seed with the check-in added `--onto`: the walkthrough's two new steps PASS ("the looks Atlas remembers", "the check-in calls back to an earlier look, on a real earlier day": Thursday 2026-10-08), 95 PASS, 0 FAIL, 33 SKIP read-only; the card with the chip opened and the People list read at 500 px and 1440 px in Night and Day. Simulated with: invented looks, nights and desk events; template engine; fake model | Not run | Not run: no camera or face model has read a real face into it, and nobody has heard the line said |
+
 ---
 
 ## 4. Study coach
@@ -386,7 +531,7 @@ story's own three days behind today. No model and no camera are needed.
    Project Milestone1 done".
 2. Tap a block in **Your plan** (say **Dinner**). The map lights its walk; under it: "1 min walk ·
    leave by 6:28 PM". The block opens **− 30 min +**, **Earlier**, **Later**, **Remove**, **Route**,
-   **Why 1 min?**.
+   and "1 min walk" with its source chip (**OpenStreetMap**, or **set time** for a walk inside a building).
 3. In **Tell Atlas what to change…** type `move dinner to 6:30` (or tap the microphone and say it).
    It answers in one line and the block that moved pulses. Try `drop the gym`: it changes nothing,
    says "I heard “drop”, but not which block" and offers two edits as buttons.
@@ -405,8 +550,12 @@ story's own three days behind today. No model and no camera are needed.
 7. Tap **Mon** (tomorrow): "Nothing planned yet", with fixes to start from and the "Near you" events
    offered in the gap ("+ Add Friends' dinner · 5:15 PM · '63 South · 16 min walk"). Open **The next
    few days**.
-8. Under **Due soon** tap **Why?** on the deadline: "About 5 h: Atlas's starting guess for a project,
-   not measured. Change it if you know better." and the − / + that changes it.
+8. Under **Due soon** each number has a small chip naming its source: "Due Tuesday 11:59 PM **Canvas** ·
+   about 5 h of work **Atlas's guess**". Tap a chip: "About 5 h: Atlas's starting guess for a project,
+   not measured. Change it if you know better." and the − / + that changes it (the chip then reads
+   **your estimate**). In **Details**, sleep, meals, walking and the score carry theirs (**your watch**,
+   **desk camera**, **OpenStreetMap**, **this plan**). The labels come from `sources` in
+   `POST /api/dayrun/explain`; there is no "Why?" button any more.
 
 **Presenter links (the fallback; the scripted day is reached only this way, never from a button)**
 
@@ -459,7 +608,10 @@ three (Hemdutt on this box, Maya, Dominick). The Jetson has no Circle configured
 
 **Steps**
 1. **More → Circle** (`/circle/`). Tabs: **People**, **Plans (1)**, **League**, **Sharing**.
-2. People: read the three cards; tap **Route to Maya** or **On the map**.
+2. People: read the three cards; tap **Route to Maya**. The walk opens inside her card on the same
+   campus map Today's Plan and the route sheets use (the same `GET /api/places/route`, the same line,
+   pins and minutes badge), with "there by", minutes on foot and metres under it. **Hide the route**
+   closes it. It is only offered while she is sharing a place that has not run out.
 3. **Plans** → under "Being worked out", "Gym" → **Read the conversation ›**. Then **‹ All plans** →
    "Settled conversations (2)" → "COP4533 exam review" → **Read the conversation ›**
    (`/circle/?tab=plans&thread=demo-circle-study`).
@@ -508,8 +660,31 @@ people), then scores the throw against par.
 plan (`config/rooms/dorm.yaml`) calibrated for each camera (four floor points); for a face-started
 round, recognition on and the player enrolled.
 
+**The two techniques, on screen (no camera needed for the first)**
+- **Pathfinding.** The card **How the route was found** (`/play/`) draws the planner's own 10 cm floor grid:
+  hatched cells are blocked (furniture and walls, grown by a body's width), shaded cells are the ones the
+  A* search looked at, played back in the order it looked at them, then the route. One line says it:
+  "Route found with A* on a 10 cm grid: 3.1 m, around the chair." with "The search looked at 203 of 869
+  open cells". `/play/?motion=reduce` shows it finished, nothing plays. The data is
+  `GET /api/play/room-route?item=can&search=1` (`search`, `around`, `obstacles`).
+- **Re-routing.** During a round, when something moves into the way: "Re-routed around a person: 2.7 m
+  now (it was 1.6 m)." with the old way dashed. After the round **Show the last round's plans** steps
+  through them (**First plan**, **Re-plan 1**); `/play/?replay=1` plays them, `/play/?plan=2` opens the
+  re-plan. The data is `GET /api/play/route-search`. It holds the last round planned since the box
+  started (routes are planned live, never on replay), so after a restart run the scene once.
+- **Face detection.** The chip under the title follows `GET /api/play/state`: "Looking for a player" →
+  "Face held 1.2 s" (the ring fills to 2 s) → "Round started · 1 player (1 face)" → "No face for 7 s:
+  ending soon". Counts only, never a picture. **How this round works** opens three lines for a judge.
+- **Round 1 against the latest.** Under "Are you getting better?", once two rounds were played in one
+  sitting: "Round 2 was 1.0 s faster than round 1, with the same score." With fewer it is not shown.
+- **Without a camera:** `python -m contexts.demo fake perception --gateway http://<box>:<port> --realtime`
+  with `/play/` open: 62 s; the face is held at 37 s, the round starts at 39 s, the friend steps in and
+  the route is planned again at 40 s, the can lands at 45 s. Run it twice within two minutes for the
+  round comparison.
+
 **Steps**
-1. **More → Sort It** (`/play/`): the room in 3D, **Room** / **Top** views.
+1. **More → Sort It** (`/play/`): the face chip, **How the route was found**, then the room in 3D
+   (**Room** / **Top** views).
 2. Tap an item chip: **Can**, **Bottle**, **Paper**, **Cardboard**, **Cup**, **Napkin**, **Chip bag**,
    **Food container**, **Banana**, **Wine glass**.
 3. Hold a can up to the bin camera for two seconds, walk to the bin, drop it in.
@@ -581,9 +756,9 @@ behind every wrong throw.
 
 ## 9. Identity
 
-**Shows:** recognition is off until you switch it on; you enrol your own face by a phone scan or
-photos; expressions for the coach and an anonymous room mood are separate opt-ins; "forget" removes
-you.
+**Shows:** recognition is off until you switch it on; you enrol your own face by a phone scan (the
+scan comes first: photos alone do not enrol, they add to a scan); expressions for the coach are a
+separate opt-in that waits for the scan; the anonymous room mood is retired; "forget" removes you.
 
 **Setup:** the face recognition model installed on the box. **It is not installed on the Jetson or
 the laptop today**, so every step below is unverified on a live screen.
@@ -593,9 +768,11 @@ the laptop today**, so every step below is unverified on a live screen.
 2. "Recognise enrolled people" → **Switch on** → **I understand, switch it on**.
 3. "Teach Atlas your face": type the **Name**, tick the consent box, then **Scan my face** (the
    phone's front camera; follow "Look straight", "Turn a little left", "A little right", "Chin slightly
-   up") or under **Other ways**: **Choose or take photos**, or **Start at the box**.
-4. "Read my expressions" (per person, for the coach).
-5. "Room mood from everyone (anonymous)" → **Switch on…** → **Confirm the room mood**.
+   up") or, under "Other ways", **Use the box's camera**. **Upload photos** alone does not enrol: the person shows as "Not
+   scanned yet" until a scan of them completes, and the photos then add to it.
+4. "Read my expressions" (per person, for the coach; only after that person's scan).
+5. "Room mood from everyone": shown "Off" / "Not available", with one sentence saying why. There is
+   nothing to switch on.
 6. "Enrolled" → the person → **Forget for good**.
 
 **Expected**
@@ -607,7 +784,8 @@ the laptop today**, so every step below is unverified on a live screen.
 **What can go wrong**
 - The model is missing: nothing can be shown live. Fallback: say what the screen says and show the
   test names; do not claim it.
-- "The camera was not allowed": the phone needs https (`ATLAS_HTTPS=1`) for the scan; use photos.
+- "The camera was not allowed": the phone needs https (`ATLAS_HTTPS=1`) for the scan; otherwise use
+  **Use the box's camera**. Photos alone leave the person "Not scanned yet".
 - "This face is already enrolled as someone else here, so nothing was saved."
 
 **Verification**
@@ -620,28 +798,38 @@ the laptop today**, so every step below is unverified on a live screen.
 
 ## 10. Privacy
 
-**Shows:** faces are blurred before anything is stored, the box proves what left it, and one screen
-deletes what it keeps.
+**Shows:** saved pictures are always blurred, nothing with a face leaves the box, only your own
+signed-in screen shows you, the box proves what left it, and one screen deletes what it keeps.
 
 **Setup:** the Jetson (the firewall only runs there).
 
 **Steps**
-1. **More → Privacy** (`/privacy/`). "Pictures": the **Blur faces** switch is on.
-2. **More → Timeline** → open a frame with a person in it.
-3. Privacy → "The internet": **Offline mode**. (Or `make offline` on the box.)
-4. "What left the box".
-5. "Delete": pick **Everything**, **Pictures only** or **Memory only** → **Delete…** → read the
+1. **More → Privacy** (`/privacy/`). "Faces" has three rows: **Your live view** (the switch "Show
+   faces on my own signed-in screen"), **Saved pictures** ("Always") and **Anything that leaves this
+   box** ("Always"). There is no switch for blurring saved pictures.
+2. **More → Timeline** → open a frame with a person in it. Then **Live** on the signed-in phone, and
+   the same address in a private window that is not signed in.
+3. Privacy → "What has left this box": **Offline mode**. (Or `make offline` on the box.)
+4. The list under it: what each group sent and what was blocked.
+5. "Erase": pick **Everything**, **Pictures only** or **Memory only** → **Delete…** → read the
    warning → **Cancel** (or **Yes, delete for good** on a throwaway box).
 
 **Expected**
-- "Faces are blurred on the box before a picture is written to disk."
-- A frame where the face is a blur.
+- Under "Saved pictures": "Always blurred before they are saved." Under "Anything that leaves this
+  box": "Always blurred." Under "Your live view": "Show faces on my own signed-in screen. Everyone
+  else sees the live view blurred."
+- A saved frame where the face is a blur. Live on the signed-in phone shows you; the window that is
+  not signed in shows the blur.
 - On the Jetson, the list of what each group sent and what was blocked (the API says: enforced, 13
   allowed destinations, 13 blocked). On a laptop: "No firewall on this box".
 - The wipe warning: "This will permanently delete all pictures, the memory, exports and the event
   log. The confirmation is valid for two minutes."
 
 **What can go wrong**
+- "Saved pictures" shows a warning and the button **Blur saved pictures from now on**: this box was
+  switched to saving unblurred pictures (`blur_faces` off; the walkthrough FAILS on it). Press the
+  button, check `GET /vault/policy` says `blur_faces: true`, and run `jetson/reblur_stored.py` for
+  what it already saved (`jetson/README.md`, section 13).
 - Do not press **Yes, delete for good** on the demo box. Show the warning and cancel.
 - Offline mode pauses connectors, the Circle and learning; switch it back before the next beat.
 

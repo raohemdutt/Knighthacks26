@@ -12,7 +12,7 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
  * is 2 units wide. Each movable part is its own group, but inside a group everything that shares a material is
  * merged into one mesh, so the whole device is about thirty draw calls. Nested groups follow the way the parts
  * stack: the module rises with the carrier board, the heatsink with the module, the fan with the heatsink, the
- * webcam rides with the board its ribbon plugs into, and the speaker driver comes out of the base it is fixed to.
+ * webcam lifts with the lid it sits on, and the speaker driver comes out of the base it is fixed to.
  *
  * Nothing here knows about the camera, the lights or the page. The scene owns those.
  */
@@ -25,13 +25,13 @@ export interface DevicePart {
 
 export type PartId = "base" | "lid" | "webcam" | "speaker" | "board" | "module" | "heatsink" | "fan" | "ssd";
 
-/** What the callouts say, in the order they come on as the device opens. */
+/** What the callouts say, in the order they come on as the device opens (their thresholds rise in this order). */
 export const DEVICE_PARTS: (DevicePart & { id: PartId })[] = [
-  { id: "webcam", name: "One eye on the desk", blurb: "A small webcam on the top. It watches the desk, not the room, and nothing it sees leaves the box." },
   { id: "lid", name: "The lid", blurb: "Lift it and the whole machine is there. The mark is pressed into the white, and a thin line of light along the front edge says Atlas is listening." },
+  { id: "webcam", name: "One eye on the desk", blurb: "A small webcam on the top. It watches the desk, not the room, and nothing it sees leaves the box." },
   { id: "base", name: "The base", blurb: "One white block, 18 by 11 centimetres, no screen and nothing to tap. It sits on the desk and listens." },
-  { id: "speaker", name: "Speaker", blurb: "Atlas talks back. One full-range driver behind the grille, loud enough for a room and quiet enough for a desk." },
   { id: "board", name: "Carrier board", blurb: "Power, four USB ports, Ethernet and HDMI, for the day the box needs a screen. It never has so far." },
+  { id: "speaker", name: "Speaker", blurb: "Atlas talks back. One full-range driver behind the grille, loud enough for a room and quiet enough for a desk." },
   { id: "module", name: "Jetson Orin Nano", blurb: "Runs the eyes and the model, on the desk, with nothing leaving the box." },
   { id: "ssd", name: "A year of memory", blurb: "A terabyte of solid state, stored where you are and nowhere else. Ask what happened; it is all here." },
   { id: "heatsink", name: "Heatsink and fan", blurb: "A black finned block and a fan that turns slowly in the day and barely at all at night. You will not hear it think." },
@@ -53,9 +53,11 @@ const BOARD_Y = 0.11; // the carrier board's middle; it is 0.02 thick
 const MODULE = { x: -0.2, z: -0.12, w: 0.87, d: 0.56 }; // the Jetson module's footprint on the carrier
 const SSD = { x: 0.62, z: -0.05, w: 0.26, l: 0.9 };
 const WEBCAM = { x: 0.35, z: 0.3, w: 0.67, h: 0.11, d: 0.22 }; // the module on the top, to the right and front
-const CSI = new THREE.Vector3(WEBCAM.x, BOARD_Y + 0.05, 0.42); // where the webcam's ribbon plugs into the carrier
+const CSI = new THREE.Vector3(WEBCAM.x, BOARD_Y + 0.05, 0.42); // the webcam's connector on the carrier
 const SPEAKER = { y: 0.42, r: 0.23 }; // the driver, behind the grille on the front
 const GRILLE = { w: 1.5, h: 0.52 };
+// The lid (and the webcam on it) is built in device space and then moved onto this point, so a tilt turns it about its centre.
+const LID_PIVOT = new THREE.Vector3(0, TRAY_H + LID_H / 2, 0);
 
 /** Where a callout points, in the part's own frame, and when it comes on (eased explode factor). */
 export interface Anchor {
@@ -66,18 +68,19 @@ export interface Anchor {
   side: "left" | "right";
 }
 
+// The webcam's group sits inside the lid's, whose origin is LID_PIVOT, so its anchor is given from there.
 export const ANCHORS: Anchor[] = [
-  { part: "webcam", group: "webcam", local: new THREE.Vector3(WEBCAM.x + WEBCAM.w / 2, H + WEBCAM.h / 2, WEBCAM.z), threshold: 0.1, side: "right" },
-  { part: "lid", group: "lid", local: new THREE.Vector3(0.62, LID_H / 2, -0.3), threshold: 0.25, side: "right" },
-  { part: "base", group: "base", local: new THREE.Vector3(-W / 2 + 0.04, 0.55, 0.2), threshold: 0.3, side: "left" },
-  { part: "speaker", group: "speaker", local: new THREE.Vector3(SPEAKER.r, SPEAKER.y, D / 2 - 0.05), threshold: 0.4, side: "right" },
+  { part: "lid", group: "lid", local: new THREE.Vector3(-0.98, 0, 0.3), threshold: 0.12, side: "left" },
+  { part: "webcam", group: "webcam", local: new THREE.Vector3(WEBCAM.x + WEBCAM.w / 2, H + WEBCAM.h / 2, WEBCAM.z).sub(LID_PIVOT), threshold: 0.3, side: "right" },
+  { part: "base", group: "base", local: new THREE.Vector3(-W / 2 + 0.02, 0.3, 0.3), threshold: 0.36, side: "left" },
   { part: "board", group: "board", local: new THREE.Vector3(-0.86, BOARD_Y, 0.25), threshold: 0.45, side: "left" },
-  { part: "module", group: "module", local: new THREE.Vector3(MODULE.x - MODULE.w / 2, 0.19, MODULE.z + 0.1), threshold: 0.55, side: "left" },
-  { part: "ssd", group: "ssd", local: new THREE.Vector3(SSD.x + SSD.w / 2, 0.17, SSD.z + 0.1), threshold: 0.62, side: "right" },
-  { part: "heatsink", group: "heatsink", local: new THREE.Vector3(MODULE.x - 0.42, 0.4, MODULE.z), threshold: 0.72, side: "left" },
+  { part: "speaker", group: "speaker", local: new THREE.Vector3(SPEAKER.r, SPEAKER.y, D / 2 - 0.05), threshold: 0.55, side: "right" },
+  { part: "module", group: "module", local: new THREE.Vector3(MODULE.x - MODULE.w / 2, 0.2, MODULE.z + 0.1), threshold: 0.62, side: "left" },
+  { part: "ssd", group: "ssd", local: new THREE.Vector3(SSD.x + SSD.w / 2, 0.17, SSD.z + 0.1), threshold: 0.7, side: "right" },
+  { part: "heatsink", group: "heatsink", local: new THREE.Vector3(MODULE.x - 0.42, 0.37, MODULE.z), threshold: 0.8, side: "left" },
 ];
 
-/** How far each part travels when the device is fully apart, and over which stretch of the eased factor. */
+/** How far each part travels (from its parent) when the device is fully apart, and over which stretch of the factor. */
 export interface Travel {
   from: number;
   to: number;
@@ -85,21 +88,27 @@ export interface Travel {
   tilt?: THREE.Euler;
 }
 
+/**
+ * A classic exploded view: the base stays on the desk and everything else lifts straight up out of it in the order
+ * it would come apart on a bench. The lid goes first and highest with the webcam on it, then the carrier board
+ * rises out of the tray and the module, the heatsink and the fan separate from it one by one. The SSD slides out of
+ * its slot sideways and the speaker comes forward out of the grille, so neither hides behind the stack.
+ */
 export const TRAVEL: Record<PartId, Travel> = {
-  base: { from: 0, to: 0.6, move: new THREE.Vector3(0, -0.9, 0) },
-  lid: { from: 0.05, to: 0.7, move: new THREE.Vector3(0, 1.4, -0.1), tilt: new THREE.Euler(-0.1, 0, 0.035) },
-  webcam: { from: 0, to: 0.45, move: new THREE.Vector3(0, 1.4, 0) }, // rides with the board, so 1.9 in all
-  speaker: { from: 0.15, to: 0.75, move: new THREE.Vector3(0, 0.1, 1.0) }, // rides with the base, forward out of the front
-  board: { from: 0.1, to: 0.6, move: new THREE.Vector3(0, 0.5, 0) },
-  ssd: { from: 0.3, to: 0.85, move: new THREE.Vector3(0.55, 0.06, 0) },
-  module: { from: 0.2, to: 0.75, move: new THREE.Vector3(0, 0.38, 0) },
-  heatsink: { from: 0.32, to: 0.88, move: new THREE.Vector3(0, 0.32, 0) },
-  fan: { from: 0.45, to: 1, move: new THREE.Vector3(0, 0.32, 0) },
+  base: { from: 0, to: 1, move: new THREE.Vector3(0, 0, 0) },
+  lid: { from: 0, to: 0.42, move: new THREE.Vector3(0, 2.35, 0) },
+  webcam: { from: 0.18, to: 0.5, move: new THREE.Vector3(0, 0.34, 0) }, // off the lid, which is already rising
+  board: { from: 0.14, to: 0.56, move: new THREE.Vector3(0, 1.0, 0) },
+  speaker: { from: 0.32, to: 0.72, move: new THREE.Vector3(0, 0, 0.85) }, // forward out of the front of the base
+  module: { from: 0.3, to: 0.68, move: new THREE.Vector3(0, 0.4, 0) },
+  ssd: { from: 0.44, to: 0.82, move: new THREE.Vector3(0.62, 0, 0) },
+  heatsink: { from: 0.42, to: 0.8, move: new THREE.Vector3(0, 0.34, 0) },
+  fan: { from: 0.54, to: 0.92, move: new THREE.Vector3(0, 0.3, 0) },
 };
 
 // ---------- materials ----------
 
-export type MatKey = "white" | "grey" | "seam" | "grille" | "fin" | "black" | "pcb" | "chip" | "steel" | "gold" | "rubber" | "glass" | "lens" | "bar" | "logo" | "ribbon" | "spot";
+export type MatKey = "white" | "seam" | "grille" | "fin" | "black" | "pcb" | "chip" | "steel" | "gold" | "rubber" | "glass" | "lens" | "bar" | "logo" | "spot";
 export type Materials = Record<MatKey, THREE.Material>;
 
 /** Materials that neither cast shadows nor need them: glass, glows and the tiny highlight. */
@@ -129,7 +138,6 @@ export function makeMaterials(tex: DeviceTextures): Materials {
   return {
     // A matte white polymer: soft, barely reflective, with a touch of clearcoat so the edges catch the light.
     white: new THREE.MeshPhysicalMaterial({ color: 0xf3f2ef, roughness: 0.55, metalness: 0.02, clearcoat: 0.15, clearcoatRoughness: 0.5, envMapIntensity: 0.9 }),
-    grey: new THREE.MeshStandardMaterial({ color: 0xcfd1d4, roughness: 0.5, metalness: 0.05 }),
     seam: new THREE.MeshStandardMaterial({ color: 0x8a8d92, roughness: 0.6, metalness: 0.05 }),
     // The grille: the same white with a field of dark holes painted on, and the holes dimpled into it.
     grille: new THREE.MeshStandardMaterial({ map: tex.grille, bumpMap: tex.grilleBump, bumpScale: 0.004, roughness: 0.55, metalness: 0.02 }),
@@ -144,7 +152,6 @@ export function makeMaterials(tex: DeviceTextures): Materials {
     lens: new THREE.MeshStandardMaterial({ color: 0x070a10, metalness: 0.5, roughness: 0.12, envMapIntensity: 1.6 }),
     bar: new THREE.MeshStandardMaterial({ color: 0x9bbcf2, emissive: 0x9bbcf2, emissiveIntensity: 1.2, roughness: 0.4, metalness: 0 }),
     logo: new THREE.MeshPhysicalMaterial({ color: 0xf3f2ef, roughness: 0.55, metalness: 0.02, clearcoat: 0.15, clearcoatRoughness: 0.5, emissive: 0x9bbcf2, emissiveIntensity: 0.15 }),
-    ribbon: new THREE.MeshStandardMaterial({ color: 0xb87333, roughness: 0.45, metalness: 0.1, side: THREE.DoubleSide }),
     spot: new THREE.MeshBasicMaterial({ color: 0xffffff }),
   };
 }
@@ -240,7 +247,7 @@ function roundedRect(w: number, h: number, r: number, cx = 0, cy = 0): THREE.Sha
 
 /**
  * A crisp slab standing on y = `y`, with only the smallest rounding on its corners and edges: the shells. `holes`
- * are cut right through (the tray's cavity, the lid's slot for the ribbon). The bevel adds `BEVEL` all round at
+ * are cut right through (the tray's cavity, the lid's slot for the webcam's cable). The bevel adds `BEVEL` all round at
  * the body, so the outline given is the body's size and the ends are a hair smaller.
  */
 function slab(c: Collector, key: MatKey, w: number, d: number, height: number, holes: THREE.Path[] = [], y = 0): void {
@@ -312,68 +319,18 @@ function logoRelief(c: Collector, cx: number, top: number, cz: number, size: num
   for (const g of geometries) c.add(g, "logo", m.clone().multiply(centre));
 }
 
-/**
- * A flat cable along a curve: a tube with a rectangular profile, `width` across x and `thick` deep, with hard
- * edges so it reads as a ribbon and not a hose. The curve is expected to run in a plane of constant x.
- */
-export function ribbonGeometry(curve: THREE.Curve<THREE.Vector3>, width: number, thick: number, segments: number): THREE.BufferGeometry {
-  const pts = curve.getPoints(segments);
-  const across = new THREE.Vector3(1, 0, 0);
-  const up = new THREE.Vector3();
-  const tangent = new THREE.Vector3();
-  const pos: number[] = [];
-  const nor: number[] = [];
-  const uv: number[] = [];
-  const index: number[] = [];
-  const hw = width / 2;
-  const ht = thick / 2;
-  const corner = (p: THREE.Vector3, sx: number, sy: number) => new THREE.Vector3().copy(p).addScaledVector(across, sx * hw).addScaledVector(up, sy * ht);
-  for (let i = 0; i <= segments; i++) {
-    const p = pts[i] as THREE.Vector3;
-    const prev = pts[Math.max(0, i - 1)] as THREE.Vector3;
-    const next = pts[Math.min(segments, i + 1)] as THREE.Vector3;
-    tangent.subVectors(next, prev).normalize();
-    up.crossVectors(across, tangent).normalize();
-    if (up.lengthSq() < 0.5) up.set(0, 0, 1);
-    const u = i / segments;
-    // top, right, bottom, left: two vertices each, with that face's normal
-    const faces: [THREE.Vector3, THREE.Vector3, THREE.Vector3][] = [
-      [corner(p, -1, 1), corner(p, 1, 1), up.clone()],
-      [corner(p, 1, 1), corner(p, 1, -1), across.clone()],
-      [corner(p, 1, -1), corner(p, -1, -1), up.clone().negate()],
-      [corner(p, -1, -1), corner(p, -1, 1), across.clone().negate()],
-    ];
-    for (const [a, b, n] of faces) {
-      pos.push(a.x, a.y, a.z, b.x, b.y, b.z);
-      nor.push(n.x, n.y, n.z, n.x, n.y, n.z);
-      uv.push(u, 0, u, 1);
-    }
-    if (i < segments) {
-      for (let f = 0; f < 4; f++) {
-        const a = i * 8 + f * 2;
-        const c = (i + 1) * 8 + f * 2;
-        index.push(a, c, a + 1, a + 1, c, c + 1);
-      }
-    }
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
-  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
-  g.setIndex(index);
-  return g;
-}
-
 // ---------- the parts ----------
 
 /** The lower shell: a crisp tray, its floor, the feet, the seam line and the speaker grille across the front. */
 function buildBase(c: Collector): void {
   const cavity = roundedRect(W - 2 * WALL + 2 * BEVEL, D - 2 * WALL + 2 * BEVEL, CORNER + BEVEL);
   slab(c, "white", W, D, TRAY_H, [cavity]);
-  c.box(W - 2 * WALL + 2 * BEVEL, FLOOR, D - 2 * WALL + 2 * BEVEL, 0, FLOOR / 2, 0, "grey");
+  c.box(W - 2 * WALL + 2 * BEVEL, FLOOR, D - 2 * WALL + 2 * BEVEL, 0, FLOOR / 2, 0, "seam"); // darker than the shell, so the open tray reads as a hollow
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) c.cyl(0.08, 0.075, FOOT, sx * (W / 2 - 0.26), -FOOT / 2, sz * (D / 2 - 0.24), "rubber", { seg: 20 });
-  // A grey line in the groove where the lid meets the base.
-  c.add(new THREE.ExtrudeGeometry(roundedRect(W - 0.012, D - 0.012, CORNER), { depth: 0.016, bevelEnabled: false, curveSegments: 6 }), "seam", new THREE.Matrix4().makeRotationX(-Math.PI / 2).premultiply(new THREE.Matrix4().makeTranslation(0, TRAY_H - 0.008, 0)));
+  // A grey line in the groove where the lid meets the base: a ring on the walls, so the tray is open once the lid is off.
+  const seam = roundedRect(W - 0.012, D - 0.012, CORNER);
+  seam.holes.push(roundedRect(W - 2 * WALL + 0.02, D - 2 * WALL + 0.02, CORNER));
+  c.add(new THREE.ExtrudeGeometry(seam, { depth: 0.016, bevelEnabled: false, curveSegments: 6 }), "seam", new THREE.Matrix4().makeRotationX(-Math.PI / 2).premultiply(new THREE.Matrix4().makeTranslation(0, TRAY_H - 0.008, 0)));
   // The grille: a perforated plate set in a dark frame across most of the front, a hair proud of the face.
   c.box(GRILLE.w + 0.05, GRILLE.h + 0.05, 0.004, 0, SPEAKER.y, D / 2 + 0.001, "seam");
   c.box(GRILLE.w, GRILLE.h, 0.006, 0, SPEAKER.y, D / 2 + 0.003, "grille");
@@ -398,7 +355,7 @@ function buildSpeaker(c: Collector): void {
   c.cyl(0.07, 0.07, 0.04, 0, y, front - 0.28, "steel", { axis: "z", seg: 24 }); // its back plate
 }
 
-/** The top cap: a plain slab with a slot for the webcam's ribbon, the mark pressed into its top and the light bar along its front edge. */
+/** The top cap: a plain slab with a slot for the webcam's cable, the mark pressed into its top and the light bar along its front edge. */
 function buildLid(c: Collector): void {
   const slot = roundedRect(0.24 + 2 * BEVEL, 0.06 + 2 * BEVEL, 0.02 + BEVEL, WEBCAM.x, -WEBCAM.z);
   slab(c, "white", W, D, LID_H, [slot], TRAY_H);
@@ -420,7 +377,7 @@ function buildWebcam(c: Collector): void {
   c.ball(0.005, x - 0.02, top + 0.068, z - 0.02, "spot", 8); // a glint on the dome
   c.ball(0.007, x + 0.22, top + 0.001, z, "spot", 10); // the status light
   for (const sx of [-1, 1]) c.cyl(0.01, 0.01, 0.004, x + sx * 0.29, top + 0.001, z, "lens", { seg: 12 }); // pinhole microphones
-  // Under the module, through the lid's slot: the ribbon's connector.
+  // Under the module, through the lid's slot: the cable's connector.
   c.box(0.2, 0.04, 0.04, x, H - 0.02, z, "black");
 }
 
@@ -587,11 +544,8 @@ export interface DeviceModel {
   root: THREE.Group;
   groups: Record<PartId, THREE.Group>;
   rotor: THREE.Group;
-  ribbon: THREE.Mesh;
   blob: THREE.Mesh;
   lidPivot: THREE.Vector3;
-  /** Rebuild the webcam's ribbon for the webcam's current offset from the board. */
-  setRibbon(webcamOffset: THREE.Vector3): void;
   dispose(): void;
 }
 
@@ -618,14 +572,11 @@ export function buildDevice(materials: Materials, blobMap: THREE.Texture): Devic
   rotor.position.copy(axis);
   fan.add(rotor);
 
-  // The lid turns about its own centre when it tilts, so its geometry is moved onto the group's origin.
-  const lidPivot = new THREE.Vector3(0, TRAY_H + LID_H / 2, 0);
-  for (const mesh of lid.children) mesh.position.sub(lidPivot);
+  // The lid turns about its own centre when it tilts, so its geometry (and the webcam's, which rides in it) is
+  // moved onto the group's origin.
+  const lidPivot = LID_PIVOT.clone();
+  for (const mesh of [...lid.children, ...webcam.children]) mesh.position.sub(lidPivot);
   lid.position.copy(lidPivot);
-
-  const ribbon = new THREE.Mesh(new THREE.BufferGeometry(), materials.ribbon);
-  ribbon.castShadow = false;
-  ribbon.receiveShadow = true;
 
   const blob = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 2.6), new THREE.MeshBasicMaterial({ map: blobMap, transparent: true, depthWrite: false, opacity: 0.55 }));
   blob.rotation.x = -Math.PI / 2;
@@ -633,24 +584,13 @@ export function buildDevice(materials: Materials, blobMap: THREE.Texture): Devic
   blob.renderOrder = -1;
 
   base.add(speaker);
-  board.add(module, webcam, ssd, ribbon);
+  lid.add(webcam);
+  board.add(module, ssd);
   module.add(heatsink);
   heatsink.add(fan);
   root.add(base, lid, board, blob);
 
   const groups: Record<PartId, THREE.Group> = { base, lid, webcam, speaker, board, module, heatsink, fan, ssd };
-
-  const setRibbon = (offset: THREE.Vector3) => {
-    // From the connector under the webcam, down through the lid's slot to the carrier's socket, with more slack
-    // the further the webcam has lifted.
-    const pod = new THREE.Vector3(WEBCAM.x, H - 0.04, WEBCAM.z).add(offset);
-    const slack = offset.length() * 0.15;
-    const curve = new THREE.CatmullRomCurve3([pod, pod.clone().add(new THREE.Vector3(0, -0.2 - slack, 0.02 + slack * 0.3)), CSI.clone().add(new THREE.Vector3(0, 0.22 + slack * 0.5, 0.0)), CSI.clone()], false, "centripetal");
-    const g = ribbonGeometry(curve, 0.16, 0.005, 40);
-    ribbon.geometry.dispose();
-    ribbon.geometry = g;
-  };
-  setRibbon(new THREE.Vector3());
 
   const dispose = () => {
     root.traverse((o) => {
@@ -660,7 +600,7 @@ export function buildDevice(materials: Materials, blobMap: THREE.Texture): Devic
     (blob.material as THREE.Material).dispose();
   };
 
-  return { root, groups, rotor, ribbon, blob, lidPivot, setRibbon, dispose };
+  return { root, groups, rotor, blob, lidPivot, dispose };
 }
 
 // ---------- painted textures ----------

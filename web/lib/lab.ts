@@ -24,6 +24,9 @@ export interface LabNum {
 
 export type LabStatus = "training" | "gated" | "deployed" | "not deployed" | "rolled back" | "failed";
 
+/** Whether the run is still moving, as the gateway says it (lab_view._run_state, PR 421). Absent on older gateways. */
+export type RunStatus = "running" | "finished" | "failed";
+
 export interface LabRunSummary {
   run_id: string;
   task: string | null;
@@ -33,6 +36,22 @@ export interface LabRunSummary {
   model_version: string | null;
   verdict: string | null;
   scores: { current: LabNum; candidate: LabNum; teacher: LabNum };
+  run_status?: RunStatus | null;
+  /** What the test said, in counts when the box holds them. null until the run is tested; absent on an older box. */
+  tested?: { decision: "deploy" | "reject"; n_items: number | null; right_before: number | null; right_after: number | null; rehearsal: string | null; source: LabSource | null } | null;
+  deployed?: string | null;
+  rolled_back?: { ts: string; to: string | null; reason?: string | null } | null;
+}
+
+/** The newest install the box's log holds (whichever run it belongs to), or `reason` when it holds none. */
+export interface LabBoxNow {
+  model_version: string | null;
+  previous_version: string | null;
+  since: string | null;
+  source: LabSource | null;
+  reason: string | null;
+  /** In a run's story: whether that install is this run's model. */
+  this_run?: boolean | null;
 }
 
 /**
@@ -84,6 +103,7 @@ export interface LabList {
   sample_reason: string | null;
   real_runs: number;
   current_model: { version: string; source: string } | null;
+  box_now?: LabBoxNow;
   measured: LabMeasured[];
 }
 
@@ -120,10 +140,13 @@ export interface LabStory {
   sample: boolean;
   sample_reason: string | null;
   status: LabStatus;
+  run_status?: RunStatus | null;
   phase: string | null;
   task: { slug: string | null; instruction: string | null; instruction_reason: string | null };
   marks: Record<"start" | "run_start" | "taught" | "exported" | "training_start" | "training_end" | "evaluated" | "packaged" | "deployed" | "end", string | null>;
   wall_s: LabNum;
+  /** The run's learning.run.progress events in time order (labeling, training, eval, packaging, failed, ...). */
+  stages?: { stage: string; progress: number | null; ts: string; message: string | null; event_id: string }[];
   dataset: {
     dataset_id: string | null;
     examples: LabNum;
@@ -177,6 +200,10 @@ export interface LabStory {
     groups: { group: string; n: number; before: number; after: number; diff: number }[] | null;
     verdict: string | null;
     verdict_detail: string[];
+    /** Why the per-question answers cannot be the model's own (a rehearsal of the loop), or null. Absent on an older box. */
+    rehearsal?: string | null;
+    correct?: Record<string, LabNum>;
+    source?: LabSource | null;
   };
   package: { model_version: string | null; gguf: string | null; base: string | null; quantization: string | null; sha256: string | null; reason: string | null; bytes: LabNum };
   deploy: {
@@ -188,6 +215,10 @@ export interface LabStory {
     rolled_back: { ts: string; to: string | null; reason?: string | null } | null;
   };
   box: { before: LabBoxSide | null; after: LabBoxSide | null; reason: string | null };
+  box_now?: LabBoxNow;
+  /** The live loop's stages as the gateway lit them (lab_view._strip): labeling, training, packaging, offered. */
+  stage_strip?: { stage: string; state: "done" | "now" | "waiting" | "failed" | "not reported"; started: string | null; ended: string | null; seconds: number | null; message: string | null }[];
+  steps_so_far?: number;
   gaps: { label: string; reason: string }[];
   sources: LabNum[];
   measured: LabMeasured[];
@@ -210,7 +241,7 @@ export const CHAPTERS: Chapter[] = [
   { key: "taught", n: 1, title: "Taught from", from: 0, to: 0.1 },
   { key: "training", n: 2, title: "Training", from: 0.1, to: 0.55 },
   { key: "answers", n: 3, title: "Before / after", from: 0.55, to: 0.8 },
-  { key: "gate", n: 4, title: "The gate", from: 0.8, to: 0.88 },
+  { key: "gate", n: 4, title: "The test", from: 0.8, to: 0.88 },
   { key: "box", n: 5, title: "On the box", from: 0.88, to: 1 },
 ];
 
@@ -272,11 +303,13 @@ export function show(n: LabNum): string {
     case "bytes":
       return fileSize(v);
     case "J":
-      return v >= 3600 ? `${(v / 3600).toFixed(1)} Wh (${Math.round(v).toLocaleString()} J)` : `${v.toFixed(1)} J`;
+      return v >= 3600 ? `${(v / 3600).toFixed(1)} Wh (${Math.round(v).toLocaleString()} J)` : v >= 100 ? `${Math.round(v).toLocaleString()} J` : `${v.toFixed(1)} J`;
+    case "samples/s":
+      return `${Number(v.toPrecision(2))} examples a second`;
     case null:
       return String(Number(v.toPrecision(3)));
     default:
-      return `${Number.isInteger(v) ? v.toLocaleString() : Number(v.toPrecision(4))} ${n.unit}`;
+      return `${Number.isInteger(v) ? v.toLocaleString() : Math.abs(v) >= 100 ? Math.round(v).toLocaleString() : Number(v.toPrecision(3))} ${n.unit}`;
   }
 }
 
@@ -321,6 +354,80 @@ export const CHANGE_LABEL: Record<LabChange, string> = {
   still_right: "Still right",
   still_wrong: "Still wrong",
 };
+
+/* ---------- a run that is still going (L30) ---------- */
+
+/** A run that has stopped training, whatever else is still to report: never "training now". */
+const NOT_LIVE = new Set(["gated", "finished", "failed", "offered", "deployed", "not deployed", "rolled back"]);
+
+/**
+ * Training now, and nothing else: the gateway's `run_status` is "running" (PR 421) and the run's own status is not
+ * one that has stopped (gated, finished, failed, offered, deployed, ...). A gateway older than `run_status` counts a
+ * run as live only when its status is exactly "running" and it has no ended time. Anything else is resting.
+ */
+export function isLiveRun(r: { sample?: boolean; status: string; run_status?: string | null; ended?: string | null }): boolean {
+  if (r.sample) return false;
+  if (NOT_LIVE.has(r.status)) return false;
+  if (r.run_status !== undefined && r.run_status !== null) return r.run_status === "running";
+  return r.status === "running" && !r.ended;
+}
+
+/** isLiveRun for a run's story: its ended time is the story's last mark. */
+export function isLive(story: Pick<LabStory, "sample" | "status" | "run_status" | "marks">): boolean {
+  return isLiveRun({ sample: story.sample, status: story.status, run_status: story.run_status, ended: story.marks.end });
+}
+
+/**
+ * A measured trainer row from the lab's own hardware: the Strix Halo pods (gfx1151) or the box (Jetson), by the chip the
+ * gateway worked out from the row (`chip.key`, lab_bench.chip_of). A row from another chip (the R9700s the lab had
+ * before, a reference machine) or with no chip at all is not "measured on our hardware".
+ */
+export const OUR_CHIPS = new Set(["strix-halo", "jetson"]);
+export function onOurHardware(m: Pick<LabMeasured, "chip" | "other_chip">): boolean {
+  return !!m.chip && OUR_CHIPS.has(m.chip.key) && m.other_chip !== true;
+}
+
+export type StageKey = "taught" | "training" | "packaging" | "box";
+export type StageState = "done" | "now" | "waiting" | "failed";
+
+export const LIVE_STAGES: { key: StageKey; title: string }[] = [
+  { key: "taught", title: "Taught from" },
+  { key: "training", title: "Training" },
+  { key: "packaging", title: "Packaging" },
+  { key: "box", title: "On the box" },
+];
+
+/**
+ * Where each stage of a live run stands, from what the run has reported so far: its progress events, its marks and
+ * its training rows. A later stage reporting means the ones before it are done.
+ */
+export function stageStates(story: LabStory): Record<StageKey, StageState> {
+  const stages = story.stages ?? [];
+  const m = story.marks;
+  const has = (name: string, full = false) => stages.some((s) => s.stage === name && (!full || (s.progress ?? 0) >= 1));
+  const failed = story.status === "failed" || has("failed");
+  const box = !!m.deployed;
+  const packaged = box || !!m.packaged || has("packaging", true);
+  const packaging = packaged || has("packaging");
+  const trained = packaging || !!m.evaluated || has("eval") || has("training", true);
+  const training = trained || !!m.training_start || story.training.points.length > 0 || has("training");
+  const taught = training || !!m.taught || !!m.exported || has("labeling") || isNum(story.dataset.examples);
+  const state = (reported: boolean, finished: boolean): StageState => (finished ? "done" : reported ? "now" : "waiting");
+  return {
+    taught: state(taught, training || has("labeling", true)),
+    training: failed && !trained ? "failed" : state(training, trained),
+    packaging: state(packaging, packaged),
+    box: state(box, box),
+  };
+}
+
+/** Seconds from the run's first event to `now`. */
+export function elapsedSeconds(story: Pick<LabStory, "marks">, now: number): number | null {
+  const from = story.marks.run_start ?? story.marks.start;
+  if (!from) return null;
+  const t = Date.parse(from);
+  return Number.isNaN(t) ? null : Math.max(0, (now - t) / 1000);
+}
 
 export const STATUS_LABEL: Record<LabStatus, string> = {
   training: "Training",

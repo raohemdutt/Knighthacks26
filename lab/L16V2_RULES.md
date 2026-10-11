@@ -286,6 +286,64 @@ What the edge round can change:
 
 Reported at the end: best value per rank and per learning-rate band, the noise floor, the edges now covered.
 
+### Amendment 6: the extended search of full-length runs, fixed before its first result (5:25 AM ET)
+
+Ilan's verdict on the search budgets, relayed by the coordinator: they were far too small (40 and 20 minutes, a
+dozen and half a dozen trials for five parameters), and a 24-step trial cannot rank what it was asked to rank.
+The evidence, validation numbers only, from the edge round (its table is in `lab/L16V2_RESULT.md`):
+
+- Two seeds of one configuration (trial 9's) gave 0.0150 and 0.0120 at 24 steps: a difference of 0.0030, as large
+  as the whole spread of the five best values of the first search.
+- The seed recipe (1e-4, rank 16) is 0.0193 as a proper 24-step trial and 0.0081 at full length: a short trial
+  favours high learning rates and says little about where a configuration ends.
+
+So the search continues with full-length runs and a real budget. What was known when this was written: the three
+full-length runs and their validation agreement (110, 113 and 111 of 126), the choice among them (trial 12's
+configuration at step 32), and pod D's held-out readings of them (amendment 3 covers those; nothing here reads
+them). The first extended run (the seed-43 repeat of the current choice) had been started six minutes earlier and
+had no validation number yet.
+
+The extended search (`lab/l16v2/bo_ext.py`), until 7:00 AM ET:
+
+- Every trial is a full-length run: at most 62 optimizer steps (992 example passes, the pod D budget), validation
+  every 8 steps and after the last, the best checkpoint kept, stop after 2 evaluations that did not beat the best
+  by 3 percent of it. No step-12 pruning.
+- Objective: the run's best validation loss, minimized. Every finished run also gets its validation tool-call
+  agreement on the 126 validation rows, generated on its card with its kept adapter (the same decoding as before),
+  so that the choice rule can be applied to all of them.
+- Space: amendment 5's (learning rate 8e-5 to 1e-3 on the log scale; rank in {2, 4, 8, 16, 32, 64}; alpha = rank
+  times 1 or 2; dropout in {0, 0.05, 0.10, 0.15}; warmup in {0, 0.05, 0.10}). Same sampler (Optuna TPE,
+  multivariate, grouped, constant liar), asynchronous, one worker per card, the study on the workstation: study
+  `l16v2-full` in the same database, started from the three full-length runs that exist (their dropout and warmup
+  rounded to the new values).
+- Forced first, in this order, each with alpha twice the rank, dropout 0.05, warmup 0.05: rank 32 at 2e-4; rank 16
+  at 4e-4; rank 32 at 1e-4; rank 64 at 1e-4; rank 4 at 8e-4; rank 2 at 4e-4; rank 8 at 2e-4. Then the sampler's
+  points.
+- Budget: no run starts that could not finish, scoring included, by 7:00 AM ET.
+
+Noise, and what can replace the choice:
+
+- The current choice (trial 12's configuration) is run once more at full length with seed 43. Its two runs'
+  validation agreement, averaged, is the number to beat.
+- A configuration whose run has a higher validation agreement than the current choice's mean so far is run a
+  second time with seed 43. It replaces the choice only if the MEAN validation agreement of its two runs is higher
+  than the mean of the current choice's two runs (a tie leaves the choice as it is). If it does, the adapter
+  handed on is the one of its two runs with the higher validation agreement (a tie: the lower validation loss),
+  and later challengers are measured against the new choice's mean.
+- This is the frozen rule's second key, validation tool-call agreement, with the noise of one run taken out of it;
+  validation loss stays the search's objective and the tie-break.
+- Every adapter that becomes a candidate to replace the choice is pulled to the workstation and verified, as is
+  every run's metrics file. The chosen adapter is announced with its path only at the end.
+
+At 7:00 AM: one table of every full-length run (both seeds where they exist), the best per rank and per
+learning-rate band, the noise measured from the repeats, and either "the choice stands" or the new choice. Only
+then is the held-out side read on the A100 (the lock on the VMs stays until that line). A held-out reading I had
+started at 5:19 AM, when the choice looked final, was stopped 40 seconds later before it wrote any output or
+score, and the lock was put back.
+
+The pod D retrain of the current choice may start before 7:00; if the choice changes, the page says which recipe
+was retrained and which was chosen.
+
 ## The pod D retrain (second pass)
 
 The chosen recipe is repeated on pod D with the same flags and `--stop-step <the chosen run's best step>`, so the

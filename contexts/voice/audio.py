@@ -163,14 +163,16 @@ class Speaker:
             return False
         return self._bluetooth_connected()
 
-    def available(self) -> tuple[bool, str]:
+    def available(self) -> tuple[bool, str] | tuple[bool, str, bool]:
+        """(ok, detail), or (False, detail, True) when the speaker is simply not there (switched off or not paired), so
+        the screen can say "No speaker" quietly; a broken setup stays a plain failure."""
         if not (shutil.which("paplay") or shutil.which("aplay")):
             return False, "no paplay or aplay installed"
         if self.mac:
             if not shutil.which("bluetoothctl"):
                 return False, "bluetoothctl is not installed"
             if not self._bluetooth_connected():
-                return False, f"Bluetooth speaker {self.mac} is not connected"
+                return False, f"Bluetooth speaker {self.mac} is not connected", True
             return True, f"Bluetooth {self.mac}"
         return True, "default output"
 

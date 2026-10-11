@@ -14,6 +14,17 @@ sleep:
 #   max_history_turns: 6   # exchanges kept in memory for follow-ups ("why?", "tell me another"); never logged
 #   history_ttl_s: 600     # a conversation this quiet is forgotten
 
+# Campus listings: stored items that are things going on nearby, NOT the person's own commitments. Atlas says them as
+# "on campus", never "you've got", they never make the person busy, and "what's next?" prefers the person's own next
+# thing. An item is a listing when any of these matches (contexts/agent/application/schedule.py `Listings`):
+listings:
+  connectors: [site, search, groupme]  # connectors that only list things
+  feeds: [campus]                      # calendar feeds by name (config/connectors.yaml calendar.options.feeds): the
+                                       # ics connector stores each event as "<feed>:<uid>:<start>"
+  hosts: [events.ucf.edu]              # where a listing's link points (subdomains count)
+  optional: [optional]                 # a word in the title or summary that marks an invitation
+  own: [attending, registered, rsvp]   # a word in the summary that makes a listed event the person's own again
+
 # Subreddit the agent searches for "what do students say" questions.
 subreddit: ucf
 
@@ -46,7 +57,8 @@ circle:
   share_summaries: false # opt in to sending habit/impact/game summaries to the Circle's leaderboards (E2)
   face_share: false      # let named friends' boxes recognise you (your own face template, sealed to their box, after a
                          # card on each side). Off: nothing is published and the endpoints answer 409. Also ATLAS_CIRCLE_FACE_SHARE=1
-  face_share_days: 30    # a shared template is deleted on the friend's box after this many days unless renewed
+  face_share_days: 30    # a shared template is deleted on the friend's box after this many days unless renewed; the
+                         # sealed row in the shared database carries the same expiry and this box sweeps it once dead
   keep_days: 30          # this box removes its OWN plan messages, share receipts and expired place from the shared
                          # database after this many days (never anyone else's rows). 0: never remove anything
   names:                 # member id -> display name; also who must say yes to a plan with no invitees (G1)
@@ -68,3 +80,15 @@ leaving:
 coach_feedback:
   min_corrections: 5
   min_negatives: 2
+
+# The day's unasked speech (contexts/day/domain/arbiter.py, contexts/day/domain/reminders.py). The defaults below
+# hold without this block; uncomment to change one.
+# day:
+#   speak_gap_s: 90         # the least time between two unasked lines (leave now / late and room alerts break it)
+#   speak_stale_s: 120      # a line held that long behind another is dropped (a plan, a card, a check-in, a review wait)
+#   block_reminders: true   # say once when a planned block starts
+#   speaker: box            # the box's own speaker says the unasked lines and the phone stays silent (default: the phone)
+#   suggest_optional: true    # bring up an optional "Near you" event that fits or nearly fits and names somebody, once
+#   suggest_from_min: 90      # ... not earlier than this many minutes before it starts
+#   suggest_until_min: 30     # ... and not later than this
+#   suggest_cooldown_min: 45  # the least time between two such suggestions

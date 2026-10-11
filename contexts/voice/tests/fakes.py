@@ -25,7 +25,7 @@ def question() -> list[bytes]:
 
 
 def make_config(**over) -> VoiceConfig:
-    return VoiceConfig(**{"wait_for_speech_s": 1.0, "end_silence_s": 0.6, "max_seconds": 3.0, "chime": False, **over})
+    return VoiceConfig(**{"wait_for_speech_s": 1.0, "end_silence_s": 0.6, "max_seconds": 3.0, "chime": False, "follow_up": False, **over})
 
 
 class FakeMic:
@@ -61,14 +61,16 @@ class FakeMic:
 
 
 class FakeSpeaker:
-    def __init__(self, mic: FakeMic | None = None, missing: bool = False):
-        self.mic, self.missing = mic, missing
+    def __init__(self, mic: FakeMic | None = None, missing: bool = False, broken: bool = False):
+        self.mic, self.missing, self.broken = mic, missing, broken
         self.played: list[tuple[bytes, int]] = []
         self.mic_was_open_while_playing = False
         self.block = None  # a threading.Event the test releases to end the "speech"
 
     def available(self):
-        return (False, "speaker not connected (fake)") if self.missing else (True, "fake speaker")
+        if self.broken:
+            return False, "no paplay or aplay installed (fake)"
+        return (False, "speaker not connected (fake)", True) if self.missing else (True, "fake speaker")
 
     def ensure_connected(self):
         return not self.missing

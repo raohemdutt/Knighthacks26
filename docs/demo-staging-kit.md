@@ -32,7 +32,7 @@ python -m contexts.demo kit --gateway http://100.124.34.36:8000 --devpost https:
 | Phone hotspot | Unplug the internet (3:15); backup if venue Wi-Fi fails | Hotspot on, the Jetson joins it, the box answers on its LAN address from the demo phone. |
 | 2 charged demo phones, ntfy + PWA installed | It watches for you, It learns, Unplug | Above 80%, Do Not Disturb off, ntfy subscribed to the alert topic on the box, Atlas on the home screen, the Tailscale and LAN addresses bookmarked. |
 | Printed QR to the Devpost | Close | Printed from `kit --devpost <url>`, taped to the table, scans to the project page. |
-| Extra: "This table is recorded, faces are blurred on-device" sign | the whole table | Visible from the aisle (Demo Plan T-15). |
+| Extra: the table sign: "Saved pictures are always blurred. Nothing with a face leaves this box. Only your own signed-in screen shows you." | the whole table | Visible from the aisle (Demo Plan T-15). |
 | Extra: an empty can | v2: Waste Watch | Within reach; the Recycling and Trash zones are drawn. |
 
 The first nine are D6's "Done when"; the two extras come from the Demo Plan.

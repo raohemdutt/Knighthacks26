@@ -1,0 +1,122 @@
+/*
+ * The On the box card's deploy button (components/lab/DeployButton.tsx, L35). Colours and depth come only from the
+ * tokens in app/globals.css, as in lab.module.css; the stage strip reuses lab.module.css's .stages.
+ */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+/* the two model tiles take the taller one's height, so a long version name does not leave the other floating */
+.links {
+  align-items: stretch;
+}
+
+.buttons {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 420px) {
+  /* the two model tiles take the taller one's height, so a long version name does not leave the other floating */
+.links {
+  align-items: stretch;
+}
+
+.buttons {
+    grid-template-columns: 1fr;
+  }
+}
+
+.secs {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.line {
+  margin: 0;
+  padding: 12px 16px 12px 20px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm), inset 4px 0 0 var(--accent);
+  font-size: 17px;
+  font-weight: 650;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.lineGood {
+  background: color-mix(in srgb, var(--ok) 9%, var(--surface));
+  box-shadow: var(--sh-raised-sm), inset 4px 0 0 var(--ok);
+}
+
+.lineBad {
+  background: var(--danger-soft);
+  box-shadow: var(--sh-raised-sm), inset 4px 0 0 var(--danger);
+}
+
+.sub {
+  display: block;
+  margin-top: 4px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.ask {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.askHead {
+  margin: 0;
+  font-size: 17px;
+}
+
+.askRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.answers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.answer {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  min-width: 0;
+}
+
+.verdict {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.good {
+  color: var(--ok);
+}
+
+.bad {
+  color: var(--danger);
+}

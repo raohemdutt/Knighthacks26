@@ -1,0 +1,6 @@
+# R66b pod C, baseline, run 20261011-095832-ca51, controller seconds 6.506, outcome ok
+### STEP baseline
+--- base: wall 1.286 s
+{"rank": 0, "torch": "2.9.1+rocm7.13.0", "ifname": "lo", "master": "127.0.0.1:40000", "preload": false, "init_s": 0.012, "ok": true, "allreduce_1mb_ms_median": 0.258, "allreduce_1mb_mb_per_s": 3870.7, "allreduce_32mb_s": [0.009, 0.0066, 0.0063, 0.0059, 0.0069], "allreduce_32mb_mb_per_s_median": 4840.4, "roundtrip_1elem_us_median": 21.4, "roundtrip_1elem_us_p90": 24.5, "results_checked": {"1mb": true, "32mb": true, "1elem": true}}
+{"rank": 1, "torch": "2.9.1+rocm7.13.0", "ifname": "lo", "master": "127.0.0.1:40000", "preload": false, "init_s": 0.008, "ok": true, "allreduce_1mb_ms_median": 0.249, "allreduce_1mb_mb_per_s": 4018.0, "allreduce_32mb_s": [0.0089, 0.0066, 0.0062, 0.0059, 0.0069], "allreduce_32mb_mb_per_s_median": 4855.6, "roundtrip_1elem_us_median": 23.1, "roundtrip_1elem_us_p90": 29.1, "results_checked": {"1mb": true, "32mb": true, "1elem": true}}
+### END

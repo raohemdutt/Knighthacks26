@@ -6,12 +6,19 @@ OpenCV's YuNet face detector (cv2.FaceDetectorYN) finds the faces; each one, wit
 pixelated and smoothed past recognition. If the detector cannot run, the error propagates and the
 frame is not stored: an unblurred frame never reaches the disk. Only the copy that is stored is
 blurred; the live frame the detector and tracker see is untouched.
+
+A picture that is kept or shared (a stored keyframe, a frame for a recorded clip, anything through the outbound gate)
+gets the strict blur: `FaceBlur(**STRICT).scrambled_until_clear(frame)`. One pass at the default settings left a
+face still detectable in 52 of 60 face frames from the Jetson's desk camera; the strict blur left 2 of 58, both on
+the scrambled patch itself (measured for #390). The live picture for a screen without the owner's ticket keeps the
+one-pass blur: it runs on every frame shown, and nothing of it is kept.
 """
 
 from pathlib import Path
 from typing import Any
 
 MODEL = Path(__file__).resolve().parent.parent / "models" / "face_detection_yunet_2023mar.onnx"
+STRICT = {"score": 0.5, "margin": 0.6}  # a lower score finds the half-hidden face, a wider margin covers hair and jaw
 
 
 class FaceBlur:
@@ -41,14 +48,18 @@ class FaceBlur:
     def __call__(self, frame: Any) -> Any:
         return self.scrambled(frame)[0]
 
-    def scrambled(self, frame: Any) -> tuple[Any, int]:
-        """The frame with every face scrambled, and how many faces the detector reported (the outbound gate's port)."""
+    def scrambled(self, frame: Any, keep: Any = None) -> tuple[Any, int]:
+        """The frame with every face scrambled, and how many faces the detector reported (the outbound gate's port).
+        `keep(rows) -> [bool per face]` names the faces to leave as they are (the owner's own face on the owner's own
+        screen); a face it does not answer True for is scrambled, and so is every face if it fails."""
         import cv2
 
         h, w = frame.shape[:2]
         out = frame.copy()
         rows = self.faces(frame)
-        for row in rows:
+        for row, spare in zip(rows, _kept(keep, rows), strict=True):
+            if spare:
+                continue
             x, y, fw, fh = (float(v) for v in row[:4])
             mx, my = fw * self.margin, fh * self.margin
             x1, y1 = max(int(x - mx), 0), max(int(y - my), 0)
@@ -57,6 +68,30 @@ class FaceBlur:
                 continue
             out[y1:y2, x1:x2] = _scramble(out[y1:y2, x1:x2], cv2)
         return out, len(rows)
+
+    def scrambled_until_clear(self, frame: Any, passes: int = 5) -> tuple[Any, int]:
+        """`scrambled`, repeated while the detector still finds a face (at most `passes` times), and the faces the
+        first pass found. A small or half-hidden face is often found only in part (an 18x23 px box on a 50 px face
+        on the Jetson's desk camera); the next pass finds it again around the scrambled patch and covers it wider.
+        For every picture that is kept or shared: stored keyframes, recorded clips, the outbound gate."""
+        out, first = self.scrambled(frame)
+        found = first
+        for _ in range(passes - 1):
+            if not found:
+                break
+            out, found = self.scrambled(out)
+        return out, first
+
+
+def _kept(keep: Any, rows: list[Any]) -> list[bool]:
+    """Which faces to leave clear. Anything but a clean answer of the right length keeps none: cannot tell means blur."""
+    if keep is None or not rows:
+        return [False] * len(rows)
+    try:
+        answer = [bool(k) for k in keep(rows)]
+    except Exception:
+        return [False] * len(rows)
+    return answer if len(answer) == len(rows) else [False] * len(rows)
 
 
 def _scramble(patch: Any, cv2: Any) -> Any:

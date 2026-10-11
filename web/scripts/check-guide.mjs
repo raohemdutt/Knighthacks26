@@ -76,6 +76,11 @@ try {
     ["where is the pending card", "approvals:pending"],
     ["where do I teach atlas", "teach:home"],
     ["where is the learning lab", "lab:home"],
+    ["where is the learning loop", "lab:loop"],
+    ["where do I see what an answer costs", "lab:cost"],
+    ["show me routing", "lab:routing"],
+    ["where is alone or with a friend", "lab:friend"],
+    ["where do I put it on the box", "lab:deploy"],
     ["where is privacy", "privacy:home"],
     ["where do I enrol my face", "people:enrol"],
     ["where is forget me", "people:forget"],
@@ -104,6 +109,37 @@ try {
     ["where is what is due", "dayrun:board"],
   ]) eq(`today's plan: ${q}`, G.resolveApp(q, "/dayrun/").target?.id ?? null, id);
   eq("today's plan, from Ask", G.resolveApp("where do I find today's plan", "/").target?.id ?? null, "dayrun:plan");
+  // Privacy, People and Teach: every named control can be asked for, from its own screen
+  for (const [route, q, id] of [
+    ["/privacy/", "where is the live view switch", "privacy:live-view"],
+    ["/privacy/", "where do I see faces on my screen", "privacy:live-view"],
+    ["/privacy/", "where are saved pictures", "privacy:saved-pictures"],
+    ["/privacy/", "where is anything that leaves this box", "privacy:leaves"],
+    ["/privacy/", "where do I pause a camera", "privacy:cameras"],
+    ["/privacy/", "where is offline mode", "privacy:offline"],
+    ["/privacy/", "where do I see what left the box", "privacy:left"],
+    ["/privacy/", "where do I delete my data", "privacy:erase"],
+    ["/people/", "where is the scan button", "people:scan"],
+    ["/people/", "where is the expressions switch", "people:expressions"],
+    ["/people/", "where is scan to finish", "people:scan-to-finish"],
+    ["/people/", "where is the demo data tag", "people:demo"],
+    ["/teach/", "where is the microphone", "teach:mic"],
+    ["/teach/", "where do I start teaching", "teach:start"],
+    ["/teach/", "where is the progress", "teach:progress"],
+    ["/teach/", "where are the examples", "teach:examples"],
+  ]) {
+    eq(`${route} ${q}`, G.resolveApp(q, route).target?.id ?? null, id);
+    eq(`${route} kind: ${q}`, G.classify(q, route)?.kind ?? null, "app");
+  }
+  // "what is this": only on those three screens, only about something on that screen; everything else is still a question for the box
+  eq("what: the phrase", [G.whatIntent("What does the live view switch do?"), G.whatIntent("what is scan to finish"), G.whatIntent("where is it")], ["the live view switch", "scan to finish", null]);
+  eq("what: on Privacy", G.classify("what does the live view switch do", "/privacy/")?.target?.id ?? null, "privacy:live-view");
+  eq("what: on People", G.classify("what is scan to finish?", "/people/")?.target?.id ?? null, "people:scan-to-finish");
+  eq("what: on Teach", G.classify("what does start teaching do", "/teach/")?.target?.id ?? null, "teach:start");
+  eq("what: another screen's thing stays a question", G.classify("what is the league", "/teach/"), null);
+  eq("what: not a part of the app stays a question", G.classify("what is on my calendar today", "/privacy/"), null);
+  eq("what: on Ask nothing changes", G.classify("what does the live view switch do", "/"), null);
+  eq("what: with no screen nothing changes", G.classify("what is offline mode"), null);
   eq("app: nothing close", G.resolveApp("where is the coffee machine").target, null);
   eq("labels: keys", G.labelsFor("my keys"), ["keys", "key"]);
   eq("labels: a key", G.labelsFor("my key"), ["key", "keys"]);

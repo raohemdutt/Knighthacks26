@@ -1,0 +1,6 @@
+# R66b pod C, control, run 20261011-095840-ba2a, controller seconds 110.046, outcome ok
+### STEP control
+--- control: wall 106.957 s
+{"rank": 0, "torch": "2.9.1+rocm7.13.0", "ifname": "pods0", "master": "10.99.0.1:40000", "preload": false, "ok": false, "init_s": 81.106, "error": "DistNetworkError: The client socket has timed out after 60000ms while trying to connect to (10.99.0.1, 40000)."}
+{"rank": 1, "torch": "2.9.1+rocm7.13.0", "ifname": "pods0", "master": "10.99.0.1:40000", "preload": false, "ok": false, "init_s": 105.842, "error": "DistNetworkError: The client socket has timed out after 60000ms while trying to connect to (10.99.0.1, 40000)."}
+### END

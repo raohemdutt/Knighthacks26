@@ -29,6 +29,7 @@ class PlanMove(BaseModel):
     fixed: bool = False
     deadline: str | None = None  # study: the deadline it works on
     with_friend: str | None = None
+    origin: str | None = None  # "optional": an optional event the person said yes to (contexts/day/application/optional.py)
 
 
 class MoveIn(BaseModel):
@@ -246,6 +247,7 @@ class DayReplanProposed(TypedEvent):
     action_id: str | None = None
     asked: bool = False  # True when the person asked for it (POST /api/day/plan from_here), not drift
     for_event: str | None = None  # the fixed block the drift was about
+    for_optional: str | None = None  # the optional event ("nearby:...") a yes asked to add, or a no asked to take out
 
 
 @register
@@ -274,7 +276,8 @@ class DayReviewed(TypedEvent):
     block_minutes: int | None = None  # the block length the coach suggests for tomorrow
 
 
-Moment = Literal["morning", "now", "replan", "coach", "evening", "approval", "checkin"]
+# "suggest": an optional event coming up that fits ("Want me to add it?"); "start": a planned block is starting.
+Moment = Literal["morning", "now", "replan", "coach", "evening", "approval", "checkin", "suggest", "start"]
 
 
 @register
@@ -293,6 +296,11 @@ class DayNarrated(TypedEvent):
     engine: Literal["template", "model"] = "template"
     facts_hash: str
     urgent: bool = False  # a "now" worth saying aloud unasked: leave now, late, you will miss it
+    # One speaker (contexts/day/domain/arbiter.py): "box" when the box's own speaker says this line, so the phone's
+    # voice stays silent for it; None (the default, as before) when the phone or browser may say it.
+    spoken_by: Literal["box"] | None = None
+    # Said inside another narration (that one's event id): the screen may show it, nobody says or pushes it again.
+    merged_into: str | None = None
 
 
 # --- the coach's feedback loop (contexts/day/application/coach_feedback.py): additive ---
@@ -326,7 +334,9 @@ class DayCoachCorrected(TypedEvent):
 # camera episodes, never the event log: contexts/learning/tests/test_export.py), and the push that announces one
 # carries the suggestions only (contexts/day/application/loop.py). Every field below is box-only; none is safe
 # to forward, the plain-word summaries included ("Heart rate: up" is still a statement about a person's body).
-BOX_ONLY_EVENTS = frozenset({"day.checkin.raised", "day.checkin.answered"})
+# `day.optional.answered` is here too: which invitations a person took or turned down is nobody else's business.
+# `day.look.forgotten` (the look memory, contexts/day/application/looks.py): that a remembered look was forgotten.
+BOX_ONLY_EVENTS = frozenset({"day.checkin.raised", "day.checkin.answered", "day.optional.answered", "day.look.forgotten"})
 
 CheckinSignalKind = Literal["sleep", "resting_hr", "expression", "sitting", "drink", "history"]
 CheckinSuggestionKind = Literal["drink", "break", "move_block", "walk"]
@@ -363,6 +373,21 @@ class CheckinHistory(BaseModel):
     days: list[CheckinPastDay] = []
 
 
+class CheckinCallback(BaseModel):
+    """An earlier look this one is like, from the look memory (contexts/day/domain/looks.py): "That's the same look you
+    had Tuesday afternoon, when you'd gone two hours without moving." Words, a day and a label only: no picture, no
+    frame ref, no health value. Box-only with the check-in that carries it."""
+
+    moment_id: str  # the remembered moment ("look-<member>-<yyyymmdd>-<hhmm>"), looked up on the box
+    day: date  # the earlier local day
+    look: str = "tired"  # the kind of look, in the People screen's words: "tired" or "tense". Never in the spoken sentence.
+    said: str  # the callback sentence, for the ear and the screen
+    learned: str = ""  # what followed last time, when that is known: "Ten minutes away from the desk helped then."
+    lead: CheckinSuggestionKind | None = None  # the advice that was followed by the look easing: it is said first
+    chip: str = ""  # "Looked tired · like Tue"
+    lines: list[str] = []  # the remembered moment in one or two plain lines, for the chip
+
+
 @register
 class DayCheckinRaised(TypedEvent):
     """Atlas speaking up unasked: enough independent signals agreed (the rule is contexts/day/domain/checkin.py).
@@ -377,6 +402,7 @@ class DayCheckinRaised(TypedEvent):
     proposes_replan: bool = False  # "Move the block" can build a re-plan; the plan changes only through its approval card
     plan_id: str | None = None
     text: str = ""  # the whole check-in as one paragraph for the screen (the template's words, before any rewrite)
+    callback: CheckinCallback | None = None  # an earlier look like this one, when the look memory has one similar enough
 
 
 @register
@@ -388,3 +414,36 @@ class DayCheckinAnswered(TypedEvent):
     checkin_id: str  # the `day.checkin.raised` event's id
     answer: Literal["done", "move"]
     action_id: str | None = None  # the re-plan's approval card, when the answer was "move"
+
+
+# --- the look memory (contexts/day/application/looks.py): additive, and box-only ---
+
+
+@register
+class DayLookForgotten(TypedEvent):
+    """The person asked Atlas to forget a remembered look, or all of them. The memory itself is a projection of the
+    log (the looks, the desk, the plan); this event is what keeps a forgotten one forgotten on replay. Ids only."""
+
+    type: Literal["day.look.forgotten"] = "day.look.forgotten"
+    moment_id: str | None = None  # the remembered moment; None: every moment up to `ts`
+    member_id: str | None = None  # with no `moment_id`: whose are forgotten; None: everyone's
+
+
+# --- optional events (contexts/day/application/optional.py): additive, and box-only ---
+
+
+@register
+class DayOptionalAnswered(TypedEvent):
+    """The person said yes or no to an optional event ("Near you": a `connector.item.synced` calendar item whose
+    `external_id` starts with `nearby:`). A no is all there is to it: the event is not suggested again. A yes never
+    changes the plan by itself: it raises a re-plan (`day.replan.proposed`, `for_optional`) with its approval card,
+    and the event is a block of the day only once that card is approved (`day.plan.committed`). Box-only."""
+
+    type: Literal["day.optional.answered"] = "day.optional.answered"
+    day: date
+    id: str  # the optional event's `external_id`
+    answer: Literal["yes", "no"]
+    at: datetime
+    plan_id: str | None = None  # the re-plan the answer raised, when it raised one
+    action_id: str | None = None  # ... and its approval card
+    until: datetime | None = None  # a yes that means leaving early for the next fixed event: when its block ends in the plan

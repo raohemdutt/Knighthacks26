@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ExpressionStrip } from "@/components/people/ExpressionStrip";
+import { LooksRemembered } from "@/components/people/LooksRemembered";
+import Link from "next/link";
 import { FaceShare } from "@/components/people/FaceShare";
+import { Group } from "@/components/people/Group";
 import { FaceScan, canScan } from "@/components/people/FaceScan";
 import { PhotoEnroll } from "@/components/people/PhotoEnroll";
 import p from "@/components/people/people.module.css";
@@ -74,12 +77,20 @@ export default function PeoplePage() {
   const friends = circle.data?.configured ? circle.data.members : [];
   const enrolled = (people.data ?? []).filter((m) => m.source !== "circle"); // people who enrolled on this box
   const received = (people.data ?? []).filter((m) => m.source === "circle"); // templates friends' boxes shared with it
+  const saved = people.data ?? [];
+  const noModel = settings.data ? !settings.data.available : false; // no face model on this machine: nothing is recognised live
+  const demo = saved.some((m) => m.demo); // written by the demo seed, not enrolled by anyone
+  // "You": the person linked to this box's own Circle member, else the only one who scanned here.
+  const mineId = friends.find((f) => f.mine)?.member_id;
+  const scannedHere = enrolled.filter((m) => m.scanned !== false);
+  const owner = (mineId ? enrolled.find((m) => m.circle_member_id === mineId) : undefined) ?? (scannedHere.length === 1 ? scannedHere[0] : undefined);
+  const others = enrolled.filter((m) => m !== owner);
 
   return (
     <>
       <div className={ui.pageHead}>
         <h1>People</h1>
-        <p className={ui.muted}>Who Atlas may tell apart. Off unless you switch it on.</p>
+        <p className={ui.muted}>You, what Atlas knows about you, and the friends you share with.</p>
       </div>
 
       {settings.error ? (
@@ -94,87 +105,143 @@ export default function PeoplePage() {
         <Loading what="the recognition setting" />
       ) : (
         <>
-          <section className={ui.section}>
-            <h2 className={ui.sectionTitle}>Recognise enrolled people</h2>
-            <div className={ui.card}>
-              <p>
-                When this is on, Atlas counts habits only for people who enrolled their face here and for nobody else; a face is kept as an
-                encrypted template on this box, never as a picture,{" "}
-                {sharing.data
-                  ? "it leaves the box only when you share your own with a friend below (encrypted for their box alone),"
-                  : "it never leaves the box,"}{" "}
-                and stored pictures stay blurred for everyone.
-              </p>
-              <div className={`${ui.row} ${ui.between} ${ui.wrap}`}>
-                <span className={on ? `${ui.tag} ${ui.tagAccent}` : ui.tag}>{on ? "On" : "Off"}</span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={on}
-                  className={on ? ui.btn : `${ui.btn} ${ui.btnPrimary}`}
-                  disabled={saving || (!on && !settings.data.available)}
-                  onClick={toggle}
-                >
-                  {saving ? "Saving…" : on ? "Switch off" : "Switch on"}
-                </button>
-              </div>
-              {!settings.data.available ? (
-                <p className={`${ui.muted} ${ui.small}`}>
-                  This box cannot recognise anyone yet: {settings.data.reason ?? "the face recognition model is not installed"}.
-                </p>
-              ) : null}
-              {error ? <WriteError error={error} /> : null}
-            </div>
-          </section>
+          <StateLine on={on} noModel={noModel} saved={saved} demo={demo} />
 
-          <section className={ui.section}>
-            <h2 className={ui.sectionTitle}>Teach Atlas your face</h2>
-            {on ? (
+          {/* 1. You: the face scan when nobody has scanned; your state, more looks and "Forget me" once you have.
+              2. What Atlas knows about you is the second half of your own card (see Person). */}
+          <section className={ui.section} id="you" data-guide="people:you">
+            <h2 className={ui.sectionTitle}>You</h2>
+            {people.error ? (
+              <ErrorBox what="who has scanned" error={people.error} onRetry={people.reload} />
+            ) : !people.data ? (
+              <Loading what="who has scanned" />
+            ) : owner ? (
+              <ul className={ui.list}>
+                <Person member={owner} settings={settings.data} friends={friends} on={on} mine onChanged={people.reload} />
+              </ul>
+            ) : on ? (
               <Teach settings={settings.data} friends={friends} onDone={people.reload} />
             ) : (
-              <Empty title="Switch recognition on to enroll">Nobody can be enrolled, and nobody is recognised, while it is off.</Empty>
+              <div className={`${ui.card} ${p.firstStep}`}>
+                <p>
+                  <strong>{noModel ? "This machine cannot scan a face." : "Scan your face so Atlas knows it's you."}</strong>{" "}
+                  <span className={ui.muted}>
+                    {noModel
+                      ? `It has no face model (${settings.data.reason ?? "not installed"}). On the Atlas box this is where the face scan starts.`
+                      : "Recognition is off, so nobody is recognised. Switch it on, then scan. Only numbers are kept, never a picture."}
+                  </span>
+                </p>
+                {noModel ? null : (
+                  <button type="button" className={`${ui.btn} ${ui.btnPrimary} ${p.bigBtn}`} data-guide="people:switch-on" disabled={saving} onClick={toggle}>
+                    {saving ? "Switching on…" : "Switch recognition on"}
+                  </button>
+                )}
+                <p className={`${ui.muted} ${ui.small}`}>
+                  The switch also lives under <Link href="/privacy/">Privacy, Faces</Link>.
+                </p>
+                {error ? <WriteError error={error} /> : null}
+              </div>
             )}
           </section>
 
-          <section className={ui.section}>
-            <h2 className={ui.sectionTitle}>Enrolled</h2>
-            {people.error ? (
-              <ErrorBox what="who is enrolled" error={people.error} onRetry={people.reload} />
-            ) : !people.data ? (
-              <Loading what="who is enrolled" />
-            ) : enrolled.length === 0 ? (
-              <Empty title="Nobody is enrolled">
-                Until someone enrolls, habits describe this desk as a whole. Everyone who has not enrolled stays anonymous.
-              </Empty>
-            ) : (
-              <ul className={ui.list}>
-                {enrolled.map((m) => (
-                  <Person key={m.member_id} member={m} settings={settings.data!} friends={friends} on={on} onChanged={people.reload} />
-                ))}
-              </ul>
-            )}
-          </section>
-
-          {sharing.data ? (
-            <FaceShare status={sharing.data} received={received} onChanged={reloadSharing} />
-          ) : received.length > 0 ? (
-            <section className={ui.section}>
-              <h2 className={ui.sectionTitle}>Friends this box recognises</h2>
-              <ul className={ui.list}>
-                {received.map((m) => (
-                  <LeftOver key={m.member_id} member={m} onChanged={people.reload} />
-                ))}
-              </ul>
+          {others.length > 0 || (owner && on) ? (
+            <section className={ui.section} data-guide="people:others">
+              <h2 className={ui.sectionTitle}>Also on this box</h2>
+              {others.length > 0 ? (
+                <ul className={ui.list}>
+                  {others.map((m) => (
+                    <Person key={m.member_id} member={m} settings={settings.data!} friends={friends} on={on} mine={false} onChanged={people.reload} />
+                  ))}
+                </ul>
+              ) : null}
+              {owner && on ? (
+                <details className={p.keys}>
+                  <summary>Scan someone else who uses this box</summary>
+                  <Teach settings={settings.data} friends={friends} onDone={people.reload} />
+                </details>
+              ) : null}
             </section>
           ) : null}
 
-          <section className={ui.section}>
-            <h2 className={ui.sectionTitle}>Room mood from everyone (anonymous)</h2>
-            <Everyone settings={settings.data} on={on} onChanged={settings.reload} />
-          </section>
+          {/* 3. Friends: who can recognise whom (the Circle's face share), then the group that shares the GPUs. */}
+          <div className={p.contents} data-guide="people:friends">
+            {sharing.data ? (
+              <FaceShare status={sharing.data} received={received} onChanged={reloadSharing} />
+            ) : (
+              <section className={ui.section}>
+                <h2 className={ui.sectionTitle}>Friends this box recognises</h2>
+                {received.length > 0 ? (
+                  <ul className={ui.list}>
+                    {received.map((m) => (
+                      <LeftOver key={m.member_id} member={m} friends={friends} onChanged={people.reload} />
+                    ))}
+                  </ul>
+                ) : (
+                  <div className={ui.card}>
+                    <p>
+                      Friends can let their boxes recognise each other. <span className={ui.muted}>Nobody has yet: join a Circle, then each of you says yes on your own box.</span>
+                    </p>
+                    <div className={ui.row}>
+                      <Link className={ui.btn} href="/circle/">
+                        Open the Circle
+                      </Link>
+                    </div>
+                  </div>
+                )}
+              </section>
+            )}
+            <section className={ui.section}>
+              <h2 className={ui.sectionTitle}>Friends who learn with you</h2>
+              <Group sharing={sharing.data} />
+            </section>
+          </div>
         </>
       )}
     </>
+  );
+}
+
+/** "Demo data": these rows were written by the demo seed (made-up numbers), not by anyone enrolling. */
+function DemoTag() {
+  return (
+    <span className={`${ui.tag} ${p.demoTag}`} data-guide="people:demo" title="Written by the demo seed with made-up numbers. Nobody was enrolled and no face was used.">
+      Demo data
+    </span>
+  );
+}
+
+/** One plain line about where things stand, above everything else; and the "Demo data" tag when the list is the demo's. */
+function StateLine({ on, noModel, saved, demo }: { on: boolean; noModel: boolean; saved: Member[]; demo: boolean }) {
+  const count = (n: number, what: string) => (n > 0 ? `${n} ${what}` : null);
+  const local = saved.filter((m) => m.source !== "circle");
+  const parts = [
+    count(local.filter((m) => m.scanned !== false).length, "scanned"),
+    count(saved.length - local.length, "through the Circle"),
+    count(local.filter((m) => m.scanned === false).length, "to finish"),
+  ].filter(Boolean);
+  const line =
+    noModel && saved.length > 0
+      ? "This machine has no face model, so nobody will be recognised live. What you see is saved from before."
+      : noModel
+        ? "This machine has no face model, so nobody will be recognised live."
+        : on
+          ? "Recognition is on."
+          : "Recognition is off, so nobody is recognised right now.";
+  return (
+    <div className={p.stateLine} role="status" data-guide="people:state">
+      <p>{line}</p>
+      {saved.length > 0 ? (
+        <p className={`${ui.muted} ${ui.small}`}>
+          {saved.length} {saved.length === 1 ? "person" : "people"} saved: {parts.join(", ")}.
+        </p>
+      ) : null}
+      {demo ? (
+        <p className={p.demoLine}>
+          <DemoTag />
+          <span className={`${ui.muted} ${ui.small}`}>These people come from the demo seed: made-up numbers, nobody&apos;s face, nobody enrolled.</span>
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -216,7 +283,15 @@ function Teach({ settings, friends, onDone }: { settings: IdentitySettings; frie
 
   return (
     <div className={`${ui.card} ${p.stack}`}>
-      {known?.state === "done" ? (
+      {known?.state === "done" && known.scanned === false ? (
+        <div role="status">
+          <h3>Photos saved</h3>
+          <p className={ui.muted}>
+            Not scanned yet. Atlas can&apos;t tell {other ? "them" : "you"} from anyone else, so it reads no expressions and learns no face. Finish the face
+            scan next to the name below; the photos then add to it.
+          </p>
+        </div>
+      ) : known?.state === "done" ? (
         <div role="status">
           <h3>Atlas knows {other ? "them" : "you"}</h3>
           <p className={ui.muted}>
@@ -233,8 +308,9 @@ function Teach({ settings, friends, onDone }: { settings: IdentitySettings; frie
           </strong>
         </p>
       ) : (
-        <p className={ui.muted}>
-          Atlas learns a face from a handful of looks and keeps an encrypted template on this box. It never keeps the pictures, and nothing is sent anywhere.
+        <p>
+          <strong>Scan your face so Atlas knows it&apos;s you.</strong>{" "}
+          <span className={ui.muted}>A few looks at the camera. Only numbers are kept, encrypted on this box: never a picture, and nothing is sent anywhere.</span>
         </p>
       )}
 
@@ -291,7 +367,7 @@ function Teach({ settings, friends, onDone }: { settings: IdentitySettings; frie
       </label>
 
       {scan && photos ? (
-        <button type="button" className={`${ui.btn} ${ui.btnPrimary}`} disabled={!ready} onClick={() => setWay("scan")}>
+        <button type="button" className={`${ui.btn} ${ui.btnPrimary} ${p.bigBtn}`} data-guide="people:scan" disabled={!ready} onClick={() => setWay("scan")}>
           {other ? "Scan their face" : "Scan my face"}
         </button>
       ) : photos ? (
@@ -400,8 +476,10 @@ function enrolledOn(iso: string): string {
   return label === "Today" || label === "Yesterday" ? label.toLowerCase() : `on ${label}`;
 }
 
-function Person({ member, settings, friends, on, onChanged }: {
+function Person({ member, settings, friends, on, mine, onChanged }: {
   member: Member;
+  /** this is the box's owner: the page says "you" */
+  mine: boolean;
   settings: IdentitySettings;
   friends: CircleMember[];
   on: boolean;
@@ -415,7 +493,10 @@ function Person({ member, settings, friends, on, onChanged }: {
   const [added, setAdded] = useState<EnrollPhotosResult | undefined>(undefined);
   const [error, setError] = useState<ApiError | undefined>(undefined);
   const reads = member.expressions === true;
+  const scanned = member.scanned !== false; // an older box does not say: then it is as before
   const friend = friends.find((f) => f.member_id === member.circle_member_id);
+  const present = useFetch((s) => api.presentNow(s), member.member_id);
+  const here = (present.data?.present ?? []).some((who) => who.member_id === member.member_id);
 
   const act = async (what: () => Promise<unknown>) => {
     setBusy(true);
@@ -443,12 +524,24 @@ function Person({ member, settings, friends, on, onChanged }: {
     <li className={`${ui.card} ${p.stack}`}>
       <div className={`${ui.row} ${ui.between} ${ui.wrap}`}>
         <div className={ui.grow}>
-          <h3 className={ui.breakWords}>{member.name}</h3>
+          <div className={p.nameRow}>
+            <h3 className={ui.breakWords}>{member.name}</h3>
+            <span className={scanned ? `${ui.tag} ${ui.tagAccent}` : ui.tag}>{scanned ? "Scanned" : "Scan to finish"}</span>
+            {scanned && on ? <span className={here ? `${ui.tag} ${ui.tagAccent}` : ui.tag}>{here ? "Recognised right now" : "Not in view right now"}</span> : null}
+            {member.demo ? <DemoTag /> : null}
+          </div>
           <p className={`${ui.muted} ${ui.small}`}>
-            Enrolled {enrolledOn(member.enrolled_at)}
+            {scanned ? "Enrolled" : "Photos saved"} {enrolledOn(member.enrolled_at)}
             {member.photos ? ` · ${member.photos} ${member.photos === 1 ? "look" : "looks"}` : ""}
             {friend ? ` · ${friend.display_name} in the Circle` : ""}
           </p>
+          {!scanned ? (
+            <p className={ui.small} role="status" data-scan="needed" data-guide="people:scan-to-finish">
+              {member.recognised === false
+                ? "Not scanned yet. Atlas can't tell you from anyone else, so it reads no expressions and learns no face."
+                : `Scan to finish. Atlas still recognises ${member.name} from earlier photos, but reads no expressions until the face scan is done.`}
+            </p>
+          ) : null}
         </div>
         {asking ? (
           <div className={ui.row}>
@@ -461,7 +554,7 @@ function Person({ member, settings, friends, on, onChanged }: {
           </div>
         ) : (
           <button type="button" className={`${ui.btn} ${ui.btnDeny}`} onClick={() => setAsking(true)}>
-            Forget me
+            {mine ? "Forget me" : "Forget"}
           </button>
         )}
       </div>
@@ -475,31 +568,6 @@ function Person({ member, settings, friends, on, onChanged }: {
 
       {on ? (
         <>
-          <div className={`${ui.row} ${ui.between} ${ui.wrap}`}>
-            <div className={ui.grow}>
-              <h3>Read my expressions</h3>
-              <p className={`${ui.muted} ${ui.small}`}>
-                While a camera sees {member.name}, Atlas notes how their face looked (tense, tired, upbeat, neutral), added up over minutes. It is a rough
-                signal for the study coach, not a reading of feelings or health. Off for everyone else.
-              </p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={reads}
-              className={reads ? ui.btn : `${ui.btn} ${ui.btnPrimary}`}
-              disabled={busy || (!reads && settings.expressions_available === false)}
-              onClick={() => act(() => api.updateMember(member.member_id, { expressions: !reads }))}
-            >
-              {reads ? "Switch off" : "Switch on"}
-            </button>
-          </div>
-          {settings.expressions_available === false ? (
-            <p className={`${ui.muted} ${ui.small}`}>The expression model is not installed on this box yet.</p>
-          ) : reads ? (
-            <ExpressionStrip memberId={member.member_id} />
-          ) : null}
-
           {adding === "scan" ? (
             <FaceScan who={{ member_id: member.member_id }} consent={agreed} onDone={moreDone} onClose={() => setAdding(undefined)} />
           ) : (
@@ -515,8 +583,8 @@ function Person({ member, settings, friends, on, onChanged }: {
                   </button>
                 ) : null}
                 {scan && settings.photos_available !== false ? (
-                  <button type="button" className={ui.btn} disabled={!agreed} onClick={() => setAdding("scan")}>
-                    Scan again
+                  <button type="button" className={scanned ? ui.btn : `${ui.btn} ${ui.btnPrimary}`} disabled={!agreed} onClick={() => setAdding("scan")}>
+                    {scanned ? "Scan again" : "Finish the face scan"}
                   </button>
                 ) : null}
               </div>
@@ -526,12 +594,71 @@ function Person({ member, settings, friends, on, onChanged }: {
           {added?.state === "done" ? (
             <p role="status" className={ui.muted}>
               Added {added.accepted}. The template is now made of {added.exemplars} looks (the newest 12 are kept).
+              {added.scanned === false ? " Still not scanned: finish the face scan and Atlas will start to recognise them." : ""}
             </p>
           ) : added ? (
             <p role="status" className={ui.muted}>
               Nothing was added: none of those looked like {member.name} clearly enough.
             </p>
           ) : null}
+          {/* What Atlas knows about you: the expressions switch, the strip, "Looks Atlas remembers".
+              LOOK-LEARNING SLOT (branch ctx/day/look-learning): "What Atlas has learned about your looks" goes directly
+              under <LooksRemembered /> below, in both places it is rendered in this component. Nothing else needs to move. */}
+          <h3 className={p.part} data-guide="people:knows">What Atlas knows about {mine ? "you" : member.name}</h3>
+          <div className={`${ui.row} ${ui.between} ${ui.wrap}`} data-guide="people:expressions">
+            <div className={ui.grow}>
+              <h3>Read my expressions</h3>
+              <p className={`${ui.muted} ${ui.small}`}>
+                While a camera sees {member.name}, Atlas notes how their face looked (tense, tired, upbeat, neutral), added up over minutes. It is a rough
+                signal for the study coach, not a reading of feelings or health. Off for everyone else.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={reads}
+              className={reads ? ui.btn : `${ui.btn} ${ui.btnPrimary}`}
+              disabled={busy || (!reads && (!scanned || settings.expressions_available === false))}
+              onClick={() => act(() => api.updateMember(member.member_id, { expressions: !reads }))}
+            >
+              {reads ? "Switch off" : "Switch on"}
+            </button>
+          </div>
+          {!scanned ? (
+            <p className={`${ui.muted} ${ui.small}`}>
+              {reads ? "Switched on, but nothing is read until the face scan is done." : "Finish the face scan first."}
+            </p>
+          ) : settings.expressions_available === false ? (
+            <p className={`${ui.muted} ${ui.small}`}>The expression model is not installed on this box yet.</p>
+          ) : !reads ? (
+            <p className={`${ui.muted} ${ui.small}`}>Nothing yet. Switch it on and the looks Atlas notes and remembers show here.</p>
+          ) : reads ? (
+            <>
+              <ExpressionStrip memberId={member.member_id} />
+              <LooksRemembered memberId={member.member_id} />
+            </>
+          ) : null}
+
+        </>
+      ) : !settings.available ? (
+        // No face model here: nothing can be switched or read, so the row shows what was saved, and what was read before.
+        <>
+          <h3 className={p.part} data-guide="people:knows">What Atlas knows about {mine ? "you" : member.name}</h3>
+          <div className={`${ui.row} ${ui.between} ${ui.wrap}`} data-guide="people:expressions">
+            <div className={ui.grow}>
+              <h3>Read my expressions</h3>
+              <p className={`${ui.muted} ${ui.small}`}>
+                {!scanned
+                  ? "Off until the face scan is done."
+                  : reads
+                    ? `Saved as on for ${member.name}. Nothing new is read on this machine; below is what was read before.`
+                    : `Saved as off for ${member.name}.`}
+              </p>
+            </div>
+            <span className={reads && scanned ? `${ui.tag} ${ui.tagAccent}` : ui.tag}>{reads && scanned ? "On" : "Off"}</span>
+          </div>
+          {reads && scanned ? <ExpressionStrip memberId={member.member_id} hours={48} /> : null}
+          {reads && scanned ? <LooksRemembered memberId={member.member_id} /> : null}
         </>
       ) : null}
       {error ? <WriteError error={error} /> : null}
@@ -540,7 +667,8 @@ function Person({ member, settings, friends, on, onChanged }: {
 }
 
 /** A template a friend's box shared, on a box where face sharing has since been switched off: it can only be forgotten. */
-function LeftOver({ member, onChanged }: { member: Member; onChanged: () => void }) {
+function LeftOver({ member, friends, onChanged }: { member: Member; friends: CircleMember[]; onChanged: () => void }) {
+  const friend = friends.find((f) => f.member_id === member.shared_by);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | undefined>(undefined);
   const forget = async () => {
@@ -559,10 +687,21 @@ function LeftOver({ member, onChanged }: { member: Member; onChanged: () => void
     <li className={`${ui.card} ${p.stack}`}>
       <div className={`${ui.row} ${ui.between} ${ui.wrap}`}>
         <div className={ui.grow}>
-          <h3 className={ui.breakWords}>{member.name}</h3>
-          <p className={`${ui.muted} ${ui.small}`}>
-            Shared by a friend&apos;s Atlas. Face sharing is switched off on this box now, so this is deleted the next time the box checks the Circle.
-          </p>
+          <div className={p.nameRow}>
+            <h3 className={ui.breakWords}>{member.name}</h3>
+            <span className={ui.tag}>Via the Circle</span>
+            {member.demo ? <DemoTag /> : null}
+          </div>
+          {member.demo ? (
+            <p className={`${ui.muted} ${ui.small}`}>
+              Recognised through the Circle: {friend?.display_name ?? member.name}&apos;s own Atlas shared this, sealed so only this box can read it.
+              {member.expires_at ? ` It runs out ${enrolledOn(member.expires_at)} unless they renew it.` : ""}
+            </p>
+          ) : (
+            <p className={`${ui.muted} ${ui.small}`}>
+              Shared by a friend&apos;s Atlas. Face sharing is switched off on this box now, so this is deleted the next time the box checks the Circle.
+            </p>
+          )}
         </div>
         <button type="button" className={`${ui.btn} ${ui.btnDeny}`} disabled={busy} onClick={forget}>
           {busy ? "Forgetting…" : "Forget now"}
@@ -570,83 +709,5 @@ function LeftOver({ member, onChanged }: { member: Member; onChanged: () => void
       </div>
       {error ? <WriteError error={error} /> : null}
     </li>
-  );
-}
-
-/** The strict one: count how everyone in the room looked, as nobody in particular. Has to be confirmed. */
-function Everyone({ settings, on, onChanged }: { settings: IdentitySettings; on: boolean; onChanged: () => void }) {
-  const [confirming, setConfirming] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<ApiError | undefined>(undefined);
-  const everyone = settings.everyone === true;
-
-  const set = async (value: boolean) => {
-    setBusy(true);
-    setError(undefined);
-    try {
-      await api.setEveryone(value, value);
-      setConfirming(false);
-      onChanged();
-    } catch (err) {
-      setError(asApiError(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className={`${ui.card} ${p.stack}`}>
-      <p>
-        Off by default. When on, Atlas also reads the expression of faces it does <strong>not</strong> recognise, and adds them up for the whole room:
-        “3 people, mostly upbeat”.
-      </p>
-      <div className={`${ui.row} ${ui.between} ${ui.wrap}`}>
-        <span className={everyone ? `${ui.tag} ${ui.tagAccent}` : ui.tag}>{everyone ? "On" : "Off"}</span>
-        {everyone ? (
-          <button type="button" role="switch" aria-checked className={ui.btn} disabled={busy} onClick={() => set(false)}>
-            Switch off
-          </button>
-        ) : !confirming ? (
-          <button
-            type="button"
-            role="switch"
-            aria-checked={false}
-            className={ui.btn}
-            disabled={!on || settings.expressions_available === false}
-            onClick={() => setConfirming(true)}
-          >
-            Switch on…
-          </button>
-        ) : null}
-      </div>
-      {confirming && !everyone ? (
-        <div className={p.stack} role="alertdialog" aria-label="Confirm the room mood">
-          <p>
-            <strong>This looks at everyone a camera sees, including people who never agreed to anything.</strong> What it means:
-          </p>
-          <ul className={p.guide}>
-            <li>Only a room total is kept: how many faces, and how they looked, over stretches of minutes.</li>
-            <li>Nobody is identified, followed or given an id, and no face template is made for anyone.</li>
-            <li>Stored pictures stay blurred, exactly as now.</li>
-            <li>Tell the people in the room. Switch it off here at any time.</li>
-          </ul>
-          <div className={ui.row}>
-            <button type="button" className={ui.btn} disabled={busy} onClick={() => setConfirming(false)}>
-              Leave it off
-            </button>
-            <button type="button" className={`${ui.btn} ${ui.btnDeny}`} disabled={busy} onClick={() => set(true)}>
-              {busy ? "Switching on…" : "I understand, switch it on"}
-            </button>
-          </div>
-        </div>
-      ) : null}
-      {!on ? (
-        <p className={`${ui.muted} ${ui.small}`}>Needs recognition switched on above; switching that off switches this off too.</p>
-      ) : settings.expressions_available === false ? (
-        <p className={`${ui.muted} ${ui.small}`}>The expression model is not installed on this box yet.</p>
-      ) : null}
-      {everyone ? <ExpressionStrip memberId={null} /> : null}
-      {error ? <WriteError error={error} /> : null}
-    </div>
   );
 }

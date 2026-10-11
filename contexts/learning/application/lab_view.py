@@ -7,7 +7,12 @@
 
 A story says what was taught, what the model trained on, how training went (loss and power on one
 timeline), what changed on the held-out questions, why the gate deployed it or did not, and what
-runs on the box now. It never invents a number:
+runs on the box now. While the run is still going it also says so (L30): `run_status` is running, finished or
+failed, `steps_so_far` the steps the log holds, and `stage_strip` the four stages of the live loop (labeling,
+training, packaging, offered), each {stage, state (done, now, waiting, failed, not reported), started, ended,
+seconds, message}, lit from the run's own progress events, steps and package. A live-loop act (L29,
+learning.loop.act) adds `members`, `pods` (the training stage names them too) and `parts`: the steps of each extra
+pod's rank (R65's two-pod LoRA), whose own run id is left out of the run list. It never invents a number:
 
 - every number is a small dict `{label, value, unit, source, low_confidence, reason}`. `source` names
   the event (type and id), the file and line, or how it was derived and from which events;
@@ -130,7 +135,19 @@ class SwapCompleted(_Optional):
     reason: str | None = None
 
 
-OPTIONAL = {m.TYPE: m for m in (TrainingStarted, EvalReported, PackageBuilt, SwapCompleted)}
+class LoopAct(_Optional):
+    """The live loop's act (L29): who pooled, which pods train it, and the runs that are its parts (one per extra pod:
+    R65's rank 1 on pod C writes its steps under its own run id). Published by lab_import kind=stage from the act's
+    start line; not in contracts/, like the others here."""
+    TYPE: ClassVar[str] = "learning.loop.act"
+    run_id: str
+    act: str | None = None
+    members: int | None = None
+    pods: list[str] = []
+    parts: dict[str, str] = {}   # pod -> the run id its rank's steps are posted under
+
+
+OPTIONAL = {m.TYPE: m for m in (TrainingStarted, EvalReported, PackageBuilt, SwapCompleted, LoopAct)}
 
 SUGGESTED_EVENTS = [
     {"type": TrainingStarted.TYPE, "gives": "total steps, samples per step and the trainer's node, so samples/s and joules per "
@@ -220,6 +237,7 @@ class LabView:
         self.reports: dict[str, tuple[Event, EvalReported]] = {}
         self.packages: dict[str, tuple[Event, PackageBuilt]] = {}
         self.swaps: list[tuple[Event, SwapCompleted]] = []
+        self.loop_acts: dict[str, tuple[Event, LoopAct]] = {}
         self.deployments: list[ModelDeployed] = []
         self.gpu: dict[str, deque[GpuPower]] = {}
         self.answers: deque[JoulesPerAnswer] = deque(maxlen=keep)
@@ -280,7 +298,12 @@ class LabView:
             self.swaps.append((e, body))
             return
         self._run(body.run_id)
-        {TrainingStarted: self.started, EvalReported: self.reports, PackageBuilt: self.packages}[type(body)][body.run_id] = (e, body)
+        {TrainingStarted: self.started, EvalReported: self.reports, PackageBuilt: self.packages,
+         LoopAct: self.loop_acts}[type(body)][body.run_id] = (e, body)
+
+    def part_of(self, run_id: str) -> str | None:
+        """The act this run is a part of (a rank on another pod), or None."""
+        return next((parent for parent, (_, act) in self.loop_acts.items() if run_id in act.parts.values()), None)
 
     # --- reads ---
 
@@ -288,10 +311,19 @@ class LabView:
         """One line per run, newest first."""
         out = []
         for run_id in self.run_ids:
+            if self.part_of(run_id):   # a rank on another pod shows inside its act's story, not as a run of its own
+                continue
             s = self.story(run_id)
+            ev = s["eval"]
+            right = {k: (ev["correct"].get(k) or {}).get("value") for k in ("current", "candidate")}
             out.append({"run_id": run_id, "task": s["task"]["slug"], "status": s["status"], "started": s["marks"]["run_start"],
-                        "ended": s["marks"]["end"], "scores": s["eval"]["scores"], "model_version": s["eval"]["model_version"],
-                        "verdict": s["eval"]["verdict"]})
+                        "ended": s["marks"]["end"], "scores": ev["scores"], "model_version": ev["model_version"],
+                        "verdict": ev["verdict"], "run_status": s["run_status"],
+                        # the headline's inputs, so the screen can say "N of M" without opening every run
+                        "tested": {"decision": ev["decision"], "n_items": ev["n_items"]["value"], "right_before": right["current"],
+                                   "right_after": right["candidate"], "rehearsal": ev["rehearsal"],
+                                   "source": ev["source"]} if ev["decision"] else None,
+                        "deployed": s["deploy"]["deployed"], "rolled_back": s["deploy"]["rolled_back"]})
         out.sort(key=lambda r: (r["started"] is not None, r["started"]), reverse=True)
         return mark_sample(out) if self.sample else out
 
@@ -347,11 +379,28 @@ class LabView:
             "dataset": dataset, "training": training, "power": power, "eval": ev,
             "package": self._package(package, version),
             "deploy": deploy,
+            "box_now": self.box_now(version),
             "box": self._box(deployed, swap),
             "ignored_events": [r for r in self.rejected],
         }
+        story["stage_strip"] = self._strip(progress, steps, evaluated, package, deployed)
+        story.update(self._loop(run_id, story["stage_strip"]))
+        story["run_status"] = _run_state(status, progress, story["stage_strip"])
+        story["steps_so_far"] = len(steps)
         story["gaps"] = [{"label": n["label"], "reason": n["reason"]} for n in collect_numbers(story) if n["value"] is None]
         return mark_sample(story) if self.sample else story
+
+    def box_now(self, version: str | None = None) -> dict[str, Any]:
+        """The model the box's log says is installed now: the newest learning.model.deployed event, whichever run it
+        belongs to. `this_run` says whether that is `version`. With no such event the log does not know, and says so.
+        The runtime's own name for what it loaded (the list's `current_model`) is a served name, not a package version,
+        so it is never compared with a run's model here."""
+        if not self.deployments:
+            return {"model_version": None, "previous_version": None, "since": None, "source": None, "this_run": None,
+                    "reason": "the box's log holds no install yet, so it cannot say which model is serving"}
+        last = max(self.deployments, key=lambda d: d.ts)
+        return {"model_version": last.model_version, "previous_version": last.previous_version, "since": last.ts,
+                "source": by_event(last), "reason": None, "this_run": bool(version) and last.model_version == version}
 
     # --- the parts of a story ---
 
@@ -566,7 +615,8 @@ class LabView:
         no_report = "no learning.eval.reported event for this run: the eval event carries scores and a decision only"
         out: dict[str, Any] = {"scores": scores, "decision": evaluated.decision if evaluated else None,
                                "model_version": evaluated.model_version if evaluated else None,
-                               "source": by_event(evaluated) if evaluated else None}
+                               "source": by_event(evaluated) if evaluated else None,
+                               "rehearsal": None}  # set below when the answers show the test did not ask the model
         if report is None:
             for key, label, unit in (("n_items", "Held-out questions scored", "items"), ("n_groups", "Groups they stand on", "groups"),
                                      ("noise", "Run-to-run noise", "fraction"), ("p_value", "p-value", None)):
@@ -602,6 +652,7 @@ class LabView:
         tally = {c: sum(i["change"] == c for i in items) for c in ("fixed", "broke", "still_right", "still_wrong")}
         counted = derived("counted from the eval report's per-question answers", e)
         out["items"], out["items_reason"] = items, None
+        out["rehearsal"] = placeholder_answers(items)
         out["groups"] = [{**g, "diff": round((g["after"] - g["before"]) / g["n"], 4)} for g in groups.values()]
         out["counts"] = {
             "n": num("Questions with both answers", len(items), "items", counted, low_confidence=low),
@@ -668,7 +719,8 @@ class LabView:
             r = report[1]
             if r.p_value is not None:
                 alpha = ev["alpha"]
-                detail.append(f"p = {r.p_value:.3g}: a difference this large would show up by chance "
+                shown = f"p = {r.p_value:.3g}" if r.p_value >= 1e-6 else "p is below 0.000001"
+                detail.append(f"{shown}: a difference this large would show up by chance "
                               f"{_one_in(r.p_value)}; the gate needs p below {alpha:g}.")
             if r.noise is not None and cur is not None and cand is not None:
                 side = "larger than" if abs(cand - cur) > r.noise else "inside"
@@ -682,7 +734,11 @@ class LabView:
                     "rolled back": "Better by more than chance on the test, but the box went back to the old model."}.get(
                 status, "Better by more than chance: cleared to deploy, not on the box yet.")
         else:
-            head = "Not proven: not deployed."
+            # The test's answer and what happened on the box are two facts: a model the test refused can still have been
+            # installed by hand, and the screen must not say "not deployed" above a swap the log holds.
+            head = {"deployed": "Not proven by the test, but installed on the box anyway.",
+                    "rolled back": "Not proven by the test: it was installed, then the box went back to the old model."}.get(
+                status, "Not proven: not deployed.")
         return head, detail
 
     def _package(self, package: tuple[Event, PackageBuilt] | None, version: str | None) -> dict[str, Any]:
@@ -710,6 +766,68 @@ class LabView:
                 "sha256": manifest.sha256.get(manifest.gguf), "source": src, "reason": None,
                 "bytes": num("Model file size", gguf.stat().st_size, "bytes", by_file(f"models/{version}/{manifest.gguf}"))
                 if gguf.is_file() else missing("Model file size", "bytes", "the model file is not on this box")}
+
+    def _strip(self, progress: list[RunProgress], steps: list[TrainStep], evaluated: RunEvaluated | None,
+               package: tuple[Event, PackageBuilt] | None, deployed: ModelDeployed | None) -> list[dict[str, Any]]:
+        """The live run's stage strip (L30): labeling, training, packaging, offered, each with when it began and ended
+        from the run's own events. The live loop's stage lines (lab_import kind=stage) report every edge; a run without
+        them still lights training from its steps and packaging from its package event."""
+        by = {name: [p for p in progress if p.stage == name] for name in ("labeling", "training", "packaging")}
+        offered = [p for p in by["packaging"] if p.progress >= 1 and (p.message or "").startswith("offered")]
+        done = lambda ps: next((p.ts for p in ps if p.progress >= 1), None)
+        started = {"labeling": by["labeling"][0].ts if by["labeling"] else None,
+                   "training": min([p.ts for p in by["training"]] + ([steps[0].ts] if steps else []), default=None),
+                   "packaging": by["packaging"][0].ts if by["packaging"] else (package[0].ts if package else None),
+                   "offered": offered[0].ts if offered else (deployed.ts if deployed else None)}
+        ended = {"labeling": done(by["labeling"]),
+                 "training": done(by["training"]) or (evaluated.ts if evaluated else None),
+                 "packaging": done(by["packaging"]) or (package[0].ts if package else None),
+                 "offered": started["offered"]}
+        failed = next((p for p in progress if p.stage == "failed"), None)
+        out, blocked = [], False
+        for i, name in enumerate(STRIP):
+            later = any(started[n] or ended[n] for n in STRIP[i + 1:])
+            if ended[name] or (started[name] and later):
+                state = "done"
+            elif later:
+                state = "not reported"   # a later stage began; this one sent nothing (a run from files, say)
+            elif failed is not None and not blocked:
+                state, blocked = "failed", True
+            elif started[name]:
+                state = "now"
+            else:
+                state = "waiting"
+            a, b = started[name], ended[name]
+            out.append({"stage": name, "state": state, "started": a, "ended": b,
+                        "seconds": _secs(a, b) if a and b else None,
+                        "message": failed.message if state == "failed" and failed else None})
+        return out
+
+    def _loop(self, run_id: str, strip: list[dict[str, Any]]) -> dict[str, Any]:
+        """The live loop's act (L29): members, the pods it trains on, and each extra pod's rank as a part of the
+        training, with its steps and losses. The strip's training stage names the pods."""
+        found = self.loop_acts.get(run_id)
+        if found is None:
+            return {"members": None, "pods": None, "parts": [], "part_of": self.part_of(run_id)}
+        act = found[1]
+        parts = []
+        for node, part in sorted(act.parts.items()):
+            steps = [st for _, st in sorted(self.steps.get(part, {}).items())]
+            losses = [st.loss for st in steps if st.loss is not None]
+            parts.append({"node": node, "run_id": part, "steps": len(steps),
+                          "loss_first": losses[0] if losses else None, "loss_last": losses[-1] if losses else None,
+                          "points": [{"step": st.step, "ts": st.ts, "loss": st.loss, "w": st.socket_w} for st in steps],
+                          "source": derived("one point per telemetry.train.step of the part's run", *steps) if steps
+                          else None})
+            if steps:   # the other pod's steps light the training stage too
+                training = next(x for x in strip if x["stage"] == "training")
+                if training["state"] == "waiting":
+                    training["state"], training["started"] = "now", training["started"] or steps[0].ts
+        for x in strip:
+            if x["stage"] == "training":
+                x["pods"] = list(act.pods)
+        return {"members": act.members, "pods": list(act.pods), "parts": parts, "part_of": None,
+                "loop": {"act": act.act, "members": act.members, "pods": list(act.pods), "source": by_event(found[0])}}
 
     def _box(self, deployed: ModelDeployed | None, swap: tuple[Event, SwapCompleted] | None) -> dict[str, Any]:
         """Energy and speed per answer on the box, for the model before the swap and the one after it."""
@@ -744,12 +862,51 @@ class LabView:
         }
 
 
+STRIP = ("labeling", "training", "packaging", "offered")
+
+
+def _run_state(status: str, progress: list[RunProgress], strip: list[dict[str, Any]]) -> str:
+    """running, finished or failed: whether the run is still moving, for a screen that redraws while it does."""
+    if status == "failed" or any(s["state"] == "failed" for s in strip):
+        return "failed"
+    if status in ("deployed", "not deployed", "rolled back") or strip[-1]["state"] == "done":
+        return "finished"
+    return "running"
+
+
+def run_status(view: "LabView", run_id: str) -> str | None:
+    """The run's `run_status` as its story says it; None when the view does not know the run."""
+    story = view.story(run_id)
+    return story["run_status"] if story else None
+
+
 def _one_in(p: float) -> str:
     if p <= 0:
         return "never"
     if p >= 0.5:
         return "more than half the time"
+    if p < 1e-6:
+        return "less than 1 time in a million"  # a longer number reads as precision the test does not have
     return f"about 1 time in {round(1 / p):,}"
+
+
+def placeholder_answers(items: list[dict[str, Any]]) -> str | None:
+    """Why a test's per-question answers cannot be the model's own, or None when nothing says so.
+
+    One rule, from the answers alone: every question got the very same answer text after training, every one of them is
+    marked right, and the right answers differ from question to question. One text cannot be the right answer to
+    different questions, so the marks did not come from asking the model (the lab's loop rehearsal runs its gate this
+    way). The screen then calls the run a rehearsal instead of reading its score as proof. A real test never trips it:
+    its answers differ as its questions do."""
+    if len(items) < 2:
+        return None
+    after = {str(i["after"]["answer"]).strip().casefold() for i in items}
+    expected = {str(i["expected"]).strip().casefold() for i in items if i.get("expected")}
+    if len(after) != 1 or len(expected) < 2 or not all(i["after"]["correct"] for i in items):
+        return None
+    text = str(items[0]["after"]["answer"]).strip()[:40]
+    return (f'all {len(items)} questions got the same answer after training ("{text}") and every one is marked right, '
+            f"although the right answers differ ({len(expected)} different ones): the test did not ask the model")
 
 
 def fold(view: LabView, events: list[Event]) -> LabView:

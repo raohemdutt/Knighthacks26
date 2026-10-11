@@ -26,7 +26,8 @@
   "steps": 4,
   "train_batch": 4,
   "grad_accum": 1,
-  "train_model": "~/models/Qwen3.5-4B"
+  "train_model": "~/models/Qwen3.5-4B",
+  "train_rows": 16
  },
  "arms": {
   "decode": {
@@ -143,6 +144,7 @@
    ],
    "batch": 4,
    "grad_accum": 1,
+   "rows": 16,
    "exit_code": 0,
    "run": {
     "outcome": "trained",
@@ -193,6 +195,7 @@
    ],
    "batch": 4,
    "grad_accum": 1,
+   "rows": 16,
    "exit_code": 0,
    "run": {
     "outcome": "trained",

@@ -9,7 +9,13 @@
     GET /api/room/live                    tracks on the floor right now, where things were last seen, the Sort It
                                           round with its routes, the last result, and the "which bin?" hint
     GET /api/play/room-route              ?item=can[&from_track=cam-door:5 | &x=&y=] -> the walk to the right bin on
-                                          the floor plan: points in metres, distance, par seconds
+                                          the floor plan: points in metres, distance, par seconds. With &search=1 also
+                                          how it was found: `search` (the 10 cm grid, the blocked cells, the cells the
+                                          A* search expanded in order, the path's cells), `obstacles` (people and
+                                          things in the way just then) and `around` (what the walk bends around)
+    GET /api/play/route-search            the round that is on (else the last one): each plan of it, the first and
+                                          every re-plan, with the same three fields and, for a re-plan, `rerouted`
+                                          (what moved into the way, or that the player left the line)
 
 Calibrating in four taps: tap four spots on the floor in the camera's picture (the corners of a rug or of a taped
 square work well), and give the same four spots in room metres, in the same order. Three of them must not be in a line.
@@ -81,7 +87,7 @@ def room_router(live: Callable[[], RoomLive | None], config_dir: Path, guard: Ca
 
     @router.get("/api/play/room-route")
     def room_route(item: str, from_track: str | None = None, x: float | None = Query(None, ge=0, le=100),
-                   y: float | None = Query(None, ge=0, le=100)) -> dict:
+                   y: float | None = Query(None, ge=0, le=100), search: bool = False) -> dict:
         r = room()
         if r.rules.canonical(item) is None:
             raise HTTPException(404, f"unknown item {item!r}; sortable: {', '.join(sorted(r.rules.items))}")
@@ -98,6 +104,11 @@ def room_router(live: Callable[[], RoomLive | None], config_dir: Path, guard: Ca
             raise HTTPException(404, f"this room has no {r.rules.bin_for(item)} bin")
         return {"item": item, "bin": target.bin, "bin_id": target.id, "zone": r.rules.zone_for(item), "room": r.plan.name,
                 "from": {"x": round(start[0], 3), "y": round(start[1], 3), "track": walker.key if walker else None},
-                "reachable": route is not None, **(route.as_json() if route else {"points": [], "distance_m": 0.0, "par_s": 0.0})}
+                "reachable": route is not None, **(route.as_json() if route else {"points": [], "distance_m": 0.0, "par_s": 0.0}),
+                **(r.describe(route, r.in_the_way(walker, item), target) if search else {})}
+
+    @router.get("/api/play/route-search")
+    def route_search() -> dict:
+        return room().plans(datetime.now(UTC))
 
     return router

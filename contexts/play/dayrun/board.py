@@ -150,6 +150,7 @@ def build_board(
     initial: Initial,
     friends: list[FriendAt] | None = None,
     over: InitialOverride | None = None,
+    listed=None,  # (item) -> bool: a public listing, not the person's own commitment (agent.yaml `listings:`, set by the composition root)
 ) -> Board:
     start = to_tick(cfg, start)
     end = start + timedelta(hours=cfg.window_hours)
@@ -168,7 +169,8 @@ def build_board(
                 left = float(work_left[item.external_id]) if mine else guess
                 deadlines.append(Deadline(id=item.external_id, title=item.title, due=when, work_left=left,
                                           in_window=when <= end, risk=risk_of(cfg, left, start, when), url=item.url,
-                                          estimate_from="yours" if mine else how, estimate_word=word, estimate_minutes=guess))
+                                          estimate_from="yours" if mine else how, estimate_word=word, estimate_minutes=guess,
+                                          source=item.connector or None))
             continue
         if item.kind != "calendar_event":
             continue
@@ -182,7 +184,10 @@ def build_board(
             nearby.append(OptionalEvent(id=item.external_id, title=item.title, start=when, end=until, place=place,
                                         place_name=name, url=item.url, note=note))
             continue
-        if any(item.external_id.startswith(p) for p in cfg.optional_event_prefixes):
+        # A listing (the campus feed by its id prefix, or anything the box's `listings:` config recognises by its link,
+        # feed or connector) is offered as an optional event; it is never a fixed block, so a plan never walks to it
+        # as a commitment and the tracker never gives it a leave-by time.
+        if any(item.external_id.startswith(p) for p in cfg.optional_event_prefixes) or (listed is not None and listed(item)):
             events.append(OptionalEvent(id=item.external_id, title=item.title, start=when, end=until, place=place,
                                         place_name=name, url=item.url))
             continue

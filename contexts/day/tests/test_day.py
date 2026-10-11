@@ -399,6 +399,22 @@ def test_the_api_shapes(items, places, tmp_path):
     assert c.get("/api/day/patterns").json() == {"patterns": []}
 
 
+def test_the_plans_blocks_are_a_port_for_whoever_answers_a_question_about_the_day(items, places, tmp_path):
+    """DayLoop.blocks: what the agent's day rundown and its model's FACTS read (wired in the gateway as `day_plan`)."""
+    loop = make(items, places, tmp_path)
+    assert loop.blocks(at(8, 5)) is None  # no plan yet: None, not an empty day
+    feed(loop, loop.planner.plan(at(8, 10)))
+    said = [(b["kind"], b["title"], b["start"].astimezone(TZ).strftime("%H:%M")) for b in loop.blocks(at(8, 30))]
+    # the chosen blocks from now, in the narrator's words and in time order; fixed events (the calendar's own) and the
+    # night's sleep are left out; then when to leave for the next fixed event that needs a walk
+    assert said == [("study", "a study block", "09:44"), ("meal", "lunch", "11:27"), ("meal", "dinner", "18:30"), ("study", "a study block", "19:02"),
+                    ("rest", "a break", "20:22"), ("study", "a study block", "21:17"), ("leave", "Knight Hacks: mentor check-in", "09:10")]
+    assert all(b["start"] >= at(13) for b in loop.blocks(at(13))) and [b["title"] for b in loop.blocks(at(13))][:1] == ["dinner"]
+    assert not any("Knight Hacks" in b["title"] or b["kind"] == "sleep" for b in loop.blocks(at(8, 30)) if b["kind"] != "leave")
+    # after midnight the plan still running is yesterday's: a plan with nothing left to say, not "no plan"; once it is over, none
+    assert loop.blocks(at(0, 30, day=12)) == [] and loop.blocks(at(12, day=13)) is None
+
+
 def test_patterns_are_counted_statements_or_nothing():
     h = FakeHabits()
     assert patterns(h) == []

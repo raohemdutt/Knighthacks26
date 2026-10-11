@@ -15,8 +15,12 @@ GET  /api/learning/lab/experiments
     the ledger was read from (`from`: LAB_STATE_DIR, imported, checkout) and, for the copy the lab pushed
     (`imported_dir`, POST /api/learning/lab/import?kind=ledger), when it arrived and its row count.
     contexts/learning/application/lab_experiments.py
+GET  /api/learning/lab/report
+    the lab's "Under the hood" report pack (lab/refine/report/under-the-hood.json), read-only: per section its title,
+    the sentence the lab wrote, its state, a few key numbers with file and line, and `stale` when the pack is older
+    than the metrics file on disk. contexts/learning/application/lab_report.py
 
-All three read files only: no model call, no pod, no hub. The metrics file is re-read when it changes on disk.
+All four read files only: no model call, no pod, no hub. The metrics file is re-read when it changes on disk.
 """
 
 from pathlib import Path
@@ -26,11 +30,13 @@ from fastapi import APIRouter, Body, HTTPException
 
 from contexts.learning.application.lab_bench import METRICS_FILE, bench, read_rows
 from contexts.learning.application.lab_experiments import REFINE_DIR, timeline
+from contexts.learning.application.lab_report import PACK_FILE, under_the_hood
 from contexts.learning.application.lab_routing import SimError, simulate
 
 
 def lab_bench_router(metrics_file: str | Path | None = METRICS_FILE, state_dir: str | Path | None = None,
-                     refine_dir: str | Path = REFINE_DIR, imported_dir: str | Path | None = None) -> APIRouter:
+                     refine_dir: str | Path = REFINE_DIR, imported_dir: str | Path | None = None,
+                     report_file: str | Path | None = PACK_FILE) -> APIRouter:
     router = APIRouter()
     cache: dict[str, Any] = {"stamp": None, "rows": [], "skipped": []}
 
@@ -60,5 +66,9 @@ def lab_bench_router(metrics_file: str | Path | None = METRICS_FILE, state_dir: 
     @router.get("/api/learning/lab/experiments")
     def lab_experiments() -> dict:
         return timeline(rows()[0], state_dir=state_dir, refine_dir=refine_dir, imported_dir=imported_dir)
+
+    @router.get("/api/learning/lab/report")
+    def lab_report() -> dict:
+        return under_the_hood(report_file, metrics_file)
 
     return router

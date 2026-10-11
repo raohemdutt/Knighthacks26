@@ -15,8 +15,9 @@ Built at Knight Hacks 2026 by Dominick Dupuy, Hemdutt Rao, Xander Robbins and Il
 
 ## What it does
 
-- **Sees and remembers.** Detection, tracking, zones and face blur run on the Jetson. Faces are blurred
-  before anything is stored. What it sees is grouped into episodes on an append-only event log.
+- **Sees and remembers.** Detection, tracking, zones and face blur run on the Jetson. Saved pictures are
+  always blurred, nothing with a face leaves the box, and only your own signed-in screen shows you.
+  What it sees is grouped into episodes on an append-only event log.
 - **Answers with evidence.** "What happened at our table overnight?" "Where are my keys?" Every answer
   cites the episode, keyframe or link it came from, and says so when Atlas did not see something.
 - **Watches for you.** Rules in YAML or plain English ("tell me if a package is left at the door") are

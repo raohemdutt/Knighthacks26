@@ -178,6 +178,8 @@ class HabitTracker:
             return []
         if e.external_id.startswith("nearby:"):  # an optional event nobody said yes to: nothing to be ready for
             return []
+        if e.kind == "calendar_event" and self.cfg.is_listing is not None and self.cfg.is_listing(e):  # a campus listing: the same
+            return []
         out = self._roll(self.sched.local_day(e.ts), e.ts)
         when = e.when if e.when.tzinfo else e.when.replace(tzinfo=self.sched.tz)
         book = self.assignments if e.kind == "assignment" else self.calendar

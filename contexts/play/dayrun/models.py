@@ -42,6 +42,7 @@ class Deadline(BaseModel):
     estimate_from: Literal["kind", "default", "yours"] | None = None
     estimate_word: str | None = None
     estimate_minutes: float | None = None  # the box's own guess, also when the request overrode it
+    source: str | None = None  # additive: the connector the assignment was synced from ("canvas"), as its item says
 
 
 class FriendAt(BaseModel):

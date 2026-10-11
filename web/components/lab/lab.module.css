@@ -3,7 +3,7 @@
  *
  * Colours and depth come only from the tokens in app/globals.css: raised cards (--sh-raised), sunken wells for
  * the numbers and answers (--sh-inset-sm), blue (--accent, --accent-text) for progress and the selected step,
- * --ok for right answers and gains, --danger for wrong answers and regressions, --watch for the sample banner,
+ * --ok for right answers and gains, --danger for wrong answers and regressions, --watch for warnings,
  * low-confidence marks and the power trace. Nothing here names a colour of its own.
  */
 
@@ -104,7 +104,7 @@
   transform: scale(0.97);
 }
 
-/* ---------- the dock: sample banner and player, always in view ---------- */
+/* ---------- the dock: the player, always in view ---------- */
 .dock {
   position: sticky;
   top: calc(72px + var(--safe-top)); /* under the phone header */
@@ -123,22 +123,6 @@
   .dock {
     top: 14px; /* the sidebar layout has no header */
   }
-}
-
-.banner {
-  display: flex;
-  gap: 4px 10px;
-  align-items: baseline;
-  flex-wrap: wrap;
-  padding: 9px 18px;
-  background: color-mix(in srgb, var(--watch) 13%, transparent);
-  box-shadow: inset 5px 0 0 var(--watch);
-  color: var(--watch);
-  font-size: 15px;
-}
-
-.banner strong {
-  font-weight: 750;
 }
 
 .player {
@@ -1018,4 +1002,82 @@
 /* a missing number says why in full; a long event name must wrap inside its tile, not widen the page */
 .stat .note {
   overflow-wrap: anywhere;
+}
+
+/* A run that is still going (L30): four stages, each lit as it reports. */
+.stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 650;
+  transition: color 0.3s ease, background-color 0.3s ease;
+}
+
+.stageDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.35;
+}
+
+.stage_done {
+  color: var(--ok);
+}
+
+.stage_done .stageDot {
+  opacity: 1;
+}
+
+.stage_now {
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--accent-text);
+}
+
+.stage_now .stageDot {
+  opacity: 1;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.stage_failed {
+  color: var(--danger);
+}
+
+.stage_failed .stageDot {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage {
+    transition: none;
+  }
+
+  .stage_now .stageDot {
+    animation: none;
+  }
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }

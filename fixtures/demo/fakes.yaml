@@ -151,3 +151,7 @@ day:
   # an answer to an earlier one, so this one stays open on the Now screen. The real rule is shown by `python -m contexts.demo checkin`.
   - {type: day.checkin.raised, at: 43260}
   - {type: day.checkin.answered, at: 43320}
+  # A yes to an optional event ("Near you"), last so the earlier steps keep their ids (the sample payload; box-only).
+  - {type: day.optional.answered, at: 43380}
+  # A remembered look forgotten on the People screen (the look memory; the sample payload; box-only). Last: earlier ids stay.
+  - {type: day.look.forgotten, at: 43440}

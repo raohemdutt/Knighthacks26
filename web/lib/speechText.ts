@@ -12,7 +12,7 @@ export interface SpeechTextOptions {
 }
 
 /** Longest answer read aloud, in characters, before it is cut at a sentence end. */
-export const MAX_SPOKEN_CHARS = 420;
+export const MAX_SPOKEN_CHARS = 900; // room for a whole day walked through (the box's voice has the same cap: contexts/voice/text.py); was 420
 /** In the offline demo the "answer" is the evidence list itself: read this many lines of it. */
 const MAX_FAKE_LINES = 3;
 /** Chrome stops in the middle of a long utterance, so speech is fed to it a sentence or two at a time. */
@@ -110,8 +110,12 @@ function naturalTimes(text: string, o: SpeechTextOptions): string {
       return `${sayClock(hour24, Number(min ?? 0))}${end === undefined ? "" : `.${end}`}`; // "p.m." that ends a sentence keeps the full stop
     },
   );
-  // 24-hour clock: "15:40", "07:05:00"
-  t = t.replace(/\b([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?\b(?!\s*[AP]M)/g, (_m, h: string, min: string) => sayClock(Number(h), Number(min)));
+  // 24-hour clock: "15:40", "07:05:00". A bare "10:40" or "2:30" is already how a person says it (the box's answers write a
+  // morning time that way: contexts/day/domain/ear.py) and is left as written; appending "AM" to it was a guess.
+  t = t.replace(/\b([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?\b(?!\s*[AP]M)/g, (m, h: string, min: string) => {
+    const bare = Number(h) >= 1 && Number(h) <= 12 && !h.startsWith("0") && m.split(":").length === 2;
+    return bare ? m : sayClock(Number(h), Number(min));
+  });
   // a dash between two times or numbers is a range
   t = t.replace(/(\d|[AP]M|noon|midnight)\s*[–—]\s*(?=\d|noon|midnight)/g, "$1 to ");
   t = t.replace(/\b(\d{1,2}(?::\d{2})?)\s*-\s*(\d{1,2}(?::\d{2})? ?[AP]M)\b/g, "$1 to $2");
@@ -289,7 +293,7 @@ export function chunkForSpeech(text: string, max = CHUNK_CHARS): string[] {
 
 // ---------- things Atlas says without being asked ----------
 
-export type SpokenKind = "alert" | "nudge" | "approval" | "leaving" | "plan" | "coach" | "brief" | "replan" | "review" | "move" | "milestone" | "checkin";
+export type SpokenKind = "alert" | "nudge" | "approval" | "leaving" | "plan" | "coach" | "brief" | "replan" | "review" | "move" | "milestone" | "checkin" | "suggest" | "start";
 
 /** The shortest gap between two spoken events of one kind. Anything sooner is shown as usual but not said. */
 export const SPEAK_COOLDOWN_MS: Record<SpokenKind, number> = {
@@ -308,11 +312,23 @@ export const SPEAK_COOLDOWN_MS: Record<SpokenKind, number> = {
   milestone: 60_000,
   // the check-in (day.narrated, moment "checkin"): the box raises one every ninety minutes at most; said once
   checkin: 300_000,
+  // an optional event nearby (moment "suggest") and a planned block starting (moment "start"); the box's arbiter
+  // already keeps every unasked line apart, these are the per-kind floor underneath it
+  suggest: 300_000,
+  start: 60_000,
 };
 
 /** Longest narration said unasked, in characters: the narrator keeps the morning brief under this. */
 const MAX_NARRATION_CHARS = 560;
-const NARRATED_KIND: Record<string, SpokenKind> = { morning: "brief", replan: "replan", coach: "coach", evening: "review", checkin: "checkin" };
+const NARRATED_KIND: Record<string, SpokenKind> = { morning: "brief", replan: "replan", coach: "coach", evening: "review", checkin: "checkin", suggest: "suggest", start: "start" };
+
+/**
+ * One speaker: a narration the box's own speaker says (`spoken_by: "box"`), or one said inside another narration
+ * (`merged_into`), is not said by the phone as well.
+ */
+export function saidElsewhere(e: { spoken_by?: unknown; merged_into?: unknown } | null | undefined): boolean {
+  return !!e && (e.spoken_by === "box" || (typeof e.merged_into === "string" && e.merged_into !== ""));
+}
 
 /**
  * What to say for a `day.narrated` event, or null when it is not one Atlas says unasked: the morning brief, a
@@ -320,6 +336,7 @@ const NARRATED_KIND: Record<string, SpokenKind> = { morning: "brief", replan: "r
  * `spoken` text was written for the ear, so it is said as it is. Approval asks are said by the approval itself.
  */
 export function sentenceForNarration(e: Record<string, unknown>): { kind: SpokenKind; text: string } | null {
+  if (saidElsewhere(e)) return null;
   const moment = str(e.moment);
   const kind = moment === "now" ? (e.urgent === true ? "move" : null) : (NARRATED_KIND[moment] ?? null);
   const text = capAtSentence(str(e.spoken).replace(/\s+/g, " ").trim(), MAX_NARRATION_CHARS);
@@ -390,7 +407,11 @@ export function sentenceForEvent(e: { type: string } & Record<string, unknown>, 
 
 // ---------- what a heard phrase means ----------
 
-export type VoiceCommand = "stop" | "yes" | "no" | "brief" | "status" | null;
+// "Brief me", "what's my day", "what's next" and "how's it going" are NOT commands: they are questions, and they go to
+// /api/ask like every other one. The Ask screen used to answer them itself from the day narrator (#171), so the phone and
+// the box's voice (which posts straight to /api/ask) could say different things for the same words. One path now: the
+// box answers (contexts/agent/application/schedule.py and talk.py). The morning brief itself is the Now screen's button.
+export type VoiceCommand = "stop" | "yes" | "no" | null;
 
 const POLITE = /\b(?:please|thanks|thank you|atlas|hey|ok|okay|now)\b/g;
 const STOP = /^(?:stop|stop listening|stop talking|that s all|that is all|thats all|that s it|that will be all|never mind|nevermind|forget it|be quiet|quiet|goodbye|bye|i m done|we re done|done)$/;
@@ -398,11 +419,34 @@ const STOP = /^(?:stop|stop listening|stop talking|that s all|that is all|thats 
 // "No" acts, so it has to be the whole utterance.
 const YES = /^(?:(?:yes|yeah|yep|yup|sure|approve|approved|do it|go ahead|go for it|confirm|allow|it|that)(?:\s+|$))+$/;
 const NO = /^(?:no\s+)*(?:no|nope|nah|deny|deny it|deny that|denied|don t|do not|don t do it|do not do it|reject|reject it|cancel|cancel it)$/;
-// Answered on the phone from the narrator's words, without a model call: the day ahead, and how it is going.
-const BRIEF =
-  /^(?:brief me|give me (?:a|the|my) (?:brief|briefing|rundown)|(?:what s|what is|whats) (?:my|the) (?:day|plan|schedule)(?: (?:look|looking) like| like| today| for today)?|what does my day look like|how s my day looking|how does my day look|what s on today|what is on today|what s next|what is next|whats next)$/;
-const STATUS =
-  /^(?:how am i doing|how m i doing|how are we doing|how s it going|how is it going|am i on track|am i on time|am i behind|am i late|where should i be|where am i supposed to be|status|status report)$/;
+
+// Right after Atlas offered an optional event ("Want me to add it?"). A yes only ever raises an approval card, so
+// it may be loose ("yeah add it", "sure go ahead"). A no is recorded, so it has to be the whole utterance.
+const ADD_IT = /^(?:(?:yes|yeah|yep|yup|sure|ok|okay|please|add|add it|add that|go ahead|do it|let s do it|sounds good|i m in|count me in|it|that)(?:\s+|$))+$/;
+const AFFIRM = /\b(?:yes|yeah|yep|yup|sure|ok|okay|add|go ahead|do it|let s do it|sounds good|i m in|count me in)\b/;
+const NOT_TODAY = /^(?:no\s+)*(?:no|nope|nah|not today|not now|not this time|no thanks|no thank you|skip it|skip that|pass|i ll pass|maybe later)$/;
+
+/**
+ * What a heard phrase means in the half minute after Atlas suggested an optional event: "yes" (add it: that raises
+ * the approval card, it never approves), "no" (not today), or null for anything else, which is then heard as usual.
+ */
+export function suggestionAnswer(transcript: string): "yes" | "no" | null {
+  const said = transcript
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\b(?:atlas|hey)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!said) return null;
+  if (NOT_TODAY.test(said)) return "no";
+  return ADD_IT.test(said) && AFFIRM.test(said) ? "yes" : null;
+}
+
+/** What Atlas says back to a spoken yes or no to a suggestion. A yes is only ever a card to approve by a tap. */
+export function suggestionReply(answer: "yes" | "no", proposed: boolean): string {
+  if (answer === "no") return "Okay, not today.";
+  return proposed ? "Okay, there's a card to approve." : "Okay, noted. It is too far ahead to plan yet; I'll bring it up before it starts.";
+}
 
 /**
  * A whole utterance that is a command, never a word inside a longer sentence: "stop" stops,
@@ -422,10 +466,5 @@ export function voiceCommand(transcript: string, expecting: "question" | "yes-no
     if (YES.test(said) || /^(?:ok|okay)$/.test(raw)) return "yes";
   }
   if (STOP.test(said) || (expecting === "question" && /^(?:cancel|no thanks|no thank you)$/.test(raw))) return "stop";
-  if (expecting === "question") {
-    const asked = said.replace(/\b(?:right|so|and|then|today)\b/g, " ").replace(/\s+/g, " ").trim();
-    if (BRIEF.test(said) || BRIEF.test(asked)) return "brief";
-    if (STATUS.test(said) || STATUS.test(asked)) return "status";
-  }
   return null;
 }

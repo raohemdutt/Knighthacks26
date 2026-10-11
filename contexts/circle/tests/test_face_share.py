@@ -4,6 +4,7 @@ its own data folder, vault, identity service and approvals; they never touch eac
 import asyncio
 import copy
 import json
+import os
 from datetime import timedelta
 from types import SimpleNamespace
 
@@ -87,7 +88,7 @@ def test_share_card_accept_card_and_then_the_friends_box_recognises_them(pair):
     assert member == {"member_id": ANA_AT_BOB, "name": TEMPLATE_NAME["ana"], "enrolled_at": T0.isoformat(),
                       "updated_at": T0.isoformat(), "photos": 5, "source": "circle", "expressions": False,
                       "circle_member_id": "ana", "shared_by": "ana", "received_at": T0.isoformat(),
-                      "expires_at": (T0 + timedelta(days=30)).isoformat()}
+                      "expires_at": (T0 + timedelta(days=30)).isoformat(), "scanned": True, "recognised": True}
     assert bob.states() == [("in", "ana", "offered"), ("in", "ana", "received")]
     changed = [e for e in bob.events if e.type == "perception.identity.changed"][-1]
     assert changed.received_from == ["ana"] and changed.members == [ANA_AT_BOB]
@@ -544,7 +545,8 @@ def test_the_box_key_survives_a_restart_and_is_kept_in_the_vault(pair, world):
     blob = (ana.dir / "vault" / "circle" / "face_share.bin").read_bytes()
     state = json.loads(ana.share.vault.decrypt("circle.face_share", blob))
     assert set(state) == {"keys", "seq", "pins", "out", "in", "ignored"} and state["keys"].encode() not in blob
-    assert (ana.dir / "vault" / "circle" / "face_share.bin").stat().st_mode & 0o777 == 0o600
+    if os.name == "posix":  # Windows has no owner-only mode
+        assert (ana.dir / "vault" / "circle" / "face_share.bin").stat().st_mode & 0o777 == 0o600
     again = Box(world.root, "ana", world.store, world.wall)  # the same data folder, a new process
     assert again.share.status()["me"]["fingerprint"] == before
 

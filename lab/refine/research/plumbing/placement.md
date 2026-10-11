@@ -125,7 +125,11 @@ track's `trainer.samples_per_s` and this track's `link.failed_call_rate` (O3 rub
   on pod D starts its own teacher at a share of 0.63, then measures three arms on the same chip, a teacher-style
   decode load alone (lab/bench.py's prompt set, 4 streams of 128 tokens, rounds for 120 s), a 20-step LoRA alone
   (lab/train.py, batch 4, gradient accumulation 1, the tool-calling rows) and the two together, each with decode
-  tok/s, answers per second, samples per second, watts and joules per answer or per step. `collect` writes
+  tok/s, answers per second, samples per second, watts and joules per answer or per step. The trainer runs from
+  the venv L16 left on pod D (`~/venvs/atlas-train`) with `--no-install` and `PYTHONNOUSERSITE=1`, and the script
+  refuses before the teacher starts when that venv, one of its pins, the student's folder or the teacher's
+  checkpoint is missing: run by the image's `python3`, lab/train.py would `pip install --user` its pins into the
+  user site that holds the pod's vLLM build. `collect` writes
   `lab/refine/research/kernels/data/interference-gfx1151-<date>.json` (schema `lab.interference/1`: `serve.share`,
   `arms.decode`, `arms.train`, `arms.both.decode`, `arms.both.train`, each arm's `watts`, and `compare` with
   `decode_tok_s_change_pct`, `samples_per_s_change_pct`, `time_change_pct`, `energy_change_pct` and `verdict`), its
@@ -139,6 +143,23 @@ track's `trainer.samples_per_s` and this track's `link.failed_call_rate` (O3 rub
     below its solo value and `trainer.samples_per_s` below its own; `time_change_pct` is negative when the two use
     different parts of the chip. Minimum sample size: 3 runs per arm (1 in the first slot, so its rows are low
     confidence).
+- **[opinion]** Three rules make the arms comparable, and the script follows them. Every trainer step is the same
+  work: each run gets one batch's worth of rows (the first 4 of the 6 bundled), so an epoch is one step over the same
+  rows at one padded length, where all 6 rows at batch 4 would alternate steps of 4 and 2 examples. Each run takes 2
+  warm-up steps before its 20 measured ones and leaves them out of its window, so what a run pays once (a kernel
+  compiled, a convolution searched, the allocator growing to its peak) is paid outside the window in both arms; L16's
+  first epoch on pod D ran its full steps in 52.6 to 59.5 s against 37.0 to 44.3 s after it, and the train
+  arm runs before the both arm. In the both arm a decode round counts by the part of its time inside the trainer's
+  window, because a round lasts tens of seconds against a window of a few minutes and the window's watts and seconds
+  include the rounds its edges cut. Samples are the examples the trainer saw, counted epoch by epoch. Source:
+  `lab/interference.py`, module docstring, `decode_summary`, `train_summary` and `examples_seen`
+  - Implication: joules per step and samples per second mean the same thing in the train arm and in the both arm,
+    and the both arm's answers are the work its energy paid for. A file made without the warm-up steps leans toward
+    sharing (the lone run pays the one-time costs first); one that drops the cut rounds leans against it (up to two
+    rounds of decode work charged to the shared side and missing from the comparison).
+  - Candidate experiment: PL1 a second time in a later slot, unchanged. Expected movement:
+    `arms.train.samples_per_s` and `arms.train.joules_per_step` of the two files agree within the spread of the
+    steps' own times, and `compare.time_change_pct` keeps its sign. Minimum sample size: 2 runs.
 - **[opinion]** The plan's sharing rule with a measurement: the teacher and a LoRA job may share a pod only when the
   memory fits (the memory margin section) and the newest interference file shows the shared work took less time
   (`time_change_pct` below 0) for no more energy (`energy_change_pct` at most 0); a file that misses either keeps
@@ -155,8 +176,9 @@ track's `trainer.samples_per_s` and this track's `link.failed_call_rate` (O3 rub
   ledger row, and none is on main yet. Source: `lab/interference.py::SLOT_FACTS`, which records them with that
   provenance
   - Implication: at a share of 0.63 the teacher holds about 40.3 GiB and leaves about 6.6 GiB beside the LoRA's
-    peak, so PL1 runs at 0.63; 20 steps of 4 examples take about 250 s at that rate, and with pod D's 523 s cold
-    start the three arms fit a 30-minute slot (`python -m lab interference --dry-run`).
+    peak, so PL1 runs at 0.63; 22 steps of 4 examples (2 warm-up, 20 measured) take about 275 s at that rate, and
+    with pod D's 523 s cold start the three arms come to 30 minutes, the length of the slot
+    (`python -m lab interference --dry-run`); a start from a warm cache, 297 s on pod C, leaves about 4 minutes.
   - Candidate experiment: PL2 as specified in the memory margin section, on the same trainer. Expected movement: the
     share ceiling and the slot estimate move with L16's ledger values once they land.
 
@@ -178,3 +200,7 @@ track's `trainer.samples_per_s` and this track's `link.failed_call_rate` (O3 rub
 - 2026-10-11, R43: budget 1 h, used about 20 minutes. Opened: `lab/profile_decode.py`, `lab/profile_decode_pod.py`,
   `lab/bench.py`, `lab/train.py`, `lab/sampler_overhead.py` and `lab/R44_REAL_RUN.md` on main at 69aa5b4, and the
   R43 and L16 task pages. Stopped because what is left is the run on pod D.
+- 2026-10-11, R43, second sitting: budget 1 h, used about 30 minutes. Opened: L16's run script and its per-step
+  telemetry (its branch; neither is on main), `lab/train.py`'s install path (`install_command`, `_start`),
+  `lab/pod_a_teacher.sh` (`serve`) and the README section on the build on pod D, at ebd0d87. Stopped because the
+  script now runs the real trainer from its unpacked bundle in a CPU rehearsal and what is left is the run on pod D.

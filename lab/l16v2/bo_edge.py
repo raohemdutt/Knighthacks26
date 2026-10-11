@@ -57,6 +57,7 @@ WARMUPS = (0.0, 0.05, 0.10)
 FORCED = [{"lr": 2e-4, "rank": 32}, {"lr": 4e-4, "rank": 16}, {"lr": 4e-4, "rank": 32}, {"lr": 8e-4, "rank": 4},
           {"lr": 4e-4, "rank": 2}]      # each with alpha twice the rank, dropout 0.05, warmup 0.05
 NOISE_SEED = 43
+TRIAL_ALONE_S = 280.0     # a 24-step trial alone on a card, with its two validation passes and the model load
 EDGE_JSON = "bo-edge.json"
 
 
@@ -83,7 +84,42 @@ def decade(lr: float) -> str:
     return "8e-5 to 1e-4" if lr < 1e-4 else "1e-4 to 2e-4" if lr < 2e-4 else "2e-4 to 4e-4" if lr < 4e-4 else "4e-4 to 1e-3"
 
 
+def read_held_out(session: str, name: str) -> int:
+    """After the FINAL choice: leave the FINAL_CHOICE file on the chosen adapter's VM and read the held-out side
+    there (base against chosen, transformers bf16, both datasets), then pull the product."""
+    bl.plog(f"decision the final choice is written ({name}); the A100 held-out reading starts on {session} (a secondary "
+            "reading: the reported numbers are pod D's, on the packaged GGUF)")
+    command = (f"touch /content/l16v2/FINAL_CHOICE; rm -f /content/l16v2/scores/held_out.FAILED /content/l16v2/markers/HELD_OUT_DONE; "
+               f"cd /content/Knighthacks26 && setsid nohup python3 /content/vm_score.py held_out {name} "
+               f"> /content/l16v2/score-held-out.log 2>&1 &")
+    code = "import subprocess" + chr(10) + f"subprocess.Popen({command!r}, shell=True)" + chr(10) + "print('LAUNCHED')" + chr(10)
+    if bl.remote(session, code, "LAUNCHED", "held-out") is None:
+        return 1
+    began = time.time()
+    while time.time() - began < 2400:
+        time.sleep(30)
+        answer = bl.shell(session, "cat /content/l16v2/status.txt 2>/dev/null; echo; ls /content/l16v2/markers/HELD_OUT_DONE "
+                                   "/content/l16v2/scores/held_out.FAILED 2>/dev/null; grep -a held_out_bf16 /content/l16v2/finished.txt 2>/dev/null; "
+                                   "tail -n 1 /content/l16v2/score-held-out.log | cut -c1-160", "held-out-wait")
+        if answer is None:
+            continue
+        first = next((line for line in answer.splitlines() if line.startswith("stage=held_out")), "stage=held_out_bf16 starting")
+        bl.plog(f"{first} worker={session}")
+        if "held_out.FAILED" in answer:
+            bl.plog(f"PROBLEM worker={session} held-out bf16 scoring failed: {answer.strip()[-200:]}")
+            return 1
+        if "HELD_OUT_DONE" in answer:
+            for row in answer.splitlines():
+                if row.startswith("held_out_bf16 "):
+                    bl.plog("RESULT " + row + " engine=transformers_bf16_on_the_A100")
+            return 0 if bl.get(session, "held-out-bf16.tar.gz") else 1
+    return 1
+
+
 def main() -> int:
+    if "--held-out" in sys.argv:      # bo_edge.py --held-out <session> <chosen run name>
+        at = sys.argv.index("--held-out")
+        return read_held_out(sys.argv[at + 1], sys.argv[at + 2])
     import optuna
     from optuna.distributions import CategoricalDistribution, FloatDistribution
     from optuna.trial import TrialState
@@ -92,6 +128,9 @@ def main() -> int:
     parser.add_argument("--sessions", required=True)
     parser.add_argument("--budget-s", type=float, default=1200.0)
     parser.add_argument("--no-wait", action="store_true", help="do not wait for each session's finalist adapter line")
+    parser.add_argument("--corners-only", action="store_true",
+                        help="after the budget: run only the forced corners still waiting in the study, for the "
+                             "coverage table; they are marked as run after the budget and cannot name a finalist")
     args = parser.parse_args()
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     sessions = [name for name in args.sessions.split(",") if name]
@@ -175,11 +214,15 @@ def main() -> int:
                 if state["began"] is None:
                     state["began"] = time.time()
                 elapsed = time.time() - state["began"]
-                if elapsed + state["longest"] > args.budget_s:
+                still_waiting = len(study.get_trials(deepcopy=False, states=(TrialState.WAITING,)))
+                if args.corners_only:
+                    if not still_waiting:
+                        return
+                elif elapsed + TRIAL_ALONE_S > args.budget_s:
                     state["stopped"] = True
                     bl.plog(f"decision edge round stops proposing: budget ({int(elapsed)} s of {int(args.budget_s)} s used)")
                     return
-                item = plan.pop(0) if plan else "ask"
+                item = "ask" if args.corners_only else plan.pop(0) if plan else "ask"
                 seen = sum(t.state in (TrialState.COMPLETE, TrialState.PRUNED) for t in study.get_trials(deepcopy=False))
                 state["numbers"] += 1
                 number = state["numbers"]
@@ -198,6 +241,8 @@ def main() -> int:
                     params = suggest(trial)
                     forced = any(fixed and all(params.get(k) == v for k, v in fixed.items()) for fixed in waiting)
                     kind, seed = ("edge" if forced else "model"), None
+                    if args.corners_only:
+                        kind = "edge-after-budget"
                     name = "e" + bl.trial_name(number, params)[1:]
                     for key, value in (("kind", kind), ("seen", seen), ("worker", session), ("name", name)):
                         trial.set_user_attr(key, value)
@@ -260,6 +305,8 @@ def main() -> int:
         time.sleep(2)
     for thread in threads:
         thread.join()
+    if args.corners_only:      # the round's own end (noise floor, tables, the fourth-finalist question) is already written
+        return 0
 
     # --- the noise floor, the table, and whether there is a fourth finalist ----------------------------------------
     differences = {}
@@ -288,7 +335,8 @@ def main() -> int:
     bl.plog(f"RESULT edge_table edges now covered by a trial: {covered}; highest learning rate tried {max(t['lr'] for t in everything):.3g}; "
             f"ranks tried {sorted({t['rank'] for t in everything})}")
     winners = sorted((t for t in trials if t.get("value") is not None and t.get("outcome") != "pruned"
-                      and t["value"] < best24 - (floor or 0.0)), key=lambda t: (t["value"], t["number"]))
+                      and t["kind"] in ("edge", "model") and t["value"] < best24 - (floor or 0.0)),
+                     key=lambda t: (t["value"], t["number"]))
     save()
     chosen_path = bl.BO / "chosen.json"
     if not winners or floor is None:

@@ -24,6 +24,9 @@ from uuid import uuid4
 
 from contexts.day.domain.choose import choose
 from contexts.day.domain.clock import DayClock
+from contexts.day.domain.optional import BLOCK_PREFIX as OPTIONAL_BLOCK
+from contexts.day.domain.optional import ORIGIN as OPTIONAL_ORIGIN
+from contexts.day.domain.optional import block_id as optional_block
 from contexts.play.dayrun.board import local
 from contexts.play.dayrun.engine import simulate
 from contexts.play.dayrun.models import Board, InitialOverride, Measured, Move, PlannedBlock, SimResult, Totals
@@ -54,7 +57,8 @@ MAX_BECAUSE = 4  # sources named in the plan's text
 def plan_moves(result: SimResult, moves: list[Move]) -> list[PlanMove]:
     return [PlanMove(id=b.id, kind=b.kind, title=b.title, start=b.start, end=b.end, minutes=b.minutes, place=b.place,
                      place_name=b.place_name, fixed=b.fixed,
-                     deadline=moves[b.move].deadline if b.move is not None else None, with_friend=b.with_friend)
+                     deadline=moves[b.move].deadline if b.move is not None else None, with_friend=b.with_friend,
+                     origin=OPTIONAL_ORIGIN if b.id.startswith(OPTIONAL_BLOCK) else None)  # an optional event the person said yes to
             for b in result.blocks]
 
 
@@ -254,14 +258,18 @@ class DayPlanner:
             self._edited = False
 
     def card(self, blocks: list[PlanMove], day: date, result: SimResult, now: datetime, replace: bool = False,
-             why: str | None = None) -> ActionProposed | None:
+             why: str | None = None, introduce: str | None = None) -> ActionProposed | None:
         """One approval card for the plan's calendar blocks. Nothing is written until the phone says yes."""
         events = card_events(blocks)
+        # `introduce`: the fixed block of an optional event this plan brings in. It is written too, under its own title,
+        # once: by the card of the re-plan that adds it, and by no later plan's card.
+        events = [{"title": m.title, "start": m.start.isoformat(), "end": m.end.isoformat(), "location": m.place_name}
+                  for m in blocks if introduce is not None and m.id == introduce] + events
         if not events:
             return None
         verb = "Replace today's plan with" if replace else "Add"
         reason = f"{verb} {len(events)} block(s) for {day:%a %b} {day.day}: " + ", ".join(
-            f"{m.title} {hm(m.start)}" for m in blocks if not m.fixed)
+            f"{m.title} {hm(m.start)}" for m in blocks if not m.fixed or (introduce is not None and m.id == introduce))
         if why:
             reason = f"{why} {reason}"
         reason += f" ({result.outcome.summary.rstrip('.')})"
@@ -358,13 +366,15 @@ class DayPlanner:
     # --- a re-plan from where you are ---
 
     def replan(self, now: datetime, start_place: str | None, why: str, asked: bool = False, for_event: str | None = None,
-               adjust=None, draft: bool = False) -> list[Event]:
+               adjust=None, draft: bool = False, for_optional: str | None = None) -> list[Event]:
         """A new plan for the rest of the day from `start_place` (where the box thinks you are), with one card.
         Drift triggers it (contexts/day/application/tracker.py); the person can ask for one at any time.
 
         `adjust(moves) -> moves | None` changes the chosen moves before they are simulated (the check-in's "move the
         block to after dinner"); None, or a move the engine then rejects, means no re-plan at all. `draft` returns
-        the re-plan without its card, for looking at what it would be: nothing is proposed."""
+        the re-plan without its card, for looking at what it would be: nothing is proposed. `for_optional` is the
+        optional event ("nearby:...") a yes asked to add or a no asked to take out (contexts/day/application/optional.py
+        puts it on, or takes it off, the board this is built from); the card of the re-plan that adds it writes it too."""
         day = self.clock.day_of(now)
         current = self.current.get(day)
         if current is None:
@@ -381,11 +391,12 @@ class DayPlanner:
                 return []
         plan_id = self.fresh_id(f"plan-{day}-{local(self.dayrun.cfg, now):%H%M}r")
         blocks = plan_moves(result, moves)
-        card = None if draft else self.card(blocks, day, result, now, replace=True, why=why)
+        card = None if draft else self.card(blocks, day, result, now, replace=True, why=why,
+                                            introduce=optional_block(for_optional) if for_optional else None)
         replan = DayReplanProposed(event_id=f"day-replan-{plan_id}", ts=now, day=day, plan_id=plan_id, replaces=current.plan_id,
                                    why=why, start=board.start, moves=blocks, dayrun_moves=[MoveIn(**m.model_dump()) for m in moves],
                                    outcome=plan_outcome(result), action_id=card.action_id if card else None, asked=asked,
-                                   for_event=for_event)
+                                   for_event=for_event, for_optional=for_optional)
         return [replan] + ([card] if card else [])
 
     def can_replan(self, now: datetime, gap: timedelta, for_event: str | None = None, at_most: int = 2) -> bool:

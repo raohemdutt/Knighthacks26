@@ -1,0 +1,32 @@
+{
+  "job": "pooled labeling, desk-objects, 2 uploaders x 100",
+  "workers": 16,
+  "start": "2026-10-11T07:09:12.865777+00:00",
+  "end": "2026-10-11T07:10:15.464514+00:00",
+  "wall_s": 62.6,
+  "examples": 200,
+  "accepted": 200,
+  "prompt_tokens": 21606,
+  "completion_tokens": 627,
+  "tokens": 22233,
+  "request_s_median": 4.946,
+  "window_samples": 0,
+  "window_span_s": null,
+  "mean_socket_w": null,
+  "max_socket_w": null,
+  "idle_w_before": [],
+  "energy_j_integrated": null,
+  "energy_j_job": null,
+  "j_per_completion_token": null,
+  "j_per_token_all": null,
+  "j_per_example": null,
+  "completion_tok_s": 10.02,
+  "examples_per_s": 3.19,
+  "sampler": {
+    "node": "gpu-a",
+    "tool": null,
+    "period_ms": 1000.0,
+    "source": null
+  },
+  "label_rc": 0
+}

@@ -205,3 +205,25 @@ textarea.text {
   font-size: 0.82rem;
   background: var(--surface-2);
 }
+
+/* What was said to the Atlas mic and what came back, above the bar in the dock. */
+.said {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 30vh;
+  overflow-y: auto;
+}
+
+.said p {
+  margin: 0;
+}
+
+.saidAsked {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.saidAnswer {
+  overflow-wrap: anywhere;
+}

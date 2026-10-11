@@ -1,0 +1,18 @@
+{
+  "metrics": {
+    "trainer.examples": 12,
+    "trainer.peak_mem_gb": 11.0,
+    "trainer.samples_per_s": 0.25,
+    "trainer.steps": 3,
+    "trainer.train_s": 150.0
+  },
+  "ok": true,
+  "outcome": "trained",
+  "refs": {
+    "base_model": "fixture/base",
+    "device": "Radeon 8060S Graphics (gfx1151)",
+    "node": "pod-b",
+    "run_id": "train-fixture",
+    "task": "tool-calling"
+  }
+}

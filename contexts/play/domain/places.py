@@ -163,6 +163,8 @@ class PlaceSet:
         packs = {}
         for d in dirs:
             for f in sorted(Path(d).glob("*.y*ml")) if Path(d).exists() else []:
+                if f.name.startswith("."):  # macOS `._x.yaml` metadata copied along with a pack is not a pack
+                    continue
                 pack = parse_pack(f.read_text(encoding="utf-8"))
                 packs[pack.name] = pack
                 _attach(pack, [f.parent, *map(Path, dirs)])

@@ -7,6 +7,7 @@
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { OptionalSuggestion } from "@/components/day/OptionalSuggestion";
 import { ApiError, api, wsUrl, type Answer, type AnswerDelta, type ApprovalRequest, type AtlasEvent } from "./api";
 import { briefStore } from "./brief";
 
@@ -165,6 +166,7 @@ const NARRATED_TOAST: Record<string, { title: string; tone: Toast["tone"] }> = {
   coach: { title: "Coach", tone: "info" },
   evening: { title: "Your day, reviewed", tone: "info" },
   checkin: { title: "Check-in", tone: "info" },
+  start: { title: "Next up", tone: "info" },
 };
 const RAW_DAY_TOASTS = new Set(["day.plan.proposed", "day.replan.proposed", "day.coach.noted", "day.reviewed"]);
 
@@ -172,6 +174,7 @@ function toastFor(e: AtlasEvent): Toast | null {
   // With the narrator on, the day's moments are toasted once, in its words (`day.narrated`), not as the raw event too.
   if (RAW_DAY_TOASTS.has(e.type) && briefStore.on()) return null;
   if (e.type === "day.narrated") {
+    if (typeof e.merged_into === "string" && e.merged_into) return null; // the line it was said in is toasted
     const moment = str(e.moment);
     if (moment === "now" && e.urgent === true) return { id: e.event_id, title: "Time to move", message: str(e.display), tone: "warn", href: "/now/" };
     const kind = NARRATED_TOAST[moment];
@@ -365,7 +368,13 @@ export function AtlasProvider({ children }: { children: ReactNode }) {
     [link, model, toasts, dismissToast, subscribe, approvals, reloadApprovals, chat, setChat, answerStream],
   );
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return (
+    <Ctx.Provider value={value}>
+      {children}
+      {/* Atlas suggesting an optional event: one card over whatever screen is open (a `day.narrated` "suggest" is not toasted as well) */}
+      <OptionalSuggestion />
+    </Ctx.Provider>
+  );
 }
 
 export function useAtlas(): AtlasState {

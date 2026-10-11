@@ -605,7 +605,7 @@ export default function TodaysPlanPage() {
               </section>
             )}
 
-            <PlanDetails result={onScreen} explained={hard?.result ? undefined : explained} t={t} tomorrow={past ? info.data?.review?.change_tomorrow : null} open={link?.more} />
+            <PlanDetails result={onScreen} explained={hard?.result ? undefined : explained} initial={b.initial} t={t} tomorrow={past ? info.data?.review?.change_tomorrow : null} open={link?.more} />
             {!scripted && !past && strip.data && day ? <NextDays days={strip.data.days} selected={day} onSelect={setPicked} /> : null}
           </div>
         </div>

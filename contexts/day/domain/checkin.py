@@ -467,8 +467,10 @@ def move_text(meal: str, n: int, activity: str) -> str:
 # ---------- the facts the narrator says (contexts/day/domain/narration.py renders them) ----------
 
 
-def facts(signals_: list[CheckinSignal], suggestions_: list[CheckinSuggestion], past: CheckinHistory | None, tz: tzinfo) -> dict:
-    """The check-in as the narrator's facts: only what is there. No heart number is ever among them."""
+def facts(signals_: list[CheckinSignal], suggestions_: list[CheckinSuggestion], past: CheckinHistory | None, tz: tzinfo,
+          callback=None) -> dict:
+    """The check-in as the narrator's facts: only what is there. No heart number is ever among them. `callback`
+    (contracts.day.CheckinCallback): an earlier look this one is like, from the look memory, and what followed it."""
     f: dict = {"moment": "checkin"}
     for s in signals_:
         if s.kind == "sleep" and s.minutes:
@@ -483,6 +485,8 @@ def facts(signals_: list[CheckinSignal], suggestions_: list[CheckinSuggestion], 
             f["drink"] = {"since": hhmm(s.since, tz)} if s.since else {"this_sitting": True}
     if past:
         f["history"] = {"matches": past.matches, "outcome": past.outcome} | ({"by": past.by} if past.by else {})
+    if callback is not None and callback.said:
+        f["callback"] = {"said": callback.said} | ({"learned": callback.learned} if callback.learned else {})
     if suggestions_:
         f["suggest"] = [{"kind": s.kind, "text": s.text} for s in suggestions_]
     return f
