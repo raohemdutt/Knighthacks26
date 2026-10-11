@@ -1,4 +1,4 @@
-# Atlas film v4.3: plan and tracking document
+# Atlas film v4.4: plan and tracking document
 
 Status: **PLAN, waiting for Dom's approval. Nothing is rendered until it is approved.**
 Branch `ctx/demo/video-hyperframes`. Owner: Dom (Notion task D12).
@@ -8,6 +8,8 @@ into the morning; the stake is driving; under 5:00; Atlas's voice as proposed; N
 v4.3: NextEra uses our Inspection page (`/spot`) and its simulations; a new NextEra spec (the replayable event log,
 answers computed in code); the operator is Xander. The full script is in `video/hf/SCRIPT.md`; **its wording wins** where this plan's
 beat notes are longer (the script was tightened to fit 5:00).
+v4.4: voice casting, time budget per beat, build order with milestones, the person-fix status, and the Notion
+handoff (sections 9 to 13).
 
 Every fact on screen or in a line comes from the repo, with the source next to it, or Dom has said so explicitly
 (section 6 lists those). Tick a box only when it has been built *and* checked in a frame.
@@ -459,3 +461,106 @@ needs attention, is it getting better), in plain words, offline, with every numb
 - [ ] Every number ticked against its source.
 - [ ] One-scene drafts for Dom first (`python video/scripts/film_render.py <scene>`); full render only after approval.
 - [ ] `pytest -q contexts/demo/tests/test_video.py` green, commit, push, Build Log and D12 on Notion.
+
+---
+
+## 9. Voice casting (all checked to exist in edge-tts on this machine)
+
+| Speaker | Voice | Notes |
+| --- | --- | --- |
+| Narrator | `en-US-AndrewMultilingualNeural` | unchanged; rate +20% (1.2x) |
+| Atlas | Piper `en_US-ryan-medium`, pitch 0.88, speed 0.95 | the box's own voice (Xander, #348). `piper-tts` is not installed here yet; fallback `en-US-GuyNeural` |
+| Hemdutt | `en-US-BrianMultilingualNeural` | younger, warmer; clearly not the narrator |
+| Ilan | `en-US-ChristopherNeural` | |
+| Dominick | `en-US-EricNeural` | |
+| Xander (operator) | `en-US-RogerNeural` | |
+| Trainee | `en-US-SteffanNeural` | no spoken line in the current script, so optional |
+
+`film.yaml` gets `speaker:` on every line; `film_build.py` picks the voice per speaker and caches by
+speaker+text. The league beat has three Atlas lines that overlap by about half a second each.
+
+## 10. Time budget per beat (from `SCRIPT.md`; speech at 1.2x plus action-only time)
+
+| # | Beat | Speech | Action-only | Total |
+| --- | --- | --- | --- | --- |
+| 0 | Problem | 12 | 3 | 15 |
+| 1 | What's inside | 9 | 5 | 14 |
+| 2 | Good morning, brief, meals, keys | 44 | 12 (sit up, walk, approve, find keys) | 56 |
+| 3 | What fed the brief | 8 | 2 | 10 |
+| 4 | The model | 7 | 3 | 10 |
+| 5 | At the desk | 31 | 4 | 35 |
+| 6 | Faces | 9 | 3 | 12 |
+| 7 | Kitchen | 9 | 6 (turn, drop) | 15 |
+| 8 | Sort It round | 4 | 7 (hold up, walk, score) | 11 |
+| 9 | Sort It tech | 8 | 2 | 10 |
+| 10 | Lab | 13 | 3 | 16 |
+| 11 | On the device | 10 | 3 | 13 |
+| 12 | Friends | 31 | 8 (calendars drop, dinner cut) | 39 |
+| 13 | How the boxes talk | 12 | 3 | 15 |
+| 14 | Other lives | 9 | 3 | 12 |
+| 15 | One log, replayable | 13 | 2 | 15 |
+| 16 | Xander's shift | 32 | 12 (pointer walk, replay, Shift Run) | 44 |
+| 17 | End | 4 | 2 | 6 |
+| | **Total** | | | **≈ 4:48** |
+
+Trim order if the first timed build runs over 5:00: the dinner callback → "Logged: goal met"; the trainee moment in
+NextEra drops to one shot; the problem statement loses its second sentence.
+
+## 11. Build order and milestones (each milestone ends with stills and one-scene drafts for Dom)
+
+1. **M1 · People and the dorm** (section 4): facing direction, chair, colours, hair, face, expressions, typing and
+   phone poses, lying in bed and sitting up; a camera's-eye still from Atlas. **Dom reviews stills.**
+2. **M2 · Dialogue and voices** (5.2, section 9): speakers in `film.yaml`, per-speaker voices, speaker captions, the
+   lens pulse, overlaps.
+3. **M3 · The app window** (5.1): one component with every pane; the morning panes first.
+4. **M4 · Demo beats 2 and 5** (morning, desk) with their spec beats 3, 4 and 6. **One-scene drafts.**
+5. **M5 · Kitchen and Sort It** (beats 7 to 9). **Drafts.**
+6. **M6 · Friends** (beats 12 and 13): '63 South and Dominick's desk sets, split screen, calendar sync, league,
+   dinner callback. **Drafts.**
+7. **M7 · NextEra** (beats 15 and 16): the control room, a SPOT figure, the Inspection page panes (Your shift, the
+   pointer walk, round replay, the battery explainer, Shift Run). **Drafts.**
+8. **M8 · Bookends and specs** (beats 0, 1, 10, 11, 14, 17), then the timed full draft (15 fps), the QA checklist,
+   and the delivery render (30 fps) **only after Dom approves**.
+
+## 12. Status of the person fixes (M1, in progress, not committed)
+
+- Done in code, not yet verified in a still:
+  - The person was facing away from the desk the whole time: the UE-rigged mannequin faces -z in its own space. It
+    is now turned to face +z, so every act's yaw is right. This was also why the chair looked backward.
+  - The chair is turned to match (backrest toward the bed).
+  - Clothes coloured per body region from the skin weights, with a palette per person (`LOOKS` in
+    `world/sets/human.js`).
+  - A soft fitted hair cap in three styles (Quaternius' textured hair cards render as patches without their
+    textures).
+  - A face with eyes, brows and mouth and expressions: smile, sleepy, strain, talk, plus blinking.
+  - Expression state in the world (`personSmile`, `personSleepy`, `personStrain`, `personTalk`).
+- Next: stills from two angles, a face close-up, fix what they show, commit.
+
+## 13. Notion handoff (for the agent that posts it)
+
+What to post, where, and the text. This session could not reach Notion; the posting agent needs the Notion MCP.
+
+1. **D12 task page** (find "D12" in the Task Board data source `collection://68af27b3-01c7-487d-807e-71af7d3fc536`):
+   add a section "Film v4.4 plan" with a short summary (the full order table from section 2) and links to
+   `video/hf/FILM_PLAN.md` and `video/hf/SCRIPT.md` on branch `ctx/demo/video-hyperframes`. Keep the task Locked
+   and In progress; note "M1 (people) in progress".
+2. **Hemdutt's Team Comms page** (https://app.notion.com/p/3f596ef5fec5819f8099d245fa78799d):
+   - Under FYI: the plan is up for review, plus which beats involve him (he's the person in the film; the brief
+     follows his natural-speech rule).
+   - Under Open questions, a new Q numbered after his highest: whether his Notion page on natural speech adds anything
+     beyond `contexts/day/domain/ear.py` (#368) that Atlas's lines should follow (script beat 2, the morning brief;
+     beat 5, the desk check-in). Add it to "Open questions at a glance" on the Team Comms hub.
+3. **Build Log** (https://app.notion.com/p/3f596ef5fec5812fa37de5ae92086234): an entry at the top, "D12: film
+   v4.4 plan and script (review)", with the commit hash and the two file links. Nothing for others to change.
+4. **Read and report back to Dom:** Hemdutt's natural-voice page and the NextEra track page. If either changes a line
+   or a beat, say which.
+5. **Questions for other teammates** (each on their own page, numbered after their highest Q):
+   - **Ilan:** confirm the L16 fine-tune numbers and the public Hugging Face adapter repo name before the film shows
+     them (6.E).
+   - **Whoever owns perception (Xander or Hemdutt):** the film says faces are blurred only on egress, but the code
+     blurs stored keyframes too (6.H). Change the product to match?
+   - **Who owns the friends' group learning, multi-group and unblur-with-consent work** (6.C), so the film and the
+     Build Log can point to it.
+   - **The fixture owner:** Maya's new "professor said" GroupMe line (6.A) and an optional seeded Tuesday history
+     entry (6.I).
+6. Sign every post `🤖 Dominick's agent · <Day h:mm AM/PM ET>:` (AGENTS.md 8.1).
