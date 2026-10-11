@@ -37,6 +37,21 @@ export interface LabRunSummary {
   verdict: string | null;
   scores: { current: LabNum; candidate: LabNum; teacher: LabNum };
   run_status?: RunStatus | null;
+  /** The gate's counts for the run list (lab_view), absent on older gateways. */
+  tested?: LabTested | null;
+  deployed?: string | null;
+  rolled_back?: { ts: string; to: string | null; reason?: string | null } | null;
+}
+
+/** A run row's gate result: `rehearsal` (or `stand_in`) marks a stand-in gate that never asked the model. */
+export interface LabTested {
+  decision: "deploy" | "reject" | null;
+  n_items: number | null;
+  right_before: number | null;
+  right_after: number | null;
+  rehearsal?: string | null;
+  stand_in?: boolean | null;
+  note?: string | null;
 }
 
 /**
@@ -184,6 +199,10 @@ export interface LabStory {
     groups: { group: string; n: number; before: number; after: number; diff: number }[] | null;
     verdict: string | null;
     verdict_detail: string[];
+    /** Why the answers cannot be the model's own (the loop ran with a stand-in gate), or null. */
+    rehearsal?: string | null;
+    stand_in?: boolean | null;
+    note?: string | null;
   };
   package: { model_version: string | null; gguf: string | null; base: string | null; quantization: string | null; sha256: string | null; reason: string | null; bytes: LabNum };
   deploy: {
@@ -411,3 +430,107 @@ export const STATUS_LABEL: Record<LabStatus, string> = {
   "rolled back": "Rolled back",
   failed: "Failed",
 };
+
+/* ---------- stand-in gates, honest statuses, the run to open first ---------- */
+
+const STAND_IN_WORDS = /stand-?in/i;
+const FAKE_ANSWERS = new Set(["fake miss", "fake answer"]);
+
+/**
+ * A gate that never asked the model (the live loop's stand-in): the back end flags it (`stand_in`), or explains it
+ * (`rehearsal`, or a note that says stand-in), or its answers are literally the stand-in's "fake miss" / "fake answer".
+ * A stand-in gate's counts and p-value say nothing about the model, so the screen never shows them.
+ */
+export function gateIsStandIn(g: {
+  stand_in?: boolean | null;
+  rehearsal?: string | null;
+  note?: string | null;
+  verdict?: string | null;
+  verdict_detail?: string[] | null;
+  items?: { before: { answer: string }; after: { answer: string } }[] | null;
+}): boolean {
+  if (g.stand_in === true) return true;
+  if (g.rehearsal) return true;
+  if ([g.note, g.verdict, ...(g.verdict_detail ?? [])].some((t) => !!t && STAND_IN_WORDS.test(t))) return true;
+  return (g.items ?? []).some((it) => FAKE_ANSWERS.has(String(it.before?.answer ?? "").trim().toLowerCase()) || FAKE_ANSWERS.has(String(it.after?.answer ?? "").trim().toLowerCase()));
+}
+
+/** gateIsStandIn for a run's story. */
+export function storyIsStandIn(story: Pick<LabStory, "eval">): boolean {
+  return gateIsStandIn(story.eval);
+}
+
+/** gateIsStandIn for a row of the run list. */
+export function runIsStandIn(r: Pick<LabRunSummary, "tested">): boolean {
+  const t = r.tested;
+  return !!t && gateIsStandIn({ stand_in: t.stand_in, rehearsal: t.rehearsal, note: t.note });
+}
+
+/** A run of the live loop (its ids start "live-"), or any run whose gate was a stand-in. */
+export function isLoopRun(r: Pick<LabRunSummary, "run_id" | "tested">): boolean {
+  return r.run_id.startsWith("live-") || runIsStandIn(r);
+}
+
+/** The gate really scored this run: a decision with its held-out counts, from a gate that asked the model. */
+export function hasRealGate(r: Pick<LabRunSummary, "tested">): boolean {
+  const t = r.tested;
+  return !!t && !!t.decision && !runIsStandIn(r) && typeof t.n_items === "number" && t.n_items > 0 && typeof t.right_before === "number" && typeof t.right_after === "number";
+}
+
+/** The run the tab opens on: the newest with a real gate result, else the newest run. */
+export function defaultRunId(runs: Pick<LabRunSummary, "run_id" | "started" | "tested">[]): string | null {
+  const t = (r: { started: string | null }) => (r.started ? Date.parse(r.started) || 0 : 0);
+  const newest = [...runs].sort((a, b) => t(b) - t(a));
+  return (newest.find(hasRealGate) ?? newest[0])?.run_id ?? null;
+}
+
+/** What the box serves now (GET /api/learning/lab/deploy `current`), and the version whose last swap rolled itself back. */
+export interface BoxNow {
+  current: string | null;
+  swapRolledBack: string | null;
+}
+
+export type RunTone = "good" | "bad" | "plain";
+
+/**
+ * A run's status in a few words. "On the box": its package is what the box serves now. "Cleared by the gate": the
+ * gate passed it but the box serves something else. "Rolled back": the swap to it rolled itself back. A loop run reads
+ * "Loop run" and its time. A run that is training reads "Training".
+ */
+export function runStatus(r: Pick<LabRunSummary, "run_id" | "status" | "run_status" | "ended" | "started" | "model_version" | "tested">, box: BoxNow): { label: string; tone: RunTone } {
+  const failed = r.status === "failed" || r.run_status === "failed";
+  if (isLoopRun(r)) {
+    const tail = isLiveRun(r) ? ", training" : failed ? ", failed" : "";
+    return { label: `Loop run · ${clock(r.started) || "no time recorded"}${tail}`, tone: failed ? "bad" : "plain" };
+  }
+  if (isLiveRun(r)) return { label: "Training", tone: "plain" };
+  if (failed) return { label: "Failed", tone: "bad" };
+  if (r.model_version && box.current && r.model_version === box.current) return { label: "On the box", tone: "good" };
+  if (r.model_version && box.swapRolledBack === r.model_version) return { label: "Rolled back", tone: "bad" };
+  const decision = r.tested?.decision ?? (r.status === "gated" || r.status === "deployed" ? "deploy" : r.status === "not deployed" ? "reject" : null);
+  if (decision === "deploy") return { label: "Cleared by the gate", tone: "good" };
+  if (decision === "reject") return { label: "Not cleared by the gate", tone: "bad" };
+  return { label: STATUS_LABEL[r.status] ?? r.status, tone: "plain" };
+}
+
+/** Power and energy figures may carry the "low confidence" badge; counts and times never do. */
+const POWER_UNITS = new Set(["W", "J", "Wh", "J/sample", "J/answer", "J/token"]);
+export function lowConfidence(n: Pick<LabNum, "low_confidence" | "unit">): boolean {
+  return n.low_confidence && !!n.unit && POWER_UNITS.has(n.unit);
+}
+
+/** "the relay did not post training speed or energy per sample for this run", from the figures the log lacks. */
+export function missingLine(labels: string[]): string | null {
+  const names = [...new Set(labels.map((l) => l.trim()).filter(Boolean).map((l) => l.charAt(0).toLowerCase() + l.slice(1)))];
+  if (!names.length) return null;
+  const list = names.length === 1 ? names[0]! : `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+  return `the relay did not post ${list} for this run`;
+}
+
+/** A model version as a short label: "v2 f2r4" for atlas-tool-calling-v2-a100-f2r4, "base" for atlas-base. */
+export function modelShort(version: string): string {
+  const parts = version.split("-").filter(Boolean);
+  const last = parts[parts.length - 1] ?? version;
+  const v = parts.find((p) => /^v\d+$/.test(p));
+  return v && v !== last ? `${v} ${last}` : last;
+}
