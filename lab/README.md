@@ -1303,17 +1303,19 @@ python -m lab.controller run-script --account D lab/pod_b_llamacpp.sh stop; pyth
   the T6 sampler on port 8790 (node `gpu-b`, 1 s). Engine commit, backend, GGUF, hub, account and chip are in every
   metrics row's conditions; the second session's raw rows also carry them as `--condition` labels.
 
-| Streams | llama.cpp tok/s per stream (min to max) | llama.cpp tok/s total | TTFT s | avg / peak W | J/token gross | J/token above idle | runs | vLLM April (R26): per stream / total / J per token |
-|---|---|---|---|---|---|---|---|---|
-| 1 | 12.12 (11.99 to 12.13) | 10.48 | 1.46 | 110 / 117 | 10.45 | 9.53 | 3 | 2.70 / 2.62 / 36.66 |
-| 4 | 9.09 (5.32 to 9.10) | 23.42 | 7.18 | 110 / 122 | 4.68 | 4.27 | 3 | 2.52 / 9.32 / 10.31 |
-| 8 | 3.73 | 21.52 | 14.47 | 101 / 128 | 4.70 | 4.24 | 1 | 2.32 / 16.36 / 5.87 |
-| 16 | 4.53 | 41.98 | 27.60 | 95 / 101 | 2.27 | 2.04 | 1 | 2.07 / 26.95 / 3.56 |
-| 64 | not run | not run | | | | | 0 | 0.89 / 49.53 / 1.94 |
+| Streams | llama.cpp tok/s per stream (min to max) | llama.cpp tok/s total | TTFT s | avg / peak W | J/token gross | J/token above idle | runs | vLLM April, pod C (R26): per stream / total / J per token | vLLM April, pod D (R20): per stream / total / J per token |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | 12.12 (11.99 to 12.13) | 10.48 | 1.46 | 110 / 117 | 10.45 | 9.53 | 3 | 2.70 / 2.62 / 36.66 | 2.73 / 2.67 / 36.40 |
+| 4 | 9.09 (5.32 to 9.10) | 23.42 | 7.18 | 110 / 122 | 4.68 | 4.27 | 3 | 2.52 / 9.32 / 10.31 | 2.58 / 9.48 / 10.33 |
+| 8 | 3.73 | 21.52 | 14.47 | 101 / 128 | 4.70 | 4.24 | 1 | 2.32 / 16.36 / 5.87 | 2.37 / 16.54 / 5.81 |
+| 16 | 4.53 | 41.98 | 27.60 | 95 / 101 | 2.27 | 2.04 | 1 | 2.07 / 26.95 / 3.56 | 2.06 / 27.45 / 3.50 |
+| 64 | not run | not run | | | | | 0 | 0.89 / 49.53 / 1.94 | 0.88 / 48.96 / 1.96 |
 
 `llama-bench -ngl 999 -fa 1 -p 512 -n 128 -r 3` on the same GGUF with the card idle (the engine's own view, no proxy,
 no server): **tg128 12.18 tok/s** (sd 0.01) and pp512 391 tok/s (sd 11). Idle with the server loaded and no request:
-9.9 W (9.7 W in the second session), the "above idle" column's subtrahend.
+9.9 W (9.7 W in the second session), the "above idle" column's subtrahend. The last column is R20's stock vLLM
+(b1388b1) matrix on this same pod (`teacher.*`, session `pod-b-2026-10-10`, cold spawns), which agrees with R26's
+attach-mode numbers on pod C within 3 percent.
 
 - **Batch 1 is at the ceiling.** 12.1 tok/s through the proxy and 12.18 in llama-bench is 17.4 GB x 12.18 = 212 GB/s
   of weights read per second, the chip sheet's 210 GB/s: the HIP backend decodes one stream at the memory bandwidth,
