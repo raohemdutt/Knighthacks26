@@ -7,6 +7,8 @@ import { Compare } from "@/components/lab/Compare";
 import { Experiments } from "@/components/lab/Experiments";
 import { LabRun } from "@/components/lab/LabRun";
 import lab from "@/components/lab/lab.module.css";
+import loop from "@/components/lab/loop.module.css";
+import { LoopView } from "@/components/lab/LoopView";
 import { Routing } from "@/components/lab/Routing";
 import { SpeedEnergy } from "@/components/lab/SpeedEnergy";
 import { Empty, ErrorBox, Loading } from "@/components/States";
@@ -15,7 +17,9 @@ import { api } from "@/lib/api";
 import { useAtlasEvents } from "@/lib/atlas";
 import { STATUS_LABEL, clamp01, clock, isLive } from "@/lib/lab";
 import { LAB_TABS, type LabTab } from "@/lib/labBench";
+import { LAB_GROUPS, type LabGroup, labGroupOf, labTabParam, labViewOf } from "@/lib/labTabs";
 import { useFetch } from "@/lib/useFetch";
+import { usePoll } from "@/lib/usePoll";
 
 /**
  * Learning lab: one training run, replayed. What Atlas was taught from, how training went (loss and power on
@@ -39,6 +43,20 @@ import { useFetch } from "@/lib/useFetch";
  *   /lab/?tab=compare&a=<run_id>&b=<run_id> see components/lab/Compare.tsx
  *   /lab/?tab=speed&batch=16&ttft=1         see components/lab/SpeedEnergy.tsx
  *   /lab/?tab=routing&preset=burst&t=0.5    see components/lab/Routing.tsx
+ *
+ * Three tabs, as a grouping only (lib/labTabs.ts). Each of the five views above is shown whole and unchanged; the strip
+ * at the top holds three tabs, and a tab that holds two views shows one after the other:
+ *
+ *   The model          the loop in 3D (components/lab/LoopView.tsx, lit from the shown run's own events), then the
+ *                      Training run view (#run), then the Experiments view (#experiments)
+ *   Speed and energy   the Speed and energy view (#speed), then the Routing view (#routing)
+ *   Together           the Alone vs with a friend view (#compare), with its own empty state when the box has no pair
+ *
+ * Every ?tab= value above still works: it opens the tab that holds the view and scrolls to the view. ?tab=model and
+ * ?tab=together name the new tabs. Plain /lab/ opens The model at its top.
+ *
+ * Looking again every 3 s never restarts a request that is still on its way (lib/usePoll.ts): a box slower than the
+ * beat used to be cut off and asked again on every beat, and never got to answer.
  */
 const LIVE_POLL_MS = 3000;
 
@@ -47,6 +65,8 @@ export default function LabPage() {
   const [picked, setPicked] = useState<string | null>(null);
   const [tab, setTab] = useState<LabTab>("run");
   const [compareIds, setCompareIds] = useState<{ a: string | null; b: string | null }>({ a: null, b: null });
+  const [jump, setJump] = useState<{ view: LabTab; n: number } | null>(null);
+  const group: LabGroup = labGroupOf(tab);
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
@@ -55,7 +75,35 @@ export default function LabPage() {
     setCompareIds({ a: q.get("a"), b: q.get("b") });
     const asked = q.get("tab");
     if (LAB_TABS.some((x) => x.key === asked)) setTab(asked as LabTab);
+    // the two new tab names, and an anchor (/lab/#routing), ask for a view the same way
+    const named = labViewOf(asked) ?? labViewOf(window.location.hash.slice(1));
+    if (named) {
+      setTab(named);
+      setJump({ view: named, n: 0 });
+    }
   }, []);
+
+  // A view that was asked for by name is scrolled to, and kept in place while what is above it loads (it grows as its
+  // data arrives), until the reader scrolls or presses something. A view at the top of its tab needs no scroll.
+  useEffect(() => {
+    if (!params || !jump || LAB_GROUPS.some((g) => g.views[0] === jump.view && g.key !== "model")) return;
+    const el = document.getElementById(jump.view);
+    if (!el) return;
+    const go = () => el.scrollIntoView({ block: "start" });
+    go();
+    const watcher = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(go);
+    watcher?.observe(el.closest("main") ?? document.body);
+    const names = ["wheel", "touchstart", "keydown", "pointerdown"];
+    let timer = 0;
+    const stop = () => {
+      watcher?.disconnect();
+      for (const name of names) window.removeEventListener(name, stop);
+      window.clearTimeout(timer);
+    };
+    timer = window.setTimeout(stop, 30_000);
+    for (const name of names) window.addEventListener(name, stop, { passive: true });
+    return stop;
+  }, [params, jump]);
 
   const list = useFetch((signal) => (params ? api.lab(false, signal) : new Promise<never>(() => {})), params ? "list" : "wait");
   // A list the gateway filled from its committed sample is no run at all: the screen shows only what the box recorded.
@@ -63,95 +111,110 @@ export default function LabPage() {
   const runId = picked ?? (params?.run && runs.some((r) => r.run_id === params.run) ? params.run : (runs[0]?.run_id ?? null));
   const story = useFetch((signal) => (runId ? api.labRun(runId, false, signal) : new Promise<never>(() => {})), runId ? `run-${runId}` : "none");
   const shown = story.data && !story.data.sample ? story.data : null;
-  const reloadList = list.reload;
-  const reloadStory = story.reload;
+  // a request still on its way is left to finish, never restarted (lib/usePoll.ts)
   useAtlasEvents(["learning.", "telemetry.train.step"], () => {
-    reloadList();
-    reloadStory();
+    if (!list.loading) list.reload();
+    if (!story.loading) story.reload();
   });
   // A run read from the trainer's own files sends no event: until the box has a run, and while one is still going
   // (training, or cleared by the gate with packaging and the swap to come), look again every 3 s so it arrives
   // without a reload. A gateway that cannot be reached is looked at again on the same beat.
-  const watching = tab === "run" && (runs.length === 0 || (!!shown && isLive(shown)));
-  useEffect(() => {
-    if (!watching) return;
-    const id = window.setInterval(() => {
-      reloadList();
-      reloadStory();
-    }, LIVE_POLL_MS);
-    return () => window.clearInterval(id);
-  }, [watching, reloadList, reloadStory]);
+  const watching = group === "model" && (runs.length === 0 || (!!shown && isLive(shown)));
+  usePoll([list, story], watching, LIVE_POLL_MS);
 
-  const pickTab = (key: LabTab) => {
+  const pickTab = (key: LabTab, scroll = false) => {
     setTab(key);
+    setJump(scroll ? { view: key, n: Date.now() } : null);
     const url = new URL(window.location.href);
-    if (key === "run") url.searchParams.delete("tab");
-    else url.searchParams.set("tab", key);
+    const value = labTabParam(key);
+    if (value === null) url.searchParams.delete("tab");
+    else url.searchParams.set("tab", value);
+    url.hash = "";
     window.history.replaceState(null, "", url);
   };
+  const views = LAB_GROUPS.find((g) => g.key === group)?.views ?? [];
+  // The lab's own name for a view, kept in sight above it, so "the Training run tab" in a run sheet is still on screen.
+  // Speed and energy and Alone vs with a friend open on those very words as their own heading, so they need no label.
+  const named = (v: LabTab) => <p className={loop.viewName}>{LAB_TABS.find((x) => x.key === v)?.title ?? v}</p>;
   const tabs = (
-    <div className={bench.tabs} role="tablist" aria-label="Learning lab">
-      {LAB_TABS.map((x) => (
-        <button key={x.key} type="button" role="tab" aria-selected={tab === x.key} className={`${bench.tab} ${tab === x.key ? bench.tabOn : ""}`} onClick={() => pickTab(x.key)}>
-          {x.title}
-        </button>
-      ))}
-    </div>
+    <>
+      <div className={bench.tabs} role="tablist" aria-label="Learning lab">
+        {LAB_GROUPS.map((x) => (
+          <button key={x.key} type="button" role="tab" aria-selected={group === x.key} className={`${bench.tab} ${group === x.key ? bench.tabOn : ""}`} onClick={() => pickTab(x.views[0] ?? "run")}>
+            {x.title}
+          </button>
+        ))}
+      </div>
+      {views.length > 1 ? (
+        <nav className={ui.segmented} aria-label="On this tab" data-guide="lab:views">
+          {views.map((v) => (
+            <button key={v} type="button" className={ui.seg} onClick={() => pickTab(v, true)}>
+              {LAB_TABS.find((x) => x.key === v)?.title ?? v}
+            </button>
+          ))}
+        </nav>
+      ) : null}
+    </>
   );
 
   if (!params) return <Loading what="the learning lab" />;
   const q = params.q;
+  const asked = labViewOf(q.get("tab")) ?? labViewOf(window.location.hash.slice(1));
   const number = (key: string) => (q.get(key) !== null && !Number.isNaN(Number(q.get(key))) ? Number(q.get(key)) : null);
-  if (tab === "speed")
+  if (group === "speed")
     return (
       <>
         {tabs}
-        <SpeedEnergy initialBatch={number("batch")} initialTtft={q.get("ttft") === "1"} initialPoint={q.get("point")} initialDrawer={q.get("drawer")} initialCompare={q.get("compare")} initialSweep={q.get("sweep")} forceReduced={params.reduce} />
+        <section id="speed" className={loop.view} aria-label="Speed and energy" data-guide="lab:speed">
+          <SpeedEnergy initialBatch={number("batch")} initialTtft={q.get("ttft") === "1"} initialPoint={q.get("point")} initialDrawer={asked === "routing" ? null : q.get("drawer")} initialCompare={q.get("compare")} initialSweep={q.get("sweep")} forceReduced={params.reduce} />
+        </section>
+        <section id="routing" className={loop.view} aria-label="Routing" data-guide="lab:routing">
+          {named("routing")}
+          <Routing initialPreset={q.get("preset")} initialT={params.t} initialPolicy={q.get("policy")} initialBasis={q.get("basis")} initialDrawer={asked === "routing" ? q.get("drawer") : null} forceReduced={params.reduce} />
+        </section>
       </>
     );
-  if (tab === "routing")
+  if (group === "together")
     return (
       <>
         {tabs}
-        <Routing initialPreset={q.get("preset")} initialT={params.t} initialPolicy={q.get("policy")} initialBasis={q.get("basis")} initialDrawer={q.get("drawer")} forceReduced={params.reduce} />
-      </>
-    );
-  if (tab === "compare")
-    return (
-      <>
-        {tabs}
-        <Compare
-          a={compareIds.a}
-          b={compareIds.b}
-          onPick={(which, id) => {
-            setCompareIds((ids) => ({ ...ids, [which]: id }));
-            const url = new URL(window.location.href);
-            url.searchParams.set(which, id);
-            window.history.replaceState(null, "", url);
-          }}
-          forceReduced={params.reduce}
-        />
-      </>
-    );
-  if (tab === "experiments")
-    return (
-      <>
-        {tabs}
-        <Experiments />
+        <section id="compare" className={loop.view} aria-label="Alone vs with a friend" data-guide="lab:compare">
+          <Compare
+            a={compareIds.a}
+            b={compareIds.b}
+            onPick={(which, id) => {
+              setCompareIds((ids) => ({ ...ids, [which]: id }));
+              const url = new URL(window.location.href);
+              url.searchParams.set(which, id);
+              window.history.replaceState(null, "", url);
+            }}
+            forceReduced={params.reduce}
+          />
+        </section>
       </>
     );
 
+  // The model: the loop, then the Training run view, then the Experiments view.
+  const model = (run: React.ReactNode) => (
+    <>
+      {tabs}
+      <LoopView story={shown} run={runs.find((r) => r.run_id === runId) ?? null} empty={!!list.data && runs.length === 0} forceReduced={params.reduce} />
+      <section id="run" className={loop.view} aria-label="Training run" data-guide="lab:run">
+        {named("run")}
+        {run}
+      </section>
+      <section id="experiments" className={loop.view} aria-label="Experiments" data-guide="lab:experiments">
+        {named("experiments")}
+        <Experiments />
+      </section>
+    </>
+  );
+
   if (list.loading && !list.data)
-    return (
-      <>
-        {tabs}
-        <Loading what="the learning lab" />
-      </>
-    );
+    return model(<Loading what="the learning lab" />);
   if (runs.length === 0) {
-    return (
+    return model(
       <>
-        {tabs}
         <div className={ui.pageHead}>
           <h1>What Atlas learned</h1>
           <p className={ui.muted}>
@@ -175,7 +238,7 @@ export default function LabPage() {
             Teach Atlas something
           </Link>
         </div>
-      </>
+      </>,
     );
   }
 
@@ -190,9 +253,8 @@ export default function LabPage() {
       </div>
     ) : null;
 
-  return (
+  return model(
     <>
-      {tabs}
       {story.error && !story.data ? (
         <ErrorBox what="this training run" error={story.error} onRetry={story.reload} />
       ) : !shown ? (
@@ -200,6 +262,6 @@ export default function LabPage() {
       ) : (
         <LabRun key={shown.run_id} story={shown} initial={params.t} forceReduced={params.reduce} picker={picker} onBoxChanged={story.reload} />
       )}
-    </>
+    </>,
   );
 }

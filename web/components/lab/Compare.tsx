@@ -19,6 +19,7 @@ import {
   timesX,
 } from "@/lib/labCompare";
 import { useFetch } from "@/lib/useFetch";
+import { usePoll } from "@/lib/usePoll";
 import b from "./bench.module.css";
 import c from "./compare.module.css";
 import { type BuddiesState, LearningBuddies } from "./LearningBuddies";
@@ -296,19 +297,9 @@ export function Compare({ a, b: bId, onPick, forceReduced }: { a: string | null;
   const focus = story.data && !story.data.sample ? story.data : null;
 
   // Look again every 3 s until both acts are recorded, and while a run is still going.
-  const reloadRes = res.reload;
-  const reloadList = list.reload;
-  const reloadStory = story.reload;
+  // A request still on its way is left to finish, never restarted (lib/usePoll.ts): a box slower than the beat answers.
   const watching = !complete || !!live;
-  useEffect(() => {
-    if (!watching) return;
-    const id = window.setInterval(() => {
-      reloadRes();
-      reloadList();
-      reloadStory();
-    }, POLL_MS);
-    return () => window.clearInterval(id);
-  }, [watching, reloadRes, reloadList, reloadStory]);
+  usePoll([res, list, story], watching, POLL_MS);
 
   const buddies = useMemo(() => {
     const loss = lossOf(focus);

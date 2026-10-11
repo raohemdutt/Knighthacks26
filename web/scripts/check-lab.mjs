@@ -97,6 +97,43 @@ try {
   is("cost line small", D.energyLine({ joules: 3.24, idle_w: 15.76, seconds: 0.2, sampler: "tegrastats", samples: 2 }), "this answer cost about 3.2 J on the box");
   is("sampler off", D.energyLine(null), "sampler off");
   is("older gateway", D.energyLine(undefined), null);
+
+  // ---- three tabs, as a grouping of the five views (lib/labTabs.ts): nothing is dropped, old links land
+  const B = await load("labBench");
+  const T = await load("labTabs");
+  is("the five views are still the lab's five", B.LAB_TABS.map((x) => `${x.key}=${x.title}`).join("|"), "run=Training run|compare=Alone vs with a friend|speed=Speed and energy|routing=Routing|experiments=Experiments");
+  is("three tabs", T.LAB_GROUPS.map((g) => g.title).join("|"), "The model|Speed and energy|Together");
+  is("every view is on exactly one tab", T.LAB_GROUPS.flatMap((g) => g.views).sort().join(","), B.LAB_TABS.map((x) => x.key).sort().join(","));
+  is("the order inside each tab", T.LAB_GROUPS.map((g) => g.views.join("+")).join("|"), "run+experiments|speed+routing|compare");
+  is("an old ?tab= value opens its own view", ["run", "experiments", "speed", "routing", "compare"].map(T.labViewOf).join(","), "run,experiments,speed,routing,compare");
+  is("and its tab", ["run", "experiments", "speed", "routing", "compare"].map((v) => T.labGroupOf(v)).join(","), "model,model,speed,speed,together");
+  is("the new tab names are values too", [T.labViewOf("model"), T.labViewOf("together"), T.labViewOf("nope"), T.labViewOf(null)].join(","), "run,compare,,");
+  is("the address keeps the old values", ["run", "experiments", "speed", "routing", "compare"].map(T.labTabParam).join(","), ",experiments,speed,routing,compare");
+  const page = readFileSync(join(web, "app", "lab", "page.tsx"), "utf8");
+  for (const view of ["run", "experiments", "speed", "routing", "compare"]) is(`the ${view} view has its anchor`, page.includes(`<section id="${view}"`), true);
+  for (const part of ["<LabRun ", "<Experiments />", "<SpeedEnergy ", "<Routing ", "<Compare", "<LoopView ", 'title="No runs yet; start the loop"']) is(`the page still draws ${part}`, page.includes(part), true);
+  is("the loop is above the Training run view", page.indexOf("<LoopView ") < page.indexOf('<section id="run"'), true);
+  is("the swap buttons are where the lab put them, in LabRun", readFileSync(join(web, "components", "lab", "LabRun.tsx"), "utf8").includes("<DeployButton"), true);
+  is("looking again never restarts a request in flight", /setInterval/.test(page) || !page.includes("usePoll([list, story], watching"), false);
+
+  // ---- the loop's five stages, from one run's own story (lib/labLoop.ts)
+  const P = await load("labLoop");
+  const when = (iso) => (iso ? "then" : "");
+  const num = (value, unit = null) => ({ label: "", value, unit, source: null, low_confidence: false, reason: null });
+  is("no run: five stages, all waiting", P.loopStages(null, when).map((x) => `${x.key}:${x.state}`).join(","), "out:waiting,label:waiting,train:waiting,test:waiting,box:waiting");
+  const loopStory = {
+    run_id: "v2", status: "gated", run_status: "finished", marks: { end: ended, evaluated: ended },
+    dataset: { examples: num(1140), train: num(912), held_out: num(228), approval: { approved: null } },
+    training: { steps: num(48), of: num(48), points: [{ loss: 0.42 }], loss_last: num(0.42) },
+    eval: { decision: "deploy", n_items: num(228), scores: { current: num(0.417), candidate: num(0.785) }, correct: { current: num(95), candidate: num(179) }, rehearsal: null },
+    package: { bytes: num(null) }, deploy: { deployed: null, swap_s: num(null), rolled_back: null },
+  };
+  const stages = P.loopStages(loopStory, when);
+  is("examples out, from the dataset card's number", stages[0].value, "1,140 examples");
+  is("the trainer's step, from the training card's number", stages[2].value, "step 48 of 48");
+  is("the test, in the gate card's counts", stages[3].value, "95 → 179 of 228");
+  is("passed, not installed", `${stages[3].state},${stages[4].state},${stages[4].value}`, "done,waiting,not installed yet");
+  is("a stage the run did not report says so", `${stages[1].state},${stages[1].note}`, "none,not reported for this run");
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }
