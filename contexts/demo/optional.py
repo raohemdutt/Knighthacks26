@@ -1,4 +1,4 @@
-"""An optional event, suggested and said yes to: one invented afternoon through the real app.
+"""An optional event, suggested and said yes to, on a day Atlas is running: one invented day through the real app.
 
     python -m contexts.demo optional --data-dir <an empty directory> [--day 2026-10-12]
     ATLAS_DATA_DIR=<that directory> ATLAS_MEMORY_FIXTURE= ATLAS_CONNECTORS=0 ATLAS_CAPTURE=0 python -m contexts.gateway   # then open /now/
@@ -10,25 +10,31 @@ the person at the desk is a detector track drawn into the desk zone.
 What is published, as source events through the app's own bus, in event time, so every rule that fires is the real
 one and nothing Atlas says is written by this file:
 
-- 07:55, before the household's wake time: the calendar and Canvas sync (one lecture, one assignment due tomorrow)
-  and "Friends' dinner" from the Near you fixture as today's, 5:15 PM at '63 South, with Riley, Sam and Alex.
-- 08:05: the desk camera sees someone sit down. The Day loop makes the morning plan; nobody answers its card and it
-  expires, as on a box nobody looked at.
-- 3:50 PM: the desk camera sees someone sit down again.
+- 7:55 AM, before the household's wake time: the calendar and Canvas sync (one lecture, one assignment due
+  tomorrow) and "Friends' dinner" from the Near you fixture as today's, 5:15 PM at '63 South, with Riley, Sam, Alex.
+- 8:05 AM: the desk camera sees someone sit down, and the Day loop makes the morning plan.
+- A few minutes before the afternoon's study block at the desk, and again at 3:50 PM: the desk camera sees someone
+  sit down.
 
-Then the Day loop is ticked once a minute from 4:00 PM, as the gateway's ticker does, and the person does two
-things, both through the calls the phone makes:
+The Day loop is ticked once a minute, as the gateway's ticker does, around the study block's start and from 4:00 PM
+to the time to leave. The person does three things, each through the call the phone makes:
 
+- 8:06 AM, "Approve" on the morning plan's card. Block reminders are for a plan that was approved.
 - 4:02 PM, "Add it": `OptionalEvents.answer(..., "yes")`, the function behind POST /api/day/optional/{id}. It
   publishes the answer, then a re-plan with the dinner as a block and one approval card. The plan has not changed.
-- 4:03 PM, "Approve": `experience.approval.decided` for that card, published here in place of the tap (demo,
-  approved locally). Only a card that stays on the box is approved: a plan card on a box with no calendar
-  connector, which writes nothing. On any other card the scene stops and says so.
+- 4:03 PM, "Approve" on that card.
 
-What Atlas then says by itself, each line from the real rules: the suggestion at 4:00 PM (once), the day with the
-dinner worked in at 4:02 PM, and "Time to go" ten minutes before the time to leave. An accepted event with a walk
-is announced by that leave-now line, not by a block-start line; the scene ends at the time to leave, because the
-box's cameras are at home and cannot see the walk.
+An approval is `experience.approval.decided`, published here in place of the tap (demo, approved locally), and
+only for a card that stays on the box: a plan card on a box with no calendar connector, which writes nothing. On
+any other card the scene stops and says so.
+
+What Atlas then says by itself, each line from the real rules: the morning plan; the study block as it starts; the
+suggestion at 4:00 PM, once; the day with the dinner worked in; and "Time to go" ten minutes before the time to
+leave. The yes comes two minutes after the suggestion: inside the arbiter's ninety seconds between two unasked
+lines the answer in words would wait its turn. After the approval the next block of the day is the dinner itself,
+and an accepted event with a walk is announced by its leave-now line, not by a block-start line; the block-start
+line of this day is the study block's. The scene ends at the time to leave, because the box's cameras are at home
+and cannot see the walk.
 
 Deterministic: the same day gives the same lines, whatever the directory.
 """
@@ -47,7 +53,7 @@ from contexts.gateway.bootstrap import Atlas
 from contexts.perception.domain.scenes import bounding_box
 from contexts.perception.domain.zones import load_zones
 from contracts.connectors import ItemSynced
-from contracts.day import DayNarrated, DayReplanProposed
+from contracts.day import DayNarrated, DayReplanProposed, PlanMove
 from contracts.events import Event
 from contracts.experience import ApprovalDecided
 from contracts.perception import ObservationRecorded
@@ -56,10 +62,12 @@ from contracts.types import Box, Track, frame_ref
 LOCAL = ZoneInfo("America/New_York")
 SLUG = "friends-dinner"  # the Near you fixture's event this day is about
 CALENDAR_WRITE = "calendar.create_event"
-SYNCED, MORNING, CARD_GONE = time(7, 55), time(8, 5), time(8, 11)
-BACK, FROM, YES, APPROVE = time(15, 50), time(16, 0), time(16, 2), time(16, 3)
+SYNCED, MORNING, PLAN_OK = time(7, 55), time(8, 5), time(8, 6)
+NOON, BACK, FROM, YES, APPROVE = time(12, 0), time(15, 50), time(16, 0), time(16, 2), time(16, 3)
 LAST = time(17, 15)  # the scene never runs past the event's start, whatever the walk
+SIT_BEFORE, WATCH_BEFORE, WATCH_AFTER = timedelta(minutes=6), timedelta(minutes=1), timedelta(minutes=2)  # around the study block's start
 SIT_S, EVERY_S = 10, 2  # a few looks of the desk camera: someone sat down
+LOCALLY = "demo, approved locally: no calendar connector on this box, nothing is written"
 
 
 def default_day(now: datetime) -> date:
@@ -75,18 +83,20 @@ def clock(t: datetime) -> str:
     return f"{t.hour % 12 or 12}:{t:%M} {t:%p}"
 
 
+def dinner():
+    """The fixture's friends' dinner, as today's."""
+    return next(e for e in nearby.load().events if e.slug == SLUG).model_copy(update={"day": 0})
+
+
 def synced(day: date) -> list[ItemSynced]:
     """The morning's sync: the check-in demo's lecture and assignment, and the fixture's dinner as today's."""
     ts = at(day, SYNCED)
-    items = [e.model_copy(update={"ts": ts, "event_id": f"demo-optional-{e.external_id}-{day}"}) for e in checkin.calendar(at(day, time(12)))]
-    script = nearby.load()
-    dinner = next(e for e in script.events if e.slug == SLUG).model_copy(update={"day": 0})
-    return items + nearby.nearby_events(ts, script.model_copy(update={"events": [dinner], "messages": []}))
+    items = [e.model_copy(update={"ts": ts, "event_id": f"demo-optional-{e.external_id}-{day}"}) for e in checkin.calendar(at(day, NOON))]
+    return items + nearby.nearby_events(ts, nearby.load().model_copy(update={"events": [dinner()], "messages": []}))
 
 
 def offer_id(day: date) -> str:
-    dinner = next(e for e in nearby.load().events if e.slug == SLUG).model_copy(update={"day": 0})
-    return nearby.external_id(dinner, at(day, SYNCED))
+    return nearby.external_id(dinner(), at(day, SYNCED))
 
 
 def sits_down(start: datetime, zones: str | Path = ZONES) -> list[Event]:
@@ -110,9 +120,10 @@ class Shown:
     day: date
     seconds: float
     lines: list[tuple[datetime, str, str]] = field(default_factory=list)  # (when, who, what), in order
+    started: DayNarrated | None = None  # the study block's start, said
     suggested: DayNarrated | None = None
     replan: DayReplanProposed | None = None
-    approved: bool = False
+    approved: bool = False  # the yes's card was approved and the dinner is a block of the day
     leave: DayNarrated | None = None
     stopped: str | None = None  # why the scene ended early, in plain words
 
@@ -123,7 +134,18 @@ class Shown:
 
 def stays_on_the_box(app: Atlas, card) -> bool:
     """A card this scene may approve in the person's place: a plan card on a box that cannot write to a calendar."""
-    return card.kind == "connector_write" and card.target == CALENDAR_WRITE and not app.hub.is_write(CALENDAR_WRITE)
+    return (card is not None and card.status == "proposed" and card.kind == "connector_write" and card.target == CALENDAR_WRITE
+            and not app.hub.is_write(CALENDAR_WRITE))
+
+
+def study_block(app: Atlas, day: date) -> PlanMove | None:
+    """The plan's first block of the afternoon that Atlas chose at the desk, before the suggestion's hour: the block
+    whose start the scene waits for."""
+    plan = app.day.planner.current.get(day)
+    desk = app.day.tracker.walks.ref(app.dayrun.cfg.desk)
+    blocks = sorted(plan.moves, key=lambda m: m.start) if plan else []
+    return next((m for m in blocks if not m.fixed and m.kind == "study" and m.place == desk
+                 and at(day, NOON) <= m.start and m.start + WATCH_AFTER < at(day, BACK)), None)
 
 
 async def show(data_dir: str | Path, day: date, config_dir: Path | None = None) -> Shown:
@@ -131,7 +153,7 @@ async def show(data_dir: str | Path, day: date, config_dir: Path | None = None) 
     data_dir = Path(data_dir)
     if list((data_dir / "events").glob("*.jsonl")) or (data_dir / "memory.sqlite").exists():
         raise SeedRefused(f"{data_dir} already has an event log or a memory file. The optional-event demo wants an empty directory.")
-    started = clocktime.perf_counter()
+    begun = clocktime.perf_counter()
     app = build_app(data_dir, config_dir)
     if app.day is None:
         raise RuntimeError("this config has no Day loop (no place packs): optional events live there")
@@ -140,67 +162,91 @@ async def show(data_dir: str | Path, day: date, config_dir: Path | None = None) 
     shown = Shown(app=app, day=day, seconds=0.0)
     told: list[DayNarrated] = []
     app.bus.subscribe("day.narrated", told.append)
+    offer, zones = offer_id(day), app.settings.config_dir / "zones.yaml"
+    mark = {"n": 0, "approvals": 0}
+
+    def said() -> None:
+        """Every line Atlas said aloud since the last look: not the screen's quiet "now", not a line said inside another."""
+        for e in told[mark["n"]:]:
+            if e.merged_into or (e.moment == "now" and not e.urgent):
+                continue
+            shown.lines.append((e.ts, "Atlas", e.spoken))
+            if e.moment == "start" and shown.started is None:
+                shown.started = e
+            if e.moment == "suggest" and e.ref == offer:
+                shown.suggested = e
+            if e.moment == "now" and e.urgent and shown.approved:
+                shown.leave = e
+        mark["n"] = len(told)
 
     async def publish(events) -> None:
         for e in events:
             now["t"] = max(now["t"], e.ts)
             await app.bus.publish(e)
             await settle()
+        said()
 
-    def said_since(mark: int) -> None:
-        """Every line Atlas said aloud since `mark`: not the screen's quiet "now", not a line said inside another."""
-        for e in told[mark:]:
-            if e.merged_into or (e.moment == "now" and not e.urgent):
-                continue
-            shown.lines.append((e.ts, "Atlas", e.spoken))
-            if e.moment == "suggest" and e.ref == offer:
-                shown.suggested = e
-            if e.moment == "now" and e.urgent and shown.approved:
-                shown.leave = e
-
-    offer = offer_id(day)
-    zones = app.settings.config_dir / "zones.yaml"
-    await publish(synced(day))
-    await publish(sits_down(at(day, MORNING), zones))  # the first sign of the day after wake: the morning plan
-    await expire(app, at(day, CARD_GONE))  # nobody answered its card
-    await publish(sits_down(at(day, BACK), zones))
-
-    t, mark = at(day, FROM), len(told)
-    while t <= at(day, LAST):
+    async def minute(t: datetime) -> None:
+        """One turn of the ticker at `t`: cards that ran out expire, then the Day loop looks at the day."""
         now["t"] = t
         await expire(app, t)
+        await publish(app.day.tick(t))
+
+    async def approve(action_id: str | None, t: datetime) -> bool:
+        """The tap on "Approve", for a card that stays on the box; False (and nothing published) for any other."""
+        card = app.approvals.requests.get(action_id or "")
+        if not stays_on_the_box(app, card):
+            return False
+        mark["approvals"] += 1
+        shown.lines.append((t, "You", f"Approve ({LOCALLY})"))
+        await publish([ApprovalDecided(event_id=f"demo-optional-approved-{day}-{mark['approvals']}", ts=t, action_id=card.id, decision="approve")])
+        return True
+
+    await publish(synced(day))
+    await publish(sits_down(at(day, MORNING), zones))  # the first sign of the day after wake: the morning plan
+    plan = app.day.planner.current.get(day)
+    if plan is None or not await approve(plan.action_id, at(day, PLAN_OK)):
+        await expire(app, at(day, PLAN_OK) + timedelta(minutes=5))  # nobody answered it: no block reminders today
+
+    block = study_block(app, day)
+    if block is not None:  # the afternoon's study block, as it starts
+        await publish(sits_down(block.start - SIT_BEFORE, zones))
+        t = block.start - WATCH_BEFORE
+        while t <= block.start + WATCH_AFTER:
+            await minute(t)
+            t += timedelta(minutes=1)
+
+    await publish(sits_down(at(day, BACK), zones))
+    t = at(day, FROM)
+    while t <= at(day, LAST):
+        now["t"] = t
         if t == at(day, YES) and shown.suggested is not None:
-            title = app.day.optional.find(offer, t).title
-            shown.lines.append((t, "You", f"Add it (yes to {title})"))
+            shown.lines.append((t, "You", f"Add it (yes to {app.day.optional.find(offer, t).title})"))
             try:
                 events, body = app.day.optional.answer(t, offer, "yes")
             except Exception as refused:  # the box would answer 409 with these words
                 shown.stopped = f"the yes was refused: {refused}"
                 break
-            await publish(events)
             shown.replan = next((e for e in events if isinstance(e, DayReplanProposed)), None)
             for change in body.get("moves", []):
-                shown.lines.append((t, "Plan", f"would change: {change['title']} at {clock(at(day, time.fromisoformat(change['start'])))} ({change['change']})"))
+                was = clock(at(day, time.fromisoformat(change["start"])))
+                shown.lines.append((t, "Plan", f"would change: {change['title']} at {was} ({change['change']})"))
+            await publish(events)
         if t == at(day, APPROVE) and shown.replan is not None:
-            card = app.approvals.requests.get(shown.replan.action_id or "")
-            if card is None or card.status != "proposed" or not stays_on_the_box(app, card):
+            if not await approve(shown.replan.action_id, t):
                 shown.stopped = "the card is not one that stays on the box, so it was left for the phone"
                 break
-            shown.lines.append((t, "You", "Approve (demo, approved locally: no calendar connector on this box, nothing is written)"))
-            await publish([ApprovalDecided(event_id=f"demo-optional-approved-{day}", ts=t, action_id=card.id, decision="approve")])
             shown.approved = offer in app.day.optional.accepted
-            block = next((m for m in app.day.planner.current[day].moves if m.id == rule.block_id(offer)), None)
-            if block is not None:
-                shown.lines.append((t, "Plan", f"{block.title}, {clock(block.start)} to {clock(block.end)} at {block.place_name}, is a block of the day"))
-        await publish(app.day.tick(t))
-        said_since(mark)
-        mark = len(told)
+            mine = next((m for m in app.day.planner.current[day].moves if m.id == rule.block_id(offer)), None)
+            if mine is not None:
+                shown.lines.append((t, "Plan", f"{mine.title}, {clock(mine.start)} to {clock(mine.end)} at {mine.place_name}, is a block of the day"))
+        await minute(t)
         status = app.day.tracker.status
-        leave_by = status.next_event.leave_by if status and status.next_event and status.next_event.id == rule.block_id(offer) else None
-        if shown.leave is not None and leave_by is not None and t >= leave_by:
+        mine = status.next_event if status and status.next_event and status.next_event.id == rule.block_id(offer) else None
+        if shown.leave is not None and mine is not None and mine.leave_by is not None and t >= mine.leave_by:
             break  # the time to leave: the cameras are at home, the walk is the person's
         t += timedelta(minutes=1)
-    shown.seconds = clocktime.perf_counter() - started
+    shown.seconds = clocktime.perf_counter() - begun
     return shown
 
 
@@ -210,9 +256,11 @@ def lines(s: Shown) -> list[str]:
     out += [f"  {clock(when):>8}  {who:<5}  {what}" for when, who, what in s.lines]
     out.append("")
     if s.ok:
-        out.append("Suggested once, added only after the card was approved, and told when to leave: every line above is the app's own.")
+        out.append("Suggested once, added only after its card was approved, and told when to leave. Every line Atlas says above is the app's own.")
+        if s.started is None:
+            out.append("No block of the approved plan started while the scene was watching, so there is no block-start line today.")
     else:
-        missing = [name for name, got in (("no suggestion", s.suggested), ("no re-plan", s.replan), ("not approved", s.approved),
+        missing = [name for name, got in (("no suggestion", s.suggested), ("no re-plan", s.replan), ("the dinner was not added", s.approved),
                                           ("no time-to-go line", s.leave)) if not got]
         out.append("The scene did not play through: " + (s.stopped or ", ".join(missing)) + ".")
     return out
