@@ -1395,16 +1395,20 @@ Where each decode step's time goes on the stock teacher build R30 left on pod D 
 ```
 python -m lab profile-decode --quick                         # the box: parser and writer on the synthetic fixture
 python -m lab profile-decode pod-script                      # the box: writes lab/state/profile_decode/pod_run.sh
-python tooling/dispatcher/pod_exec.py D run <clone>/lab/state/profile_decode/pod_run.sh r47_pod_run.sh 3000 > <clone>/lab/state/profile_decode/pod_run.out
+python tooling/dispatcher/pod_exec.py D term <clone>/lab/state/profile_decode/pod_run.sh 3000 > <clone>/lab/state/profile_decode/pod_run.out
 python -m lab profile-decode collect lab/state/profile_decode/pod_run.out [--chip-sheet FILE] [--save-fixtures]
 ```
 
-The third line runs from the workspace (pod_exec.py is the workspace's pod tool, not in this repo): run mode uploads
-the script through the Jupyter contents API and types only its `bash` line into a terminal, then reads the output
-back until the script's last line, `### END rc=<code>`. The script is about 200 KB, because it carries the lab files
-it imports (`lab/bench.py` and what that needs, the three profile modules, the prompt set and its two images) as one
-base64 block with its sha256; it has no tab and no exclamation mark, so term mode can type it too, but a paste that
-large can stall a terminal whose shell echoes faster than the terminal server drains it.
+The second and third lines run from the workspace inside one GPU Queue slot on pod D: `pod-script` reads account
+D's user name from the workspace `.env` to put its sha256 in the gate (it answers with an error line naming the
+missing keys elsewhere), and pod_exec.py is the workspace's pod tool, not in this repo. Its term mode types the
+script into a pod terminal inside a quoted heredoc, runs it and streams the output back; 3000 seconds covers the
+30-minute deadline and the one 15-minute extension. The script is about 200 KB, because it carries the lab files it
+imports (`lab/bench.py` and what that needs, the three profile modules, the prompt set and its two images) as one
+base64 block with its sha256, in lines of 76 characters with no tab and no exclamation mark, so an interactive shell
+reads it as typed. Should a paste that large stall the terminal, run mode (`pod_exec.py D run <script>
+r47_pod_run.sh 3000`) uploads it through the Jupyter contents API and types only its `bash` line, then reads the
+output back until the script's last line, `### END rc=<code>`.
 
 - **The gate**, fail closed, before anything starts: rocminfo names gfx1151, the Jupyter user hashes to account D's
   (the script carries the sha256 of the user name, never the name), the server port (8100) is free and no other

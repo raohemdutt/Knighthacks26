@@ -10,6 +10,7 @@ import gzip
 import io
 import json
 import os
+import re
 import signal
 import socket
 import struct
@@ -417,6 +418,27 @@ def test_pod_script_main_writes_the_script_with_the_account_hash(tmp_path):
     with pytest.raises(SystemExit):
         pd.build_parser().parse_args(["pod-script", "--phases", "torch,nvprof"])
 
+
+
+def test_pod_script_without_the_account_keys_answers_with_an_error_line_naming_them(monkeypatch, tmp_path):
+    from lab import hub
+
+    def no_keys(names):
+        raise hub.MissingCredentials(["AUP_HUB_USER_D", "AUP_HUB_TOKEN_D"])
+
+    monkeypatch.setattr(hub, "load_accounts", no_keys)
+    answer = pd.main(["pod-script", "--out", str(tmp_path / "pod_run.sh")])
+    assert answer["ok"] is False and "AUP_HUB_USER_D" in answer["error"]
+    assert not (tmp_path / "pod_run.sh").exists()
+
+
+def test_the_next_step_is_the_dispatchers_terminal_command_with_room_for_the_whole_slot(tmp_path):
+    args = pd.build_parser().parse_args(["pod-script", "--out", str(tmp_path / "s.sh"), "--expect-user-sha256",
+                                         "ab" * 32])
+    answer = pd.pod_script_main(args)
+    assert answer["next"].startswith("python tooling/dispatcher/pod_exec.py D term ")
+    wait_s = re.search(r"<this script> (\d+) > ", answer["next"])
+    assert wait_s and int(wait_s.group(1)) >= 30 * 60 + 15 * 60
 
 # --- the pod side ---------------------------------------------------------------------------------------------------
 

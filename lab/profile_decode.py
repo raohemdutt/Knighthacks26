@@ -2,17 +2,19 @@
 
     python -m lab.profile_decode --quick [--out DIR]              # this machine: parser and writer on the fixture
     python -m lab.profile_decode pod-script [--out FILE]          # this machine: the one script the pod runs
-    python tooling/dispatcher/pod_exec.py D run <script> r47_pod_run.sh 3000 > <output file>   # the pod run
+    python tooling/dispatcher/pod_exec.py D term <script> 3000 > <output file>                 # the pod run
     python -m lab.profile_decode collect <output file> [--chip-sheet FILE] [--save-fixtures]
     python -m lab.profile_decode pod-run --expect-user-sha256 HEX [...]   # on the pod, what the script runs
     python -m lab.profile_decode analyze RUN_DIR [--out DIR]              # re-read a run folder (pod or copy)
 
 `python -m lab profile-decode ...` is the same. Every call answers with one JSON line and exits 0 when it worked.
-pod_exec.py is the workspace's own pod tool (not in this repo). Its run mode uploads the script through the Jupyter
-contents API and types only `bash ./r47_pod_run.sh > ./r47_pod_run.out 2>&1` into a terminal, then reads the .out
-file back until the script's last line, `### END rc=<code>`. The script also works typed whole into a terminal
-(term mode: no tab and no exclamation mark in it), but it carries about 200 KB of base64, and a paste that large
-can stall a terminal whose shell echoes faster than the terminal server drains it.
+pod_exec.py is the workspace's own pod tool (not in this repo). Its term mode, the dispatcher's, types the script
+into a pod terminal inside a quoted heredoc, runs it and streams its output back until its own end marker; the
+script has no tab and no exclamation mark, and its base64 lines are 76 characters, so an interactive shell reads
+it as typed. The last argument is the wait in seconds: 3000 covers the 30-minute deadline plus the one 15-minute
+extension. Should a 200 KB paste stall the terminal, run mode (`D run <script> r47_pod_run.sh 3000`) uploads the
+script through the Jupyter contents API instead and types only its `bash` line, then reads the .out file back
+until the script's last line, `### END rc=<code>`.
 
 The run (lab/profile_decode_pod.py): the stock vLLM 0.19.2 teacher build R30 left on pod D (account D, node pod-b)
 is started, warmed up, and the fixed prompt set of lab/bench.py (fixtures/lab/bench/prompts.json) runs at batch 1
@@ -1241,7 +1243,11 @@ def pod_script_main(args: argparse.Namespace) -> dict[str, Any]:
     if args.expect_user_sha256:
         expect = args.expect_user_sha256
     else:
-        account = hub.load_accounts([args.account])[args.account]
+        try:
+            account = hub.load_accounts([args.account])[args.account]
+        except hub.MissingCredentials as exc:
+            raise ProfileError(f"{exc}: pod-script reads account {args.account}'s user name from the workspace .env "
+                               "(or pass --expect-user-sha256)") from exc
         expect = pod.user_sha256(account.user)
     run_args = ["--phases", ",".join(args.phases), "--max-tokens", str(args.max_tokens), "--port", str(args.port),
                 "--checkpoint", args.checkpoint, "--deadline-min", f"{args.deadline_min:g}", "--hub", args.hub,
@@ -1253,8 +1259,9 @@ def pod_script_main(args: argparse.Namespace) -> dict[str, Any]:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(script.encode("ascii"))
     return {"ok": True, "outcome": "written", "script": str(out), **info,
-            "next": f"python tooling/dispatcher/pod_exec.py {args.account} run <this script> r47_pod_run.sh 3000 "
-                    "> <output file>"}
+            "next": f"python tooling/dispatcher/pod_exec.py {args.account} term <this script> 3000 > <output file>",
+            "or": f"python tooling/dispatcher/pod_exec.py {args.account} run <this script> r47_pod_run.sh 3000 "
+                  "> <output file>"}
 
 
 def ledger_rows(result: Mapping[str, Any], source: str) -> list[dict[str, Any]]:
