@@ -128,7 +128,7 @@ function ChipFix({ story, reduced, a100, setA100, onPick }: { story: ReturnType<
     const wTop = Math.max(10, ...lines.flatMap((l) => l.points.map((p) => p.watts ?? 0)));
     return {
       ...chartBase(t, reduced),
-      grid: { left: 56, right: 60, top: 48, bottom: 52 },
+      grid: { left: 56, right: 60, top: 84, bottom: 52 },
       legend: { top: 0, left: 0, icon: "roundRect", itemWidth: 14, itemHeight: 4, itemGap: 18, textStyle: { color: t.text, fontSize: 13 } },
       tooltip: {
         ...(chartBase(t, reduced).tooltip as object),
@@ -175,7 +175,7 @@ function ChipFix({ story, reduced, a100, setA100, onPick }: { story: ReturnType<
           {after ? (
             <LabEChart
               option={option}
-              height={360}
+              height={390}
               label={`Energy per token against streams answered at once, ${after ? "vLLM after the kernel fix" : ""}${llama ? " and llama.cpp Vulkan" : ""}, with the pod's watts on a second axis`}
               onClick={(p) => {
                 const id = p.seriesId ?? "";
@@ -245,7 +245,7 @@ function BiggerBrain({ story, reduced }: { story: ReturnType<typeof speedStory>;
     const maxB = Math.max(2, ...pair.points.map((p) => p.batch));
     return {
       ...chartBase(t, reduced),
-      grid: { left: 56, right: 24, top: 44, bottom: 52 },
+      grid: { left: 56, right: 24, top: 84, bottom: 52 },
       legend: { top: 0, left: 0, icon: "roundRect", itemWidth: 14, itemHeight: 4, itemGap: 18, textStyle: { color: t.text, fontSize: 13 } },
       tooltip: {
         ...(chartBase(t, reduced).tooltip as object),
@@ -292,7 +292,7 @@ function BiggerBrain({ story, reduced }: { story: ReturnType<typeof speedStory>;
       {pair && option ? (
         <div className={s.brain}>
           <div className={s.chartCard}>
-            <LabEChart option={option} height={300} label="Energy per token against streams answered at once, the big model across two pods and the 27B on one pod" />
+            <LabEChart option={option} height={330} label="Energy per token against streams answered at once, the big model across two pods and the 27B on one pod" />
           </div>
           <table className={s.table}>
             <thead>
@@ -596,8 +596,12 @@ export function SpeedEnergy({
   const payload = bench.data as BenchPayload | undefined;
   const summary = useMemo(() => benchSummary(payload), [payload]);
   const story = useMemo(() => speedStory(summary), [summary]);
-  const sessions = useMemo(() => summary.sessions.slice().sort((x, y) => (y.date ?? "").localeCompare(x.date ?? "")), [summary]);
-  const current = sessions.find((x) => x.id === selected) ?? sessions[0];
+  // the drawer lists the sessions that have headline numbers, newest first; the rest are counted in "All rows"
+  const sessions = useMemo(() => {
+    const withNumbers = new Set(summary.points.map((p) => p.session));
+    return summary.sessions.filter((x) => withNumbers.has(x.id)).sort((x, y) => (y.date ?? "").localeCompare(x.date ?? ""));
+  }, [summary]);
+  const current = sessions.find((x) => x.id === selected) ?? sessions.find((x) => x.id === story.after?.session.id) ?? sessions[0];
   const fullHere = (payload?.sweeps?.length ?? 0) > 0;
 
   useEffect(() => {
@@ -662,7 +666,7 @@ export function SpeedEnergy({
   if (bench.loading && !bench.data) return <Loading what="the lab's measurements" />;
   if (bench.error && !bench.data) return <ErrorBox what="the lab's measurements" error={bench.error} onRetry={bench.reload} />;
   const data = payload!;
-  const rows = data.rows ?? sessions.reduce((n, x) => n + x.rows, 0);
+  const rows = data.rows ?? summary.sessions.reduce((n, x) => n + x.rows, 0);
   const nodes = data.power?.nodes ?? [];
 
   return (
@@ -698,11 +702,11 @@ export function SpeedEnergy({
         <summary className={s.drawerHead}>
           <span>Sessions and rows</span>
           <span className={s.foot}>
-            {sessions.length} sessions, {rows} rows
+            {sessions.length} sessions with numbers, {rows} rows
           </span>
         </summary>
         {open ? (
-          <Sessions sessions={sessions} points={summary.points} selected={selected} setSelected={setSelected} findPoint={findPoint} picked={picked} setPicked={setPicked} rows={rows} openSheet={setSheet} rowsState={fullHere || !current ? null : rowsOf[current.source ?? current.id] === undefined ? "loading" : typeof rowsOf[current.source ?? current.id] === "string" ? (rowsOf[current.source ?? current.id] as "loading" | "error") : "ready"} />
+          <Sessions sessions={sessions} points={summary.points} selected={current?.id ?? null} setSelected={setSelected} findPoint={findPoint} picked={picked} setPicked={setPicked} rows={rows} openSheet={setSheet} rowsState={fullHere || !current ? null : rowsOf[current.source ?? current.id] === undefined ? "loading" : typeof rowsOf[current.source ?? current.id] === "string" ? (rowsOf[current.source ?? current.id] as "loading" | "error") : "ready"} />
         ) : null}
       </details>
 
@@ -713,7 +717,7 @@ export function SpeedEnergy({
       ) : null}
       {sheet === "rows" ? (
         <Sheet title="Every row" onClose={close}>
-          <AllRows bench={fullHere ? data : all && typeof all !== "string" ? { ...data, ...all } : data} sessions={sessions} />
+          <AllRows bench={fullHere ? data : all && typeof all !== "string" ? { ...data, ...all } : data} sessions={summary.sessions} />
           {all === "loading" ? <p className={s.foot}>Fetching every row (a few megabytes on the box)...</p> : all === "error" ? <p className={s.foot}>The whole payload did not load; the sessions above are from the summary.</p> : null}
         </Sheet>
       ) : null}

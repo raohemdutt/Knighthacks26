@@ -431,8 +431,8 @@ export function engineOf(s: string | null | undefined): Engine {
 }
 export const isStrixHalo = (chip: string | null | undefined) => /strix|8060s|gfx1151/i.test(chip ?? "");
 export const isA100 = (chip: string | null | undefined) => /a100/i.test(chip ?? "");
-/** A session of the 122B pair across two pods: its id, lever or model names the pair. */
-export const isPair = (s: BenchSession) => /pair_pp122b|pod-a\+pod-b/i.test(`${s.id} ${s.lever ?? ""} ${s.node ?? ""} ${(s.families ?? []).join(" ")}`) || /122b/i.test(s.model ?? "");
+/** A session of the 122B pair across two pods: its rows are the pair_pp122b family, or its model is the 122B. */
+export const isPair = (s: BenchSession) => /pair_pp122b/i.test(`${s.id} ${s.lever ?? ""} ${(s.families ?? []).join(" ")}`) || /122b/i.test(s.model ?? "");
 
 /** The summary shape, worked out from today's full payload: one session per sweep, one point per batch size. */
 export function summaryFromFull(full: Partial<LabBench>): BenchSummary {
