@@ -164,7 +164,7 @@ export default function LabPage() {
       {views.length > 1 ? (
         <nav className={ui.segmented} aria-label="On this tab" data-guide="lab:views">
           {views.map((v) => (
-            <button key={v} type="button" className={ui.seg} onClick={() => pickTab(v, true)}>
+            <button key={v} type="button" className={`${ui.seg} ${tab === v ? ui.segOn : ""}`} aria-pressed={tab === v} onClick={() => pickTab(v, group !== "model")}>
               {LAB_TABS.find((x) => x.key === v)?.title ?? v}
             </button>
           ))}
@@ -176,6 +176,7 @@ export default function LabPage() {
   if (!params) return <Loading what="the learning lab" />;
   const q = params.q;
   const asked = labViewOf(q.get("tab")) ?? labViewOf(window.location.hash.slice(1));
+  const stageParam = q.get("stage") !== null && /^[1-5]$/.test(q.get("stage") ?? "") ? Number(q.get("stage")) : null;
   const number = (key: string) => (q.get(key) !== null && !Number.isNaN(Number(q.get(key))) ? Number(q.get(key)) : null);
   if (group === "speed")
     return (
@@ -210,19 +211,23 @@ export default function LabPage() {
       </>
     );
 
-  // The model: the loop, then the Training run view, then the Experiments view.
+  // The model: the loop and the Training run view, or the Experiments view alone when its sub-tab is picked.
   const shownRow = runs.find((r) => r.run_id === runId) ?? null;
-  const model = (run: React.ReactNode) => (
+  const model = (run: React.ReactNode) =>
+    tab === "experiments" ? (
+      <>
+        {tabs}
+        <section id="experiments" className={loop.view} aria-label="Experiments" data-guide="lab:experiments">
+          <Experiments />
+        </section>
+      </>
+    ) : (
     <>
       {tabs}
       <LoopView story={shown} run={shownRow} label={shownRow ? runStatus(shownRow, box).label : null} standIn={!!shown && storyIsStandIn(shown)} onBox={box.current} empty={!!list.data && runs.length === 0} forceReduced={params.reduce} />
       <section id="run" className={loop.view} aria-label="Training run" data-guide="lab:run">
         {named("run")}
         {run}
-      </section>
-      <section id="experiments" className={loop.view} aria-label="Experiments" data-guide="lab:experiments">
-        {named("experiments")}
-        <Experiments />
       </section>
     </>
   );
@@ -290,6 +295,7 @@ export default function LabPage() {
           boxNow={box.current}
           realRun={realRun && realRun.run_id !== shown.run_id ? { id: realRun.run_id, label: `the ${clock(realRun.started)} run${realRun.model_version ? ` (${modelShort(realRun.model_version)})` : ""}` } : null}
           onPickRun={pickRun}
+          initialStage={stageParam}
         />
       )}
     </>,
