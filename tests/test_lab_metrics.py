@@ -122,6 +122,38 @@ EXPECTED_SEED = [
     ("jetson.idle_watts", "jetson", {"rail": "VDD_IN", "period_ms": 1000}, 12.62, "W", True),
     ("student.watts_avg", "jetson", {"rail": "VDD_IN", "period_ms": 1000}, 17.536, "W", True),
     ("student.watts_peak", "jetson", {"rail": "VDD_IN", "period_ms": 1000}, 19.127, "W", True),
+    # R20: the baseline matrix on pod D (SJC account D, Strix Halo gfx1151), vLLM b1388b1 stock build, from
+    # fixtures/lab/bench/pod-b-2026-10-10 (median of the spawns that ran per batch size; a partial matrix)
+    ("teacher.decode_tok_s", "pod-b", {"batch_size": 1, "session": "pod-b-2026-10-10"}, 2.7327, "tok/s", True),
+    ("teacher.decode_tok_s_total", "pod-b", {"batch_size": 1, "session": "pod-b-2026-10-10"}, 2.6665, "tok/s", True),
+    ("teacher.ttft_s", "pod-b", {"batch_size": 1, "session": "pod-b-2026-10-10"}, 0.9579, "s", True),
+    ("teacher.joules_per_token", "pod-b", {"batch_size": 1, "session": "pod-b-2026-10-10"}, 36.4001, "J/token", True),
+    ("teacher.watts_avg", "pod-b", {"batch_size": 1, "session": "pod-b-2026-10-10"}, 97.2353, "W", True),
+    ("teacher.watts_peak", "pod-b", {"batch_size": 1, "session": "pod-b-2026-10-10"}, 104.9594, "W", True),
+    ("teacher.decode_tok_s", "pod-b", {"batch_size": 4, "session": "pod-b-2026-10-10"}, 2.5807, "tok/s", True),
+    ("teacher.decode_tok_s_total", "pod-b", {"batch_size": 4, "session": "pod-b-2026-10-10"}, 9.4809, "tok/s", True),
+    ("teacher.ttft_s", "pod-b", {"batch_size": 4, "session": "pod-b-2026-10-10"}, 5.1508, "s", True),
+    ("teacher.joules_per_token", "pod-b", {"batch_size": 4, "session": "pod-b-2026-10-10"}, 10.33, "J/token", True),
+    ("teacher.watts_avg", "pod-b", {"batch_size": 4, "session": "pod-b-2026-10-10"}, 97.9385, "W", True),
+    ("teacher.watts_peak", "pod-b", {"batch_size": 4, "session": "pod-b-2026-10-10"}, 104.0, "W", True),
+    ("teacher.decode_tok_s", "pod-b", {"batch_size": 8, "session": "pod-b-2026-10-10"}, 2.3677, "tok/s", True),
+    ("teacher.decode_tok_s_total", "pod-b", {"batch_size": 8, "session": "pod-b-2026-10-10"}, 16.5352, "tok/s", True),
+    ("teacher.ttft_s", "pod-b", {"batch_size": 8, "session": "pod-b-2026-10-10"}, 8.4941, "s", True),
+    ("teacher.joules_per_token", "pod-b", {"batch_size": 8, "session": "pod-b-2026-10-10"}, 5.8068, "J/token", True),
+    ("teacher.watts_avg", "pod-b", {"batch_size": 8, "session": "pod-b-2026-10-10"}, 96.0158, "W", True),
+    ("teacher.watts_peak", "pod-b", {"batch_size": 8, "session": "pod-b-2026-10-10"}, 97.0, "W", True),
+    ("teacher.decode_tok_s", "pod-b", {"batch_size": 16, "session": "pod-b-2026-10-10"}, 2.0627, "tok/s", True),
+    ("teacher.decode_tok_s_total", "pod-b", {"batch_size": 16, "session": "pod-b-2026-10-10"}, 27.4494, "tok/s", True),
+    ("teacher.ttft_s", "pod-b", {"batch_size": 16, "session": "pod-b-2026-10-10"}, 11.9126, "s", True),
+    ("teacher.joules_per_token", "pod-b", {"batch_size": 16, "session": "pod-b-2026-10-10"}, 3.4978, "J/token", True),
+    ("teacher.watts_avg", "pod-b", {"batch_size": 16, "session": "pod-b-2026-10-10"}, 96.0119, "W", True),
+    ("teacher.watts_peak", "pod-b", {"batch_size": 16, "session": "pod-b-2026-10-10"}, 97.0, "W", True),
+    ("teacher.decode_tok_s", "pod-b", {"batch_size": 64, "session": "pod-b-2026-10-10"}, 0.8821, "tok/s", True),
+    ("teacher.decode_tok_s_total", "pod-b", {"batch_size": 64, "session": "pod-b-2026-10-10"}, 48.9584, "tok/s", True),
+    ("teacher.ttft_s", "pod-b", {"batch_size": 64, "session": "pod-b-2026-10-10"}, 24.1934, "s", True),
+    ("teacher.joules_per_token", "pod-b", {"batch_size": 64, "session": "pod-b-2026-10-10"}, 1.9619, "J/token", True),
+    ("teacher.watts_avg", "pod-b", {"batch_size": 64, "session": "pod-b-2026-10-10"}, 96.0237, "W", True),
+    ("teacher.watts_peak", "pod-b", {"batch_size": 64, "session": "pod-b-2026-10-10"}, 97.7339, "W", True),
 ]
 
 # The numbers the lab setup measured, by metric name.
@@ -179,7 +211,8 @@ def test_every_low_confidence_seed_row_says_why():
     assert {row["metric"] for row in flagged} == {
         "teacher.joules_per_token", "pod.idle_watts", "pod.balance_credits", "teacher.watts_avg", "teacher.watts_peak",
         "pod.settle_s", "pod.idle_state_share",
-        "telemetry.sampler_cpu_pct", "jetson.idle_watts", "student.watts_avg", "student.watts_peak"}
+        "telemetry.sampler_cpu_pct", "jetson.idle_watts", "student.watts_avg", "student.watts_peak",
+        "teacher.decode_tok_s", "teacher.decode_tok_s_total", "teacher.ttft_s"}
     for row in flagged:
         if row["conditions"].get("sampler") == SAMPLER:  # the sampler's rows: its error is "unknown" until a reference run
             assert row["conditions"]["error"] == "unknown", row["metric"]
