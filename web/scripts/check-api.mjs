@@ -254,6 +254,9 @@ const IMPACT_STORY = {
   now: isoDate, week: inner({ start: "string", end: "string", today: "string" }), empty: "boolean", empty_text: "string?", rules: "object", total: "object",
   this_week: "object", equivalents: "object", contamination: "object", feed: listOf(DISPOSAL), goal: "object",
   days: listOf({ day: "string", disposals: "number", right: "number", wrong: "number", clean: "boolean" }), clean_streak: "number", milestones: "object", practice: "object",
+  // the story the screen plays: measured counts in a sentence, the week's disposals in order, the learn loop
+  headline: "string", loop: inner({ seen: "number", taught: "number", practised: "object", trend: "object" }),
+  flow: inner({ items: listOf({ item_id: "string", item: "string", bin: "string", correct: "boolean", rule: "string" }), recyclable_seen: "number", recycled: "number", not_binned: "number" }),
 };
 const IMPACT_PRACTICE = {
   week_start: "string", member_id: "string?", size: "number", how: "string", rules: inner({ file: "string", name: "string", place: "string?" }),
@@ -584,6 +587,19 @@ await check("GET /api/spot/assumptions", "GET", "/api/spot/assumptions", { confi
 await check("GET /api/spot/validation", "GET", "/api/spot/validation", { configured: "boolean", rows: "array", issues: "array" }, { optional: NO_SPOT });
 await check("GET /api/spot/work_orders", "GET", "/api/spot/work_orders", { configured: "boolean", work_orders: "array", folder: "string" }, { optional: NO_SPOT });
 await check("GET /api/spot/replay/state", "GET", "/api/spot/replay/state", { configured: "boolean", index: "number", total: "number", playing: "boolean" }, { optional: NO_SPOT });
+// Shift Run: plan a round and run it through the toy model (contexts/spot/domain/shiftrun.py). The simulation writes nothing.
+const runBoard = await check("GET /api/spot/shiftrun/board", "GET", "/api/spot/shiftrun/board", { configured: "boolean", candidates: "array" }, { optional: NO_SPOT });
+if (runBoard?.configured) {
+  const best = await check("GET /api/spot/shiftrun/recommended", "GET", "/api/spot/shiftrun/recommended", { configured: "boolean", route: "array", steps: "array", score: "number" }, { optional: NO_SPOT });
+  const mine = await check("POST /api/spot/shiftrun/simulate", "POST", "/api/spot/shiftrun/simulate", { configured: "boolean", score: "number", stars: "number", steps: "array", reasons: "array", differences: "array", recommended: "object" }, { optional: NO_SPOT, body: { route: runBoard.last_route, turn_back_at: 40 } });
+  if (best && mine) console.log(`        last round's route scores ${mine.score} (${mine.stars} of 3 stars); Atlas's plan ${best.score}`);
+}
+// the operator's first screen in plain words (contexts/spot/application/plain.py)
+const spotShift = await check("GET /api/spot/shift", "GET", "/api/spot/shift", { configured: "boolean", do_first: "array", watch: "array", assets: "array", rounds: "array", triage: "array", findings: "array" }, { optional: NO_SPOT });
+if (spotShift?.configured) {
+  console.log(`        ${spotShift.status.sentence}`);
+  await check(`GET /api/spot/shift/rounds/${spotShift.latest_round}`, "GET", `/api/spot/shift/rounds/${spotShift.latest_round}`, { configured: "boolean", label: "string", summary: "string", steps: "array" }, { optional: NO_SPOT });
+}
 
 console.log("\nLearning lab");
 // A number on the lab screen: its value, or null with the reason, and where it came from (lib/lab.ts LabNum).

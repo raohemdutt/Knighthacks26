@@ -450,3 +450,18 @@ def test_a_sitting_of_every_tier_may_call_handoff_even_when_its_note_names_the_n
 def test_notes_in_the_default_state_dir_are_ignored_by_git():
     ignored = subprocess.run(["git", "check-ignore", "-q", "lab/state/notes/2026-10-10.md"], cwd=REPO_ROOT)
     assert ignored.returncode == 0, "git must ignore lab/state/notes/<day>.md (1: it does not; 128: not a checkout)"
+
+
+def test_handoff_binds_the_actor_and_tier_variable_names_from_record_and_does_not_retype_them():
+    """record.py owns the names of the environment variables that identify a sitting; handoff.py reuses them."""
+    import ast
+    import inspect
+
+    from lab.machine import record
+
+    tree = ast.parse(inspect.getsource(handoff))
+    typed = sorted({node.value for node in ast.walk(tree)
+                    if isinstance(node, ast.Constant) and node.value in ("LAB_ACTOR", "LAB_TIER")})
+    assert typed == [], f"handoff.py types the literal(s) {typed} itself instead of binding record's"
+    assert handoff.ENV_ACTOR == record.ENV_ACTOR
+    assert handoff.ENV_TIER == record.ENV_TIER

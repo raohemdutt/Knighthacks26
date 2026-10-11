@@ -113,6 +113,10 @@ python -m contexts.demo preflight --gateway http://<jetson>:8000 --reset
 make offline    # and make online afterwards
 ```
 
+Every use case with its exact steps, expected results and how far it is verified:
+[`docs/demo-run-sheet.md`](docs/demo-run-sheet.md); `python scripts/demo_walkthrough.py --gateway http://<box>:8000`
+runs the steps that need no person.
+
 The lab side (teacher, trainer, packaging) is in `lab/README.md`.
 
 ## Repository map

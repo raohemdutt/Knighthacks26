@@ -1,135 +1,164 @@
 # What a count means in real units (the Impact screen, contexts/impact/application/story.py).
 #
-# EVERYTHING IN THIS FILE IS AN ESTIMATE. The counts on the Impact screen are measured by the cameras;
-# the grams, kilowatt-hours and CO2e are those counts multiplied by the factors below. The factors are
-# illustrative, order-of-magnitude figures written down from memory of published sources, without
-# network access, and rounded into ranges on purpose. A campus that reuses this should replace them
-# with its own: weigh twenty of its own cups, and take the energy and CO2e factors from its hauler or
-# from the current edition of the source named on each line. The screen always shows a range and the
-# words "estimate" and "illustrative"; it never shows a single precise number.
+# THREE KINDS OF NUMBER, never mixed:
+#   measured   counts from this table's camera (items, right or wrong bin, diversion rate). Not in this file.
+#   estimated  those counts multiplied by the published factors below: grams, kWh, CO2e, phone charges.
+#              Always a low to high range, always labelled "estimate".
+#   projected  not on the screen at all; one sentence in docs/waste-watch.md, with its assumptions.
 #
-# confidence: high   = a physical measurement anyone can repeat with a kitchen scale
-#             medium = a published factor we are confident of to within the range given
-#             low    = depends heavily on local conditions or on accounting choices; treat as a rough guide
+# Every factor below was checked against the published document named in its `source` on 2026-10-10
+# (title, publisher, year, URL; the page or exhibit is given so anyone can open it and find the number).
+# They are US NATIONAL AVERAGES from life-cycle studies, not UCF's or its hauler's own figures.
+# A factor we could not find in a citable document is NOT in this file: the item is still counted, and the
+# screen says "counted, but given no weight". The list of what was removed and why is at the bottom.
+#
+# Unit conversions used throughout (WARM publishes per short ton):
+#   1 short ton = 907.185 kg            1 million Btu = 293.071 kWh
+#   energy:  X million Btu / short ton  x 293.071 / 907.185 = X x 0.32306 kWh / kg
+#   CO2e:    Y MTCO2e / short ton       x 1000 / 907.185    = Y x 1.10231 kg CO2e / kg
+#   "recycling instead of landfill" = WARM's recycling factor minus its landfilling factor, as the WARM
+#   documentation instructs ("the GHG emission factor for landfilling ... must be subtracted from the recycling
+#   emission factor", Management Practices Chapters, section 2.1).
+#
+# About the ranges: WARM publishes ONE value per material, with no uncertainty interval. Where two published
+# figures exist (can mass, bottle mass, the two paper grades) the range is those two figures. Where only one
+# exists, the range is that value minus and plus 10 %; the 10 % is OUR allowance, not EPA's, and is there so
+# the screen never shows a single falsely precise number.
+#
+# confidence: high   = two published figures that agree closely
+#             medium = one published national-average factor, used as published
+#             low    = published, but it swings on an accounting choice (landfill methane, forest carbon)
 
-disclaimer: "Estimates from illustrative factors in config/impact.yaml, not measurements. Replace them with your campus's own."
+disclaimer: "Estimates: this table's measured counts multiplied by published US-average factors (EPA WARM v16 and others, each cited in config/impact.yaml). They are not measurements and not UCF's own figures."
 
 # Per item type: what it is made of and what one weighs, empty.
 items:
   can:
     material: aluminium
-    mass_g: {low: 13, high: 15}
-    source: "A 12 oz (355 ml) aluminium drink can weighs about 13 to 15 g empty (industry figures put the average near 13 g; weigh one)."
+    mass_g: {low: 13.2, high: 13.34}
+    # low:  0.7 lb per case of 24 cans -> 0.7 x 453.592 / 24 = 13.2 g
+    # high: "1000 aluminum cans or 13.34 kg" -> 13.34 g
+    source: "Low: 'Volume-to-Weight Conversion Factors', US EPA Office of Resource Conservation and Recovery, April 2016, table row 'Aluminum Cans, uncompacted, case = 24 cans: 0.7 lb' (13.2 g a can), https://www.epa.gov/sites/default/files/2016-04/documents/volume_to_weight_conversion_factors_memorandum_04192016_508fnl.pdf . High: 'Documentation for Greenhouse Gas Emission and Energy Factors Used in the Waste Reduction Model (WARM): Containers, Packaging, and Non-Durable Good Materials Chapters', US EPA, December 2023 (EPA-530-R-23-021), section 2.4: '1000 aluminum cans or 13.34 kg', https://www.epa.gov/system/files/documents/2023-12/warm_containers_packaging_and_non-durable_goods_materials_v16_dec.pdf"
+    url: "https://www.epa.gov/system/files/documents/2023-12/warm_containers_packaging_and_non-durable_goods_materials_v16_dec.pdf"
     confidence: high
   bottle:
     material: pet
-    mass_g: {low: 10, high: 25}
-    source: "A 500 ml PET water bottle weighs about 10 g (lightweighted) to 25 g (soda bottle), cap included."
+    mass_g: {low: 9.25, high: 23.9}
+    # low: the average 16.9 oz water bottle; high: the average soda bottle. The camera cannot tell which it saw.
+    source: "'Environmental Footprint' (section 'Light-weighting'), International Bottled Water Association, citing Beverage Marketing Corporation data for 2014, read 2026-10-10: 'the average weight drop to 9.25 grams per 16.9 oz single-serve container', and soda and other drink containers 'weigh, on average, 23.9 grams'. https://bottledwater.org/environmental-footprint/ . An industry association's figure; the camera cannot tell a water bottle from a soda bottle, nor plastic from glass (see config/sorting.yaml)."
+    url: "https://bottledwater.org/environmental-footprint/"
     confidence: medium
-  cup:
-    material: paper
-    mass_g: {low: 8, high: 15}
-    source: "A 12 to 16 oz poly-lined paper cup weighs roughly 8 to 15 g without the lid."
-    confidence: medium
-  paper:
-    material: paper
-    mass_g: {low: 4, high: 6}
-    source: "One sheet of office paper (US letter, 75 to 90 gsm) weighs 4.5 to 5.5 g; the camera cannot count sheets, so one sighting is taken as one sheet."
-    confidence: low
-  cardboard:
-    material: cardboard
-    mass_g: {low: 100, high: 400}
-    source: "A small to medium corrugated shipping box weighs roughly 100 to 400 g; boxes vary more than anything else here."
-    confidence: low
-  wine glass:
-    material: glass
-    mass_g: {low: 120, high: 250}
-    source: "A drinking glass weighs roughly 120 to 250 g."
-    confidence: low
-  food container:
-    material: mixed
-    mass_g: {low: 15, high: 40}
-    source: "A takeout bowl or clamshell (fibre or plastic) weighs roughly 15 to 40 g empty."
-    confidence: low
-  chip bag:
-    material: mixed
-    mass_g: {low: 2, high: 6}
-    source: "A single-serve chip bag weighs roughly 2 to 6 g empty."
-    confidence: low
-  napkin:
-    material: paper
-    mass_g: {low: 2, high: 4}
-    source: "A paper napkin weighs roughly 2 to 4 g."
-    confidence: low
-  milk carton:
-    material: carton
-    mass_g: {low: 10, high: 35}
-    source: "A single-serve to one-litre carton weighs roughly 10 to 35 g empty."
-    confidence: low
-  juice box:
-    material: carton
-    mass_g: {low: 8, high: 12}
-    source: "A 200 ml juice box weighs roughly 8 to 12 g empty."
-    confidence: low
-# Anything the rules file lists that has no entry above: counted, but given no weight (the screen says so).
+# Anything the rules file lists that has no entry above is counted but given no weight (the screen says so).
 
 # Per material: what recycling one kilogram avoids, compared with sending it to landfill.
-# energy_kwh_per_kg and co2e_kg_per_kg are ranges; both come from life-cycle studies that count the
-# virgin material NOT made because the recycled one replaced it.
+# All five come from the same two exhibits of one document:
+#   'Documentation for Greenhouse Gas Emission and Energy Factors Used in the Waste Reduction Model (WARM):
+#    Management Practices Chapters', US EPA, December 2023 (WARM version 16, EPA-530-R-23-018)
+#    Exhibit 1-1  GHG emissions by management option, MTCO2E per short ton
+#    Exhibit 7-12 net energy impacts by management option, million Btu per short ton
+# WARM's energy is life-cycle energy of every kind (fuel and electricity) not spent making new material; it is
+# written here in kWh so it can be compared, and is not electricity at a socket.
 materials:
   aluminium:
     name: aluminium
-    energy_kwh_per_kg: {low: 40, high: 55}
-    co2e_kg_per_kg: {low: 8, high: 11}
-    source: "Order of magnitude after the US EPA Waste Reduction Model (WARM), aluminium cans, recycling versus landfill (about 150 million BTU and 9 t CO2e per short ton), and the industry's 'recycling saves about 95 % of the energy of primary aluminium'. Recalled offline: check the current WARM tables before quoting."
+    # energy: recycling (152.76) - landfilling 0.27 = 153.03 million Btu saved / short ton x 0.32306 = 49.4 kWh/kg; -10 % / +10 %
+    energy_kwh_per_kg: {low: 44.5, high: 54.4}
+    # CO2e: recycling (9.13) - landfilling 0.02 = 9.15 MTCO2E avoided / short ton x 1.10231 = 10.1 kg/kg; -10 % / +10 %
+    co2e_kg_per_kg: {low: 9.1, high: 11.1}
+    source: "WARM v16 Management Practices Chapters, US EPA, December 2023, Exhibits 1-1 and 7-12, 'Aluminum Cans': recycling -9.13 and landfilling 0.02 MTCO2E per short ton; recycling -152.76 and landfilling 0.27 million Btu per short ton. https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf . Range: the published value minus and plus 10 % (our allowance; WARM gives no interval). Consistent with 'Recycled aluminum saves 95% of the energy needed to make new aluminum', The Aluminum Association, 'Recycling', read 2026-10-10, https://www.aluminum.org/Recycling"
+    url: "https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf"
     confidence: medium
   pet:
     name: PET plastic
-    energy_kwh_per_kg: {low: 6, high: 10}
-    co2e_kg_per_kg: {low: 0.8, high: 1.5}
-    source: "Order of magnitude after US EPA WARM, PET, recycling versus landfill (about 30 million BTU and 1 t CO2e per short ton). Recalled offline: check the current WARM tables before quoting."
+    # energy: (28.59) - 0.27 = 28.86 million Btu / short ton x 0.32306 = 9.32 kWh/kg; -10 % / +10 %
+    energy_kwh_per_kg: {low: 8.4, high: 10.3}
+    # CO2e: (1.04) - 0.02 = 1.06 MTCO2E / short ton x 1.10231 = 1.17 kg/kg; -10 % / +10 %
+    co2e_kg_per_kg: {low: 1.05, high: 1.29}
+    source: "WARM v16 Management Practices Chapters, US EPA, December 2023, Exhibits 1-1 and 7-12, 'PET': recycling -1.04 and landfilling 0.02 MTCO2E per short ton; recycling -28.59 and landfilling 0.27 million Btu per short ton. https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf . Range: the published value minus and plus 10 % (our allowance; WARM gives no interval)."
+    url: "https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf"
     confidence: medium
   paper:
     name: paper
-    energy_kwh_per_kg: {low: 3, high: 7}
-    co2e_kg_per_kg: {low: 2.5, high: 4}
-    source: "Order of magnitude after US EPA WARM, mixed paper, recycling versus landfill. The CO2e figure leans on forest-carbon and landfill-methane accounting, which is why confidence is low."
+    # Two WARM grades, because a "sheet of paper" may be either. No allowance added: the range is the two grades.
+    # energy: office paper (10.08) - (0.47) = 9.61 -> 3.10 kWh/kg; mixed paper (general) (20.56) - (0.17) = 20.39 -> 6.59 kWh/kg
+    energy_kwh_per_kg: {low: 3.1, high: 6.6}
+    # CO2e: mixed paper (general) (3.55) - 0.07 = 3.62 -> 3.99 kg/kg; office paper (2.86) - 1.13 = 3.99 -> 4.40 kg/kg
+    co2e_kg_per_kg: {low: 4.0, high: 4.4}
+    source: "WARM v16 Management Practices Chapters, US EPA, December 2023, Exhibits 1-1 and 7-12, 'Office Paper' (recycling -2.86, landfilling 1.13 MTCO2E; recycling -10.08, landfilling -0.47 million Btu per short ton) and 'Mixed Paper (general)' (recycling -3.55, landfilling 0.07 MTCO2E; recycling -20.56, landfilling -0.17 million Btu). https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf . Range: the two grades. Low confidence because the CO2e figure depends on how landfill methane and forest carbon are counted (office paper's landfill factor is 1.13, mixed paper's 0.07)."
+    url: "https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf"
     confidence: low
   cardboard:
     name: cardboard
-    energy_kwh_per_kg: {low: 3, high: 5}
-    co2e_kg_per_kg: {low: 2.5, high: 3.5}
-    source: "Order of magnitude after US EPA WARM, corrugated containers, recycling versus landfill. Same caveat as paper."
+    # energy: (15.10) - (0.21) = 14.89 million Btu / short ton x 0.32306 = 4.81 kWh/kg; -10 % / +10 %
+    energy_kwh_per_kg: {low: 4.3, high: 5.3}
+    # CO2e: (3.14) - 0.18 = 3.32 MTCO2E / short ton x 1.10231 = 3.66 kg/kg; -10 % / +10 %
+    co2e_kg_per_kg: {low: 3.3, high: 4.0}
+    source: "WARM v16 Management Practices Chapters, US EPA, December 2023, Exhibits 1-1 and 7-12, 'Corrugated Containers': recycling -3.14 and landfilling 0.18 MTCO2E per short ton; recycling -15.10 and landfilling -0.21 million Btu per short ton. https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf . Range: the published value minus and plus 10 % (our allowance). Low confidence for the same landfill-methane and forest-carbon reason as paper."
+    url: "https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf"
     confidence: low
   glass:
     name: glass
-    energy_kwh_per_kg: {low: 0.3, high: 0.8}
-    co2e_kg_per_kg: {low: 0.2, high: 0.4}
-    source: "Order of magnitude after US EPA WARM, glass, recycling versus landfill: glass saves little energy per kilogram."
+    # Not used at UCF (UCF does not recycle glass); kept for a place that does.
+    # energy: (2.13) - 0.27 = 2.40 million Btu / short ton x 0.32306 = 0.78 kWh/kg; -10 % / +10 %
+    energy_kwh_per_kg: {low: 0.70, high: 0.85}
+    # CO2e: (0.28) - 0.02 = 0.30 MTCO2E / short ton x 1.10231 = 0.33 kg/kg; -10 % / +10 %
+    co2e_kg_per_kg: {low: 0.30, high: 0.36}
+    source: "WARM v16 Management Practices Chapters, US EPA, December 2023, Exhibits 1-1 and 7-12, 'Glass': recycling -0.28 and landfilling 0.02 MTCO2E per short ton; recycling -2.13 and landfilling 0.27 million Btu per short ton. https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf . Range: the published value minus and plus 10 % (our allowance)."
+    url: "https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf"
     confidence: medium
-  carton:
-    name: cartons
-    energy_kwh_per_kg: {low: 2, high: 6}
-    co2e_kg_per_kg: {low: 1, high: 3}
-    source: "Rough guide only: cartons are mostly paper fibre with plastic and aluminium layers, and few mills take them."
-    confidence: low
-  # "mixed" has no factors on purpose: nothing is claimed for materials we cannot name.
+  # No factors for "carton" or "mixed": WARM has no carton category and nothing is claimed for materials we cannot name.
 
 # The everyday unit energy is turned into.
 equivalents:
-  phone_charge_wh: {low: 12, high: 20}
-  phone_charge_source: "One full smartphone charge takes roughly 12 to 20 Wh at the wall (battery of 12 to 19 Wh plus charger losses)."
+  # [28.446 Wh - (22 h x 0.411 W)] = 19.4 Wh, which EPA rounds to 0.019 kWh per smartphone charged
+  phone_charge_wh: {low: 19.0, high: 19.4}
+  phone_charge_source: "'Greenhouse Gas Equivalencies Calculator: Calculations and References', section 'Number of smartphones charged', US EPA, page last updated 2026-08-04: '[28.446 Wh - (22 hours x 0.411 Watts)] x 1 kWh/1,000 Wh = 0.019 kWh/smartphone charged'. https://www.epa.gov/energy/greenhouse-gas-equivalencies-calculator-calculations-and-references"
+  phone_charge_url: "https://www.epa.gov/energy/greenhouse-gas-equivalencies-calculator-calculations-and-references"
   phone_charge_confidence: medium
+  energy_note: "The energy is life-cycle energy of every kind (fuel and electricity) not spent making new metal and plastic, written as the electricity of a phone charge so it can be pictured. It is not electricity that can be drawn from a socket."
 
-# The cost of a wrong item. A rule of thumb, flagged as one on screen.
+# What a wrong item does. A quoted, attributed statement; there is no published per-bag or per-item threshold,
+# so none is claimed. (The earlier "2 wrong items can spoil a bag" had no source and is gone.)
 contamination:
-  spoils_bag_at: 2
-  text: "{n} wrong items can spoil a bag: sorters and haulers reject bags and loads that look contaminated, and the good items in them go to landfill too."
-  source: "Rule of thumb, not a measurement. Rejection thresholds differ by hauler and are usually set per load (often quoted around 10 to 25 % by weight), not per bag; food and liquid do the most damage."
-  confidence: low
-  rule_of_thumb: true
+  quote: "Non-recyclable items can contaminate a whole load of recyclables, causing them to all be thrown out."
+  attribution: "US EPA, 'Frequent Questions on Recycling' (page last updated 2026-01-22)"
+  url: "https://www.epa.gov/recycle/frequent-questions-recycling"
+  text: "EPA: \"Non-recyclable items can contaminate a whole load of recyclables, causing them to all be thrown out.\""
+  source: "'Frequent Questions on Recycling', US EPA, page last updated 2026-01-22, https://www.epa.gov/recycle/frequent-questions-recycling . EPA says 'can', not 'will', and gives no number: we found no published threshold for how many wrong items spoil a bag or a load, so the screen claims none."
+  confidence: medium
+  rule_of_thumb: false
+  threshold: null   # no citable per-bag or per-load threshold; `at_risk` on the screen means "one or more wrong items in recycling"
+  rates:
+    - scope: local
+      text: "Orange County, Florida's kerbside programme \"had a nearly 40% contamination rate\" before its 2019 clean-up campaign, which cut it by 29%."
+      source: "'Improving the Quality of Recyclables in Orange County', The Recycling Partnership, read 2026-10-10, https://recyclingpartnership.org/improving-the-quality-of-recyclables-in-orange-county/"
+    - scope: national
+      text: "Nationally, about 17% of what goes into kerbside recycling, by weight, does not belong there."
+      source: "'2020 State of Curbside Recycling Report', The Recycling Partnership, February 2020: 'a first-of-its-kind national average inbound contamination rate estimate of 17 percent by weight', https://recyclingpartnership.org/wp-content/uploads/dlm_uploads/2020/02/2020-State-of-Curbside-Recycling.pdf"
 
-# The table's weekly goal (the week is Monday to Sunday, local time).
+# "The problem here": one paragraph for the screen and docs/waste-watch.md. Each sentence has its source;
+# `scope` says whether the figure is UCF's, the county's or the nation's. We found no current, public UCF
+# contamination or diversion figure (UCF's AASHE STARS report is behind a login and is not cited).
+problem:
+  text: "UCF collects recycling single-stream: every recyclable goes in one bin, so one wrong item sits against everything else. UCF's list is narrower than the county around it: glass, plastic cups and soiled paper are trash on campus, while Orange County's kerbside carts take glass and, since May 2026, paper and clear plastic cups. People who learned one list get the other wrong. Orange County's kerbside recycling had a contamination rate of nearly 40% before its 2019 clean-up campaign, against a national average of about 17% by weight, and EPA says non-recyclable items can get a whole load thrown out."
+  sources:
+    - scope: UCF
+      claim: "UCF uses single stream recycling; it does not recycle glass, plastic cups and utensils, Styrofoam or soiled paper."
+      source: "'UCF Recycles', UCF Facilities Operations, read 2026-10-10, https://fo.ucf.edu/recycling-at-ucf/"
+    - scope: Orange County
+      claim: "Orange County kerbside takes plastic, metal and glass containers, cardboard and paper, and added paper and clear plastic to-go cups on 2026-05-06."
+      source: "'Think 5', Orange County Government, Florida, read 2026-10-10, https://ocfl.net/WaterGarbageRecycling/Think5.aspx ; 'It's To-Go Time: Orange County's Curbside Recycling Program Now Accepting Paper and Clear Plastic Cups', Orange County Government, 2026-05-06, https://newsroom.ocfl.net/media-advisories/press-releases/2026/05/its-to-go-time-orange-countys-curbside-recycling-program-now-accepting-paper-and-clear-plastic-cups/"
+    - scope: Orange County
+      claim: "The kerbside programme 'had a nearly 40% contamination rate'; the campaign reduced it by 29%."
+      source: "'Improving the Quality of Recyclables in Orange County', The Recycling Partnership, read 2026-10-10, https://recyclingpartnership.org/improving-the-quality-of-recyclables-in-orange-county/"
+    - scope: national
+      claim: "National average inbound contamination rate: 17 percent by weight."
+      source: "'2020 State of Curbside Recycling Report', The Recycling Partnership, February 2020, https://recyclingpartnership.org/wp-content/uploads/dlm_uploads/2020/02/2020-State-of-Curbside-Recycling.pdf"
+    - scope: national
+      claim: "'Non-recyclable items can contaminate a whole load of recyclables, causing them to all be thrown out.'"
+      source: "'Frequent Questions on Recycling', US EPA, page last updated 2026-01-22, https://www.epa.gov/recycle/frequent-questions-recycling"
+
+# The table's weekly goal (the week is Monday to Sunday, local time). These are the team's choices, not factors.
 goals:
   diversion_target: 0.8        # share of recyclables seen that should reach recycling (the League's team target is the same 80 %)
   contamination_ceiling: 2     # wrong items in recycling the week may have, at most
@@ -140,3 +169,12 @@ goals:
 milestones:
   kept_out: [1, 3, 5, 10, 25, 50, 100, 250]   # recyclables that reached recycling this week
   clean_streak: [3, 5, 7]                     # days in a row with disposals and nothing in the wrong bin
+
+# REMOVED on 2026-10-10 because no citable figure was found (the items are still counted; they claim no weight):
+#   masses for cup, paper (one sheet), cardboard (one box), wine glass, food container, chip bag, napkin,
+#   milk carton, juice box: the earlier values were our own guesses. EPA's Volume-to-Weight Conversion
+#   Factors give paper and cardboard per cubic yard, not per sheet or box, and the camera cannot count
+#   sheets or measure a box. A campus that wants them weighs twenty of its own and adds them with a source.
+#   the "carton" material: EPA WARM has no carton category.
+#   "2 wrong items can spoil a bag" and "rejection thresholds often quoted around 10 to 25 % by weight":
+#   neither could be traced to a document we could open.

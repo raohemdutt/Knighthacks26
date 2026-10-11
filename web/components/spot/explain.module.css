@@ -1,0 +1,334 @@
+/* The animated explainers. Tokens only; motion as in the rest of the app (see components/splash.module.css). */
+.grid {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+@media (min-width: 1024px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--sh-raised);
+  min-width: 0;
+  animation: rise 520ms ease-out both;
+}
+
+.sheet .card {
+  padding: 0;
+  box-shadow: none;
+  animation: none;
+}
+
+.eyebrow {
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+}
+
+.title {
+  font-size: 20px;
+}
+
+.stageBox {
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  overflow: hidden;
+}
+
+.stageBox svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.caption {
+  min-height: 4.2em;
+  font-size: 17px;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.dots {
+  display: inline-flex;
+  gap: 6px;
+  margin-right: auto;
+}
+
+.dots i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  box-shadow: var(--sh-inset-sm);
+  transition: background 300ms ease-out;
+}
+
+.dots .dotOn {
+  background: var(--accent-text);
+  box-shadow: none;
+}
+
+.btn {
+  min-height: var(--tap);
+  padding: 8px 16px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--sh-raised-sm);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 650;
+  transition: box-shadow var(--ease-press);
+}
+
+.btn:active {
+  box-shadow: var(--sh-inset-sm);
+}
+
+.btnMain {
+  color: var(--accent-text);
+}
+
+/* ---------- drawing ---------- */
+.t {
+  transition: opacity 420ms ease-out, transform 620ms cubic-bezier(0.5, 0, 0.2, 1), fill 420ms ease-out, stroke 420ms ease-out, width 620ms cubic-bezier(0.5, 0, 0.2, 1),
+    height 620ms cubic-bezier(0.5, 0, 0.2, 1), y 620ms cubic-bezier(0.5, 0, 0.2, 1);
+}
+
+.slow {
+  transition-duration: 420ms, 900ms, 420ms, 420ms, 900ms, 900ms, 900ms;
+}
+
+.sweep {
+  transition: transform 2200ms cubic-bezier(0.5, 0, 0.2, 1);
+}
+
+.tile {
+  fill: var(--surface);
+  stroke: var(--line);
+  stroke-width: 1.5;
+}
+
+.tileBad {
+  stroke: var(--bad);
+  stroke-width: 2.5;
+}
+
+.tick {
+  fill: none;
+  stroke: var(--ok);
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.fillOk {
+  fill: var(--ok);
+}
+
+.fillBad {
+  fill: var(--bad);
+}
+
+.fillWatch {
+  fill: var(--watch);
+}
+
+.fillMuted {
+  fill: var(--unknown);
+  fill-opacity: 0.5;
+}
+
+.bin {
+  fill: var(--surface);
+  stroke: var(--line);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 5;
+}
+
+.label,
+.small,
+.num,
+.big,
+.mapLabel {
+  font-family: inherit;
+  fill: var(--muted);
+  font-size: 15px;
+}
+
+.small {
+  font-size: 13px;
+}
+
+.strong {
+  fill: var(--text);
+  font-weight: 700;
+}
+
+.num {
+  fill: var(--text);
+  font-size: 17px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.big {
+  fill: var(--text);
+  font-size: 26px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.bigSub {
+  fill: var(--muted);
+  font-size: 15.5px;
+  font-weight: 600;
+}
+
+.battShell {
+  fill: var(--surface);
+  stroke: var(--muted);
+  stroke-width: 2;
+}
+
+.battCap {
+  fill: var(--muted);
+}
+
+.axis {
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+
+.bracket {
+  fill: var(--accent-soft);
+  stroke: var(--accent-text);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+
+.plan {
+  filter: grayscale(1) contrast(0.9);
+}
+
+.heat,
+.heatBad {
+  fill: var(--watch);
+  fill-opacity: 0.4;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pop 420ms cubic-bezier(0.3, 1.6, 0.5, 1) both;
+}
+
+.heatBad {
+  fill: var(--bad);
+  fill-opacity: 0.6;
+}
+
+.pulse {
+  fill: none;
+  stroke: var(--bad);
+  stroke-width: 4;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pulse 1800ms ease-out infinite;
+}
+
+.mapLabel {
+  fill: var(--bad);
+  font-weight: 800;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 8px;
+  stroke-linejoin: round;
+}
+
+.ghost,
+.ghostOn {
+  fill: var(--surface);
+  stroke: var(--muted);
+  stroke-width: 1.2;
+  stroke-dasharray: 3 3;
+}
+
+.ghostOn {
+  fill: var(--accent-soft);
+  stroke: var(--accent-text);
+}
+
+.head {
+  stroke: var(--text);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pop {
+  from {
+    transform: scale(0);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .heat,
+  .heatBad {
+    animation: none;
+  }
+
+  .pulse {
+    animation: none;
+    opacity: 0.6;
+  }
+
+  .t,
+  .sweep {
+    transition: none;
+  }
+}

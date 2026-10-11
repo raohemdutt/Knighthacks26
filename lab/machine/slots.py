@@ -62,6 +62,10 @@ critique line after it (python -m lab referee --critique). The row cannot start 
 it (start --minutes 15) or replied to the critique (start --reply "..."), which adds a reply line. A row that
 cannot start for want of a critique or a reply is left out of the order, so it holds nobody up. A request of
 30 minutes or less needs none of this.
+Idle turn. A startable Queued row first in line whose agent stops acting would hold the card for good, since only
+its own agent may start or cancel it. When the card has stood free with it startable for longer than its own
+Minutes while a later row waited (idle_turn), that later row may start ahead of it; the start answer names it under
+passed_idle. Its row is not written and it keeps its place, so its agent can still start it while the card is free.
 
 A slot is capped at its Minutes (plus 15 once extended): cap_minutes() and ends_at() give the cap, and
 is_overrun() says a Running row has passed it. The verbs do not end an overrun slot; the referee does.
@@ -119,8 +123,8 @@ from lab.machine.ready import collect_env, default_env_files
 
 __all__ = [
     "COLUMNS", "DATA_SOURCE_ID", "GPUS", "Slot", "SlotQueue", "Starvation", "Thread", "board_filter", "cap_minutes",
-    "complaint_due", "connect", "data_source_of", "ends_at", "is_overrun", "jumped", "justification_state", "main",
-    "mcp_properties", "note_entry", "parse_moment", "queue_order", "read_thread", "rest_properties", "run",
+    "complaint_due", "connect", "data_source_of", "ends_at", "idle_turn", "is_overrun", "jumped", "justification_state",
+    "main", "mcp_properties", "note_entry", "parse_moment", "queue_order", "read_thread", "rest_properties", "run",
     "slot_from_page", "starvation",
 ]
 
@@ -485,13 +489,51 @@ def running_on(rows: Iterable[Slot], gpu: str, *, other_than: str | None = None)
     return sorted(found, key=lambda row: (row.started or dt.datetime.min.replace(tzinfo=UTC), row.id))
 
 
-def ahead_of(slot: Slot, rows: Iterable[Slot], now: dt.datetime) -> list[Slot]:
-    """The Queued rows on the GPU of slot that go before it. A row that is not in the line has none."""
+def ready_since(slot: Slot) -> dt.datetime | None:
+    """When a Queued row could first take its turn: its request, or the later reply or shortening that cleared it."""
+    moments = [slot.requested_at]
+    for part in slot.progress_note.split(COMPLAINT_JOIN):
+        match = NOTE_ENTRY.fullmatch(part.strip())
+        if match is not None and match.group(1) in (REPLY, SHORTENED):
+            moments.append(parse_moment(match.group(3).replace("Z", ":00Z")))
+    found = [moment for moment in moments if moment is not None]
+    return max(found) if found else None
+
+
+def idle_turn(slot: Slot, waiting: Slot, rows: Iterable[Slot], now: dt.datetime) -> bool:
+    """True when slot, a startable Queued row before waiting in the line, has let its turn go: no row runs on its
+    GPU, and the card has stood free with slot startable for longer than slot's own Minutes while waiting waited
+    (counted from the latest of slot's ready_since, waiting's request and the last Ended on the GPU). Its agent
+    has stopped acting, so it no longer holds waiting up; it keeps its place and may still start while the card
+    is free. Nobody writes its row."""
+    board = list(rows)
+    if slot.status != QUEUED or justification_state(slot) not in STARTABLE or running_on(board, slot.gpu):
+        return False
+    anchors = [ready_since(slot), waiting.requested_at,
+               *(row.ended for row in board if row.gpu == slot.gpu and row.id != slot.id)]
+    since = max((moment for moment in anchors if moment is not None), default=None)
+    return since is not None and minutes_between(now, since) > slot.minutes_or_default
+
+
+def _before(slot: Slot, rows: Sequence[Slot], now: dt.datetime) -> list[Slot]:
     line = queue_order(rows, now)
     places = [row.id for row in line]
     if slot.id not in places:
         return []
     return [row for row in line[: places.index(slot.id)] if row.gpu == slot.gpu]
+
+
+def ahead_of(slot: Slot, rows: Iterable[Slot], now: dt.datetime) -> list[Slot]:
+    """The Queued rows on the GPU of slot that go before it, less the ones that let their turn go (idle_turn). A row
+    that is not in the line has none."""
+    board = list(rows)
+    return [row for row in _before(slot, board, now) if not idle_turn(row, slot, board, now)]
+
+
+def passed_idle(slot: Slot, rows: Iterable[Slot], now: dt.datetime) -> list[Slot]:
+    """The Queued rows before slot in the line that it may go ahead of because they let their turn go (idle_turn)."""
+    board = list(rows)
+    return [row for row in _before(slot, board, now) if idle_turn(row, slot, board, now)]
 
 
 def jumped(slot: Slot, rows: Iterable[Slot], now: dt.datetime) -> list[Slot]:
@@ -940,6 +982,9 @@ class SlotQueue:
         if ahead:
             return self._not_next(slot, ahead, rows, now, said)
         guard = self._guard_note(slot, rows, now)
+        idle = passed_idle(slot, rows, now)
+        if idle:
+            guard["passed_idle"] = [summary(row, now) for row in idle]
         view = justification_view(slot)
         if view is not None:
             said["justification_state"] = view["state"]
@@ -1215,7 +1260,7 @@ def offline_plan(args: argparse.Namespace, now: dt.datetime, data_source: str,
         plan["steps"] = steps
         plan["rule"] = RULE_START
     elif sub == "extend":
-        change = {"Extended": True, "Progress note": args.note}
+        change = {"Extended": True, "Progress note": f"<the Progress note as it is>{COMPLAINT_JOIN}{args.note}"}
         plan["write"] = mcp_properties(change)
         plan["steps"] = [
             _fetch_step(args.row, "read your row: it must be Running, Extended unchecked, and inside its cap"),
@@ -1231,7 +1276,8 @@ def offline_plan(args: argparse.Namespace, now: dt.datetime, data_source: str,
         plan["rule"] = ("Only on your Queued row; a Running row is finished with a result instead." if args.cancel
                         else RULE_DONE)
     elif sub == "complain":
-        change = {"Complaint": f"{iso(now)[:16]}Z {args.text or 'waiting longer than twice the minutes asked for'}"}
+        entry = f"{iso(now)[:16]}Z {args.text or 'waiting longer than twice the minutes asked for'}"
+        change = {"Complaint": f"<the Complaint as it is>{COMPLAINT_JOIN}{entry}"}
         plan["write"] = mcp_properties(change)
         plan["steps"] = [
             _fetch_step(args.row, "read your row: it must be Queued and have waited long enough; note its Complaint"),
@@ -1425,6 +1471,13 @@ def _ledger_metrics(verb: str, outcome: str, slot: Mapping[str, Any]) -> dict[st
     return {alerts.SLOT_MINUTES: minutes} if isinstance(minutes, (int, float)) and not isinstance(minutes, bool) else {}
 
 
+def ledger_verb(sub: str) -> str:
+    """The ledger verb of a slot call: the name lab/machine/alerts.py reads for it, else "slot <sub>"."""
+    known = {"request": alerts.SLOT_REQUEST, "start": alerts.SLOT_START, "extend": alerts.SLOT_EXTEND,
+             "done": alerts.SLOT_DONE, "complain": alerts.SLOT_COMPLAIN}
+    return known.get(sub, f"slot {sub}")
+
+
 def _record(args: argparse.Namespace, answer: Mapping[str, Any], environ: Mapping[str, str],
             state_dir: str | os.PathLike[str] | None) -> int:
     """Append the ledger row of a finished call (lab.machine.record) and return its seq."""
@@ -1439,7 +1492,7 @@ def _record(args: argparse.Namespace, answer: Mapping[str, Any], environ: Mappin
         (letter for letter, name in GPUS.items() if name == slot.get("gpu")), DEFAULT_GPU)
     task = getattr(args, "task", None) or slot.get("task") or record.current_task(environ)
     return record.record(
-        f"slot {args.sub}", answer["outcome"], refs={"slot": answer.get("row") or getattr(args, "row", None)},
+        ledger_verb(args.sub), answer["outcome"], refs={"slot": answer.get("row") or getattr(args, "row", None)},
         task=task, actor=record.current_actor(environ), tier=record.current_tier(environ), state_dir=state_dir,
         node=NODES[gpu_letter], **extras)
 

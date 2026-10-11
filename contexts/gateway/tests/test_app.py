@@ -22,7 +22,8 @@ def test_ask_answers_from_memory_and_streams_events(tmp_path):
             types.append(ws.receive_json()["type"])
         types = [t for t in types if t != "agent.answer.delta"]  # streamed pieces (A11) arrive in between
         assert types == ["experience.question.asked", "agent.answer.generated"]
-    assert len(list((tmp_path / "events").glob("*.jsonl"))) == 1
+    logged = "".join(f.read_text(encoding="utf-8") for f in (tmp_path / "events").glob("*.jsonl"))  # one file per UTC day:
+    assert '"agent.answer.generated"' in logged  # the fixture's earlier episodes land in yesterday's file after 00:00 UTC
 
 
 def test_a_memory_wipe_shows_an_empty_memory_at_once_without_a_restart(tmp_path):
