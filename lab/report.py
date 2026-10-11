@@ -10,22 +10,27 @@ Built only from committed files, never from a pod, the hub or the network:
 - the chip sheet lab/refine/research/kernels/data/chipsheet-gfx1151-<date>.json (the newest measured one);
 - the decode profile decode-profile-gfx1151-<date>.json in the same folder, when one is committed;
 - the public prior: lab/public_prior.py fitted on public-strix-halo-benchmarks.csv, always labelled a prior;
-- any lab ledger copy (ledger*.jsonl) in the same folder, for the experiments that were tried and dropped.
+- a fine-tune run's own files, fixtures/demo/<run>-telemetry.jsonl (one telemetry.train.step event per line) and
+  <run>-run.json beside it, when a run is committed (L16's are named l16-*);
+- any lab ledger copy (ledger*.jsonl) in the data folder, and the `excluded` list of a searchspace-*.json there,
+  for what was tried and dropped or ruled out;
+- the demo numbers sheet lab/refine/research/telemetry/demo_numbers_<date>.md, named as the page's companion.
 
-The page has six sections, each a chart drawn here as inline SVG and one sentence a non-expert can say aloud:
-(1) the ceiling the chip allows against what each build achieves at batch 1, (2) the batching frontier,
+The page has six sections, each a chart drawn here as inline SVG, one sentence a non-expert can say aloud and one
+key figure: (1) the ceiling the chip allows against what each build achieves at batch 1, (2) the batching frontier,
 joules per token against concurrent streams, (3) where a decode step's time goes, (4) engines side by side,
-(5) the fine-tune run, (6) what was tried and dropped. A section with no rows says "not measured" and names
-the run that would fill it; nothing is invented or interpolated.
+(5) the fine-tune run, (6) what was tried and dropped. A section with no rows says "not measured" and names the
+runs still coming (AWAITED, with what each was doing on STILL_COMING_AS_OF); nothing is invented or interpolated.
 
 Every number in the pack is a dict: {id, label, value, unit, kind, source: {file, line, ref}, gpu, chip,
 conditions, ts, low_confidence, reason, other_chip}. `kind` is "measured" (a row's own value), "derived"
 (worked out here from other numbers, with `formula` and `inputs`), "stated" (an estimate a committed file states,
 such as the teacher's weight bytes), "prior" (the public prior's prediction, never a measurement) or
-"not measured" (value None, with `why`). `gpu` is the row's conditions.gpu, `chip` its conditions.chip; either may be None.
+"not measured" (value None, with `why`). `gpu` is the row's conditions.gpu (for a fine-tune step, the device its
+run file names), `chip` its conditions.chip; either may be None.
 Rows from another chip (the R9700s, by lab/slide_numbers.py's own rule, which the Learning lab's bench reader
-uses too) are never drawn with Strix Halo rows: they sit in each section's `other_chip` list and in a panel of
-their own on the page.
+uses too, the A100 reference, any GPU a row names) are never drawn with Strix Halo rows: they sit in each section's
+`other_chip` list and in a dashed panel of their own on the page.
 
 The data pack's shape is documented in lab/README.md, section "Under the hood report".
 """
@@ -37,7 +42,9 @@ import hashlib
 import html
 import json
 import math
+import os
 import re
+import statistics
 from pathlib import Path
 from typing import Any
 
@@ -45,39 +52,24 @@ FORMAT = "atlas.lab_report/1"
 REPO = Path(__file__).resolve().parents[1]
 METRICS = "lab/refine/metrics.jsonl"
 DATA_DIR = "lab/refine/research/kernels/data"
+SHEET_DIR = "lab/refine/research/telemetry"
+RUN_DIR = "fixtures/demo"
 OUT_DIR = "lab/refine/report"
 HTML_NAME = "under-the-hood.html"
 PACK_NAME = "under-the-hood.json"
 CHIP = "gfx1151"
+CHIP_NAME = "Radeon 8060S (Strix Halo, gfx1151)"
 STUDENT_NODE = "jetson"
 LAB_MOVED_AT = "2026-10-10T20:25:00Z"
 NOT_MEASURED = "not measured"
 TEACHER_TARGET = "teacher-27b-int4"
 PRIOR_BACKENDS = ("vllm", "llama.cpp-rocm", "llama.cpp-vulkan")
+ENGINE_NAMES = {"vllm": "vLLM", "llama.cpp": "llama.cpp", "sglang": "SGLang"}
+EXPECTED_ENGINES = ("vllm", "llama.cpp")
 STEP_BUCKETS = (("w4a16_matmul", "quantized matmul"), ("attention", "attention"), ("other_gpu", "other GPU work"),
                 ("sampling", "sampling"), ("copies", "copies"), ("host_side", "host side (GPU idle)"))
-
-# The runs whose rows a later build picks up, with what each adds. Listed in the pack under `awaited`.
-AWAITED = (
-    {"task": "R52", "what": "request-side settings sweep of the teacher (batch 1, 4, 8, 16)",
-     "where": f"{DATA_DIR}/sweep-request-gfx1151-<date>.json, rows in {METRICS}", "sections": ["frontier"],
-     "glob": "sweep-request-gfx1151-*.json"},
-    {"task": "R58", "what": "llama.cpp Vulkan decode on the Strix Halo pod",
-     "where": f"rows in {METRICS} whose conditions.engine names llama.cpp", "sections": ["ceiling", "engines"],
-     "glob": None},
-    {"task": "R60", "what": "vLLM main with the RDNA hybrid W4A16 decode kernel on the Strix Halo pod",
-     "where": f"rows in {METRICS} with a new conditions.engine build", "sections": ["ceiling", "engines"],
-     "glob": None},
-    {"task": "R53", "what": "vLLM b1388b1 with the hybrid W4A16 kernel backported (lab/vllm-gfx1151.diff)",
-     "where": f"rows in {METRICS} whose conditions.engine names the gfx1151 diff", "sections": ["ceiling", "engines"],
-     "glob": None},
-    {"task": "R47", "what": "decode profile: where one decode step's time goes",
-     "where": f"{DATA_DIR}/decode-profile-gfx1151-<date>.json", "sections": ["step"],
-     "glob": "decode-profile-gfx1151-*.json"},
-    {"task": "L16", "what": "the first real fine-tune's step telemetry (loss and step time per step)",
-     "where": f"rows in {METRICS} named telemetry.train.* or trainer.* with conditions.step; fixtures/demo/l16-run.json",
-     "sections": ["finetune"], "glob": None, "path": "fixtures/demo/l16-run.json"},
-)
+RUN_FACTS = (("trainer.samples_per_s", "samples/s"), ("trainer.peak_mem_gb", "GiB"), ("trainer.train_s", "s"),
+             ("trainer.steps", "steps"), ("trainer.examples", "examples"))
 
 
 # --- reading the committed files -----------------------------------------------------------------------------------
@@ -191,12 +183,91 @@ def build_of(c: dict[str, Any]) -> str:
 
 
 def engine_family(c: dict[str, Any]) -> str:
-    """vllm, llama.cpp, sglang or the engine's first word; "not recorded" when the row names none."""
+    """vllm, llama.cpp, sglang or the engine's first word; "not recorded" when the row names none.
+
+    lab/bench.py writes llama.cpp's engine as "llamacpp" (its --engine choice) and its server is llama-server; both
+    are llama.cpp here, so its rows fill the engine a reader was told is "not measured"."""
     e = str(c.get("engine") or "").lower()
-    for name in ("vllm", "llama.cpp", "sglang"):
+    if any(word in e for word in ("llama.cpp", "llamacpp", "llama-server", "llama_cpp")):
+        return "llama.cpp"
+    for name in ("vllm", "sglang"):
         if name in e:
             return name
     return e.split("@")[0].split()[0] if e.strip() else "not recorded"
+
+
+def build_parts(c: dict[str, Any]) -> dict[str, Any]:
+    """What tells one build from another, as far as the row records it: the engine family, its commit (seven hex
+    digits, from "engine@commit", conditions.engine_commit or llama-server's "build: N (hex)" line), the patch files
+    named in the engine string or in conditions.patch_hash (without the folder and ".diff"), conditions.backend
+    (vulkan or rocm for llama.cpp) and a released version (conditions.vllm on the stock-wheel rows)."""
+    engine = str(c.get("engine") or "")
+    commit = None
+    if m := re.search(r"@([0-9a-f]{7,40})", engine):
+        commit = m.group(1)[:7]
+    stated = c.get("engine_commit")
+    if commit is None and isinstance(stated, str):
+        if re.fullmatch(r"[0-9a-f]{7,40}", stated):
+            commit = stated[:7]
+        elif m := re.search(r"\(([0-9a-f]{7,40})\)", stated):
+            commit = m.group(1)[:7]
+    patches = set(re.findall(r"([\w.-]+)\.diff", engine))
+    if isinstance(c.get("patch_hash"), dict):
+        patches |= {re.sub(r"\.diff$", "", str(k).replace("\\", "/").split("/")[-1]) for k in c["patch_hash"]}
+    backend = c.get("backend") if isinstance(c.get("backend"), str) and c["backend"].strip() else None
+    version = c.get("vllm") if isinstance(c.get("vllm"), str) and c["vllm"].strip() else None
+    return {"family": engine_family(c), "commit": commit, "patches": sorted(patches), "backend": backend,
+            "version": version}
+
+
+def build_label(c: dict[str, Any]) -> str:
+    """A build's name for a person: "vLLM b1388b1 + gfx1201 patch", "llama.cpp vulkan 1a2b3c4", "vLLM 0.31.0";
+    a row that names an engine but no commit or version says "build not recorded"."""
+    p = build_parts(c)
+    if p["family"] == "not recorded":
+        return "engine not recorded"
+    bits = [ENGINE_NAMES.get(p["family"], p["family"])]
+    if p["backend"]:
+        bits.append(p["backend"])
+    if p["commit"] or p["version"]:
+        bits.append(p["commit"] or p["version"])
+    label = " ".join(bits)
+    if p["patches"]:
+        label += " + " + ", ".join(re.sub(r"^vllm-", "", name) for name in p["patches"]) + " patch"
+    if not (p["commit"] or p["version"]):
+        label += ", build not recorded"
+    return label
+
+
+def asked_of(c: dict[str, Any]) -> str | None:
+    """What a row was asked: its prompt ("text prompt"), or its prompt set ("bench-v1 prompt set"), or None."""
+    if isinstance(c.get("prompt"), str) and c["prompt"].strip():
+        return f"{c['prompt'].strip()} prompt"
+    ps = c.get("prompt_set")
+    name = ps.get("id") if isinstance(ps, dict) else ps
+    if isinstance(name, str) and name.strip():
+        return f"{name.strip()} prompt set"
+    if isinstance(c.get("prompt_class"), str) and c["prompt_class"].strip():
+        return f"{c['prompt_class'].strip()} prompts"
+    return None
+
+
+def setup_of(c: dict[str, Any]) -> str:
+    """The few conditions a reader needs beside a number, when the row records them, in one short phrase."""
+    bits = [asked_of(c)]
+    if _num(c.get("max_tokens")) is not None:
+        bits.append(f"{c['max_tokens']:g} tokens out")
+    if c.get("thinking") is not None:
+        bits.append("thinking " + ("on" if c["thinking"] in (True, "on") else "off"))
+    if isinstance(c.get("statistic"), str):
+        bits.append(c["statistic"])
+    return ", ".join(b for b in bits if b)
+
+
+def run_label(row: dict[str, Any]) -> str:
+    """A short name for one batch-1 decode row: its build, what was asked, and the node."""
+    c = row["conditions"]
+    return f"{build_label(c)}, {asked_of(c) or 'prompt not recorded'}, {row.get('node') or 'node not recorded'}"
 
 
 def from_row(row: dict[str, Any], label: str) -> dict[str, Any]:
@@ -215,16 +286,87 @@ def from_row(row: dict[str, Any], label: str) -> dict[str, Any]:
 def derived(nid: str, label: str, value: float | None, unit: str, formula: str, inputs: list[dict[str, Any]],
             gpu: str | None = None, chip: str | None = None) -> dict[str, Any]:
     first = inputs[0]["source"] if inputs else {"file": None, "line": None, "ref": None}
+    labels = {i.get("chip_label") for i in inputs if i.get("chip_label")}
     return {"id": nid, "label": label, "value": value, "unit": unit, "kind": "derived", "formula": formula,
             "inputs": [i["id"] for i in inputs], "source": dict(first), "gpu": gpu, "chip": chip,
             "conditions": {}, "ts": None, "low_confidence": any(i.get("low_confidence") for i in inputs),
-            "reason": None, "other_chip": any(i.get("other_chip") for i in inputs)}
+            "reason": None, "other_chip": any(i.get("other_chip") for i in inputs),
+            "chip_label": labels.pop() if len(labels) == 1 else None}
 
 
 def missing(nid: str, label: str, why: str, task: str | None = None) -> dict[str, Any]:
     return {"id": nid, "label": label, "value": None, "unit": None, "kind": NOT_MEASURED, "why": why, "task": task,
             "source": {"file": None, "line": None, "ref": None}, "gpu": None, "chip": None, "conditions": {},
             "ts": None, "low_confidence": False, "reason": None, "other_chip": False}
+
+
+# --- the runs still coming -----------------------------------------------------------------------------------------
+
+# What each awaited run was doing on this date, in words; a run that has landed says so from the files instead.
+STILL_COMING_AS_OF = "2026-10-11"
+
+
+def _is_new_vllm(c: dict[str, Any]) -> bool:
+    p = build_parts(c)
+    return p["family"] == "vllm" and bool(p["commit"]) and not p["commit"].startswith("b1388b1")
+
+
+def _is_backport(c: dict[str, Any]) -> bool:
+    p = build_parts(c)
+    return p["family"] == "vllm" and "vllm-gfx1151" in p["patches"]
+
+
+def _is_llama(c: dict[str, Any]) -> bool:
+    return engine_family(c) == "llama.cpp"
+
+
+def _is_sweep_cell(c: dict[str, Any]) -> bool:
+    return isinstance(c.get("slice"), str) and isinstance(c.get("cell"), str)
+
+
+# The runs whose rows a later build picks up, with what each adds. `glob` (in the data folder), `path` (a glob from
+# the root) and `rows` (a test on a Strix Halo row's conditions) say how a build knows the run has landed.
+AWAITED = (
+    {"task": "R60", "what": "the teacher on the new vLLM build with the fast decode kernel",
+     "status": "being measured on pod C", "sections": ["ceiling", "engines"],
+     "where": f"rows in {METRICS} whose engine commit is not b1388b1", "rows": _is_new_vllm},
+    {"task": "R58", "what": "llama.cpp (Vulkan and ROCm) on the same chip and prompts as vLLM",
+     "status": "measured on both pods; its rows are not committed yet", "sections": ["ceiling", "engines"],
+     "where": f"rows in {METRICS} whose conditions.engine names llama.cpp", "rows": _is_llama},
+    {"task": "R53", "what": "the first vLLM commit with the fast decode kernel backported (lab/vllm-gfx1151.diff)",
+     "status": "the patch is on main; its benchmark rows are not committed yet", "sections": ["ceiling", "engines"],
+     "where": f"rows in {METRICS} whose patch is vllm-gfx1151.diff", "rows": _is_backport},
+    {"task": "R52", "what": "the request-side settings sweep (batch size, thinking, prompt length)",
+     "status": "the sweep tool is on main; the pod run is not committed yet", "sections": ["frontier"],
+     "where": f"{DATA_DIR}/sweep-request-gfx1151-<date>.json, rows in {METRICS}",
+     "glob": "sweep-request-gfx1151-*.json", "rows": _is_sweep_cell},
+    {"task": "R47", "what": "the decode profile at batch 1 and batch 4",
+     "status": "the profiler is on main; the pod run is not committed yet", "sections": ["step"],
+     "where": f"{DATA_DIR}/decode-profile-gfx1151-<date>.json", "glob": "decode-profile-gfx1151-*.json"},
+    {"task": "L16", "what": "the first real fine-tune's loss and step time, step by step",
+     "status": "its run files are not on main yet", "sections": ["finetune"],
+     "where": f"{RUN_DIR}/l16-telemetry.jsonl and {RUN_DIR}/l16-run.json", "path": f"{RUN_DIR}/*-telemetry.jsonl"},
+)
+
+
+def awaited(root: Path, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """AWAITED with, per run, whether it has landed and the evidence: its file, or how many Strix Halo rows match."""
+    here = [r for r in rows if chip_of(r) == CHIP]
+    out = []
+    for a in AWAITED:
+        files = sorted(_rel(root, p) for p in (root / DATA_DIR).glob(a["glob"])) if a.get("glob") else []
+        files += sorted(_rel(root, p) for p in root.glob(a["path"])) if a.get("path") else []
+        matched = [r["_line"] for r in here if a.get("rows") and a["rows"](r["conditions"])]
+        evidence = ", ".join(files) if files else (f"{len(matched)} rows in {METRICS} (from line {matched[0]})"
+                                                   if matched else None)
+        out.append({"task": a["task"], "what": a["what"], "where": a["where"], "sections": a["sections"],
+                    "status": a["status"], "as_of": STILL_COMING_AS_OF, "file_present": bool(files),
+                    "landed": bool(files or matched), "evidence": evidence})
+    return out
+
+
+def _awaiting(section: str) -> list[str]:
+    return [a["task"] for a in AWAITED if section in a["sections"]]
 
 
 # --- section 1: the ceiling against what each build achieves ------------------------------------------------------
@@ -252,7 +394,8 @@ def chip_bandwidth(root: Path) -> dict[str, Any]:
             "node": sheet.get("node"), "conditions": {"node": sheet.get("node"), "mode": sheet.get("mode"),
                                                        "bytes": (best.get("params") or {}).get("bytes"),
                                                        "repeats": best.get("repeats"), **(sheet.get("versions") or {})},
-            "ts": sheet.get("ended"), "low_confidence": False, "reason": None, "other_chip": sheet.get("gfx") != CHIP}
+            "ts": sheet.get("ended"), "low_confidence": False, "reason": None, "other_chip": sheet.get("gfx") != CHIP,
+            "chip_label": sheet.get("gfx")}
 
 
 def bytes_per_token(root: Path) -> dict[str, Any]:
@@ -291,7 +434,9 @@ def prior_numbers(root: Path, gb: float | None) -> tuple[list[dict[str, Any]], s
                     "formula": "lab/public_prior.py fit on the public CSV, predict(gb, backend, batch 1)",
                     "source": {"file": _rel(root, csv_path), "line": None,
                                "ref": f"fit over {fit.rows} rows from {fit.sources} sources, R2 {fit.r2:.2f}"},
-                    "gpu": "Radeon 8060S (other people's machines, published)", "chip": CHIP, "conditions": {"gb_per_token": gb},
+                    "gpu": "Radeon 8060S (other people's machines, published)", "chip": CHIP,
+                    "conditions": {"gb_per_token": gb, "fit_rows": fit.rows, "fit_sources": fit.sources,
+                                   "fit_r2": round(fit.r2, 3), "fit_error_factor": round(math.exp(fit.rms_log), 2)},
                     "ts": None, "low_confidence": True, "reason": "a prior fitted to published benchmarks, not ours",
                     "other_chip": False})
     return out, None
@@ -304,21 +449,8 @@ def decode_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(found, key=lambda r: (str(r.get("ts")), r["_line"]))
 
 
-def run_label(row: dict[str, Any]) -> str:
-    """A short name for one batch-1 decode row: engine family and build, what was asked, and its line."""
-    c = row["conditions"]
-    engine = str(c.get("engine") or "engine not recorded")
-    build = engine_family(c) + (" " + engine.split("@")[1][:7] if "@" in engine else "")
-    if "gfx1201.diff" in engine or "gfx1151.diff" in engine:
-        build += " + " + ("gfx1151" if "gfx1151.diff" in engine else "gfx1201") + " patch"
-    asked = c.get("prompt") or (c.get("prompt_set") or {}).get("id") if isinstance(c.get("prompt_set"), dict) \
-        else c.get("prompt")
-    return f"{build}, {asked or 'prompt not recorded'} (line {row['_line']})"
-
-
 def section_ceiling(root: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
     bw, gb = chip_bandwidth(root), bytes_per_token(root)
-    ceiling = None
     if bw["value"] is not None and gb["value"]:
         ceiling = derived("derived:ceiling", "ceiling at batch 1 (bandwidth / bytes per token)",
                           round(bw["value"] / gb["value"], 2), "tok/s",
@@ -335,7 +467,30 @@ def section_ceiling(root: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
             fractions.append(derived(f"derived:share:{a['id']}", f"share of the ceiling, {a['label']}",
                                      round(100 * a["value"] / ceiling["value"], 1), "%",
                                      "100 x achieved tok/s / ceiling tok/s", [a, ceiling], gpu=a["gpu"], chip=a["chip"]))
+    share_of = {f["inputs"][0]: f for f in fractions}
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for a in here:  # oldest first, so a newer build is a later bar
+        grouped.setdefault(build_label(a["conditions"]), []).append(a)
+    builds = []
+    for label, members in grouped.items():
+        best = max(members, key=lambda a: a["value"])
+        builds.append({"build": label, "engine": engine_family(best["conditions"]), "best": best, "rows": members,
+                       "share": share_of.get(best["id"])})
     priors, prior_gap = prior_numbers(root, gb["value"])
+    notes = []
+    if ceiling["value"]:
+        notes.append(f"The ceiling is {bw['value']:g} GB/s (the chip sheet's copy over its largest buffer, bytes read "
+                     f"and written) divided by {gb['value']:g} GB of weights read for each token (an estimate): "
+                     f"{ceiling['value']:.1f} tokens a second at batch 1.")
+        for p in priors:
+            if p["value"] > ceiling["value"]:
+                factor = p["conditions"]["fit_error_factor"]
+                inside = p["value"] / ceiling["value"] <= factor
+                notes.append(f"The {PRIOR_NAMES.get(p['backend'], p['backend'])} prior ({p['value']:.1f}) sits above "
+                             f"the ceiling. The prior is a fit to {p['conditions']['fit_rows']} published rows "
+                             f"(typical error a factor of {factor:g}) and the ceiling rests on an estimate, so "
+                             + ("the two agree within the fit's own error." if inside else
+                                "one of the two is off by more than the fit's own error."))
     if here and ceiling["value"]:
         best = max(here, key=lambda a: a["value"])
         reading = (f"The memory on this chip could feed the 27B teacher about {ceiling['value']:.0f} tokens a second; "
@@ -347,70 +502,109 @@ def section_ceiling(root: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
         reading = "Not measured yet: no batch-1 decode row from the Strix Halo is on main."
     return {"id": "ceiling", "title": "The ceiling the chip allows, against what each build achieves",
             "reading": reading, "state": "measured" if here and ceiling["value"] else ("partial" if here else "empty"),
-            "inputs": [bw, gb], "ceiling": ceiling, "achieved": here, "shares": fractions, "priors": priors,
-            "prior_gap": prior_gap, "other_chip": apart,
-            "awaiting": [a["task"] for a in AWAITED if "ceiling" in a["sections"]]}
+            "inputs": [bw, gb], "ceiling": ceiling, "achieved": here, "shares": fractions, "builds": builds,
+            "priors": priors, "prior_gap": prior_gap, "notes": notes, "other_chip": apart,
+            "awaiting": _awaiting("ceiling")}
 
 
 # --- section 2: the batching frontier -----------------------------------------------------------------------------
 
 def sweeps(rows: list[dict[str, Any]], metric_suffix: str) -> list[dict[str, Any]]:
-    """Rows of one metric grouped by (metric, node, build, session) where the group spans two or more batch sizes."""
+    """Rows of one metric grouped by (metric, node, build, session, slice) where the group spans two or more batch
+    sizes. The lab's chip first; within a chip, the sweep with the most stream counts, then the widest span, then
+    the one measured first, so the headline sweep does not change when a second pod repeats it."""
     groups: dict[tuple, list[dict[str, Any]]] = {}
     for r in rows:
         if not r["metric"].endswith(metric_suffix) or batch_of(r) is None or r.get("node") == STUDENT_NODE:
             continue
         c = r["conditions"]
-        key = (r["metric"], r.get("node"), build_of(c), c.get("session") or c.get("run_id") or "", other_chip(r))
+        key = (r["metric"], r.get("node"), build_of(c), c.get("session") or c.get("run_id") or "",
+               c.get("slice") if isinstance(c.get("slice"), str) else "", chip_of(r))
         groups.setdefault(key, []).append(r)
     out = []
-    for (metric, node, build, session, old), members in sorted(groups.items(), key=lambda kv: str(kv[0])):
+    for (metric, node, build, session, _, chip), members in groups.items():
         levels = sorted({batch_of(m) for m in members})
         if len(levels) < 2:
             continue
         points = []
         for b in levels:  # the last line written at a batch size wins
             r = max((m for m in members if batch_of(m) == b), key=lambda m: m["_line"])
-            points.append({"batch": b, "number": from_row(r, f"{metric} at {b:g} streams")})
-        out.append({"metric": metric, "node": node, "build": build, "session": session, "other_chip": old,
+            points.append({"batch": b, "number": from_row(r, f"{metric} at {b:g} {'stream' if b == 1 else 'streams'}")})
+        first = min(m["_line"] for m in members)
+        out.append({"metric": metric, "prefix": metric[: -len(metric_suffix)], "node": node, "build": build,
+                    "session": session, "other_chip": chip != CHIP, "chip_label": chip,
+                    "label": f"{node}, {build_label(members[0]['conditions'])}", "first_line": first,
                     "points": points})
-    return out
+    return sorted(out, key=lambda s: (s["other_chip"], -len(s["points"]),
+                                      -(s["points"][-1]["batch"] / s["points"][0]["batch"]), s["first_line"]))
+
+
+def mate(sweep: dict[str, Any], others: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The sweep of another metric from the same run: same metric prefix, node and session."""
+    key = (sweep["prefix"], sweep["node"], sweep["session"])
+    return next((o for o in others if (o["prefix"], o["node"], o["session"]) == key), None)
+
+
+def _ratio(nid: str, label: str, sweep: dict[str, Any], formula: str, flip: bool = False) -> dict[str, Any] | None:
+    first, last = sweep["points"][0], sweep["points"][-1]
+    a, b = first["number"]["value"], last["number"]["value"]
+    if not a or not b:
+        return None
+    return derived(nid, label.format(lo=f"{first['batch']:g}", hi=f"{last['batch']:g}"),
+                   round(b / a if flip else a / b, 1), "x", formula, [first["number"], last["number"]],
+                   gpu=first["number"]["gpu"], chip=first["number"]["chip"])
 
 
 def section_frontier(root: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
     energy = sweeps(rows, ".joules_per_token")
     total = sweeps(rows, ".decode_tok_s_total")
+    power = sweeps(rows, ".watts_avg")
     here = [s for s in energy if not s["other_chip"]]
-    ratios = []
+    ratios, more_work, other_ratios = [], [], []
+    for s in energy:
+        r = _ratio(f"derived:ratio:{s['metric']}:{s['node']}:{s['session']}",
+                   "joules per token, {lo} stream over {hi} streams", s,
+                   "J/token at the fewest streams / J/token at the most streams")
+        if r:
+            (other_ratios if s["other_chip"] else ratios).append(r)
     for s in here:
-        first, last = s["points"][0], s["points"][-1]
-        if first["number"]["value"] and last["number"]["value"]:
-            ratios.append(derived(f"derived:ratio:{s['metric']}:{s['session']}",
-                                  f"joules per token, {first['batch']:g} stream over {last['batch']:g} streams",
-                                  round(first["number"]["value"] / last["number"]["value"], 1), "x",
-                                  "J/token at the fewest streams / J/token at the most streams",
-                                  [first["number"], last["number"]], gpu=first["number"]["gpu"],
-                                  chip=first["number"]["chip"]))
+        t = mate(s, total)
+        r = t and _ratio(f"derived:words:{t['metric']}:{t['node']}:{t['session']}",
+                         "tokens per second in all, {hi} streams over {lo} stream", t,
+                         "tok/s over all streams at the most streams / at the fewest", flip=True)
+        if r:
+            more_work.append(r)
     pending = sorted(p.name for p in (root / DATA_DIR).glob("sweep-request-gfx1151-*.json"))
+    changes = [from_row(r, f"{r['metric']}: {r['conditions'].get('from')} against {r['conditions'].get('against')}")
+               for r in rows if r["metric"].endswith("_change_pct") and chip_of(r) == CHIP]
     if ratios:
         r, s = ratios[0], here[0]
         reading = (f"Serving {s['points'][-1]['batch']:g} conversations at once instead of one cuts the energy for each "
-                   f"word by {r['value']:g} times: the chip reads its weights once and shares them across every stream.")
+                   f"word by {r['value']:g} times")
+        watts, words = mate(s, power), mate(s, total)
+        lo = watts and watts["points"][0]["number"]["value"]
+        hi = watts and watts["points"][-1]["number"]["value"]
+        if lo and hi and words and more_work and max(lo, hi) / min(lo, hi) <= 1.1:
+            reading += (f": the chip draws about the same {(lo + hi) / 2:.0f} watts either way and turns out "
+                        f"{more_work[0]['value']:.0f} times as many words")
+        reading += "."
+        if len(here) > 1 and len(ratios) > 1:
+            reading += f" A second sweep, on {here[1]['node']}, gives {ratios[1]['value']:g} times."
     else:
         reading = "Not measured yet: no joules-per-token sweep across stream counts from the Strix Halo is on main."
     return {"id": "frontier", "title": "The batching frontier: joules per token against concurrent streams",
             "reading": reading, "state": "measured" if here else "empty", "energy": here,
-            "throughput": [s for s in total if not s["other_chip"]], "ratios": ratios,
-            "other_chip": [s for s in energy + total if s["other_chip"]], "pending_files": pending,
-            "awaiting": [a["task"] for a in AWAITED if "frontier" in a["sections"]]}
+            "throughput": [s for s in total if not s["other_chip"]],
+            "power": [s for s in power if not s["other_chip"]], "ratios": ratios, "more_work": more_work,
+            "changes": changes, "other_chip": [s for s in energy + total if s["other_chip"]],
+            "other_ratios": other_ratios, "pending_files": pending, "awaiting": _awaiting("frontier")}
 
 
 # --- section 3: where a decode step's time goes -------------------------------------------------------------------
 
 def section_step(root: Path) -> dict[str, Any]:
     path = newest(root / DATA_DIR, f"decode-profile-{CHIP}-*.json")
-    base = {"id": "step", "title": "Where a decode step's time goes",
-            "awaiting": [a["task"] for a in AWAITED if "step" in a["sections"]], "other_chip": []}
+    base = {"id": "step", "title": "Where a decode step's time goes", "awaiting": _awaiting("step"), "other_chip": []}
     if path is None:
         return {**base, "state": "empty", "batches": [],
                 "reading": "Not measured yet: the decode profile (python -m lab profile-decode) has not committed a "
@@ -419,6 +613,7 @@ def section_step(root: Path) -> dict[str, Any]:
     data = json.loads(path.read_text(encoding="utf-8"))
     rel = _rel(root, path)
     gpu, chip = data.get("gpu"), data.get("chip")
+    apart = chip not in (None, CHIP)
     batches, cursor = [], 1
     for key, entry in sorted((data.get("batches") or {}).items(), key=lambda kv: float(kv[0])):
         ms = entry.get("ms_per_step") or {}
@@ -430,22 +625,27 @@ def section_step(root: Path) -> dict[str, Any]:
             parts.append({"id": f"profile:{key}:{bucket}", "label": f"{label}, batch {key}", "bucket": bucket,
                           "value": value, "unit": "ms per step", "kind": "measured" if value is not None else NOT_MEASURED,
                           "source": {"file": rel, "line": line, "ref": f"batches.{key}.ms_per_step.{bucket}"},
-                          "gpu": gpu, "chip": chip, "conditions": {"batch": key, "breakdown_source":
-                                                                    entry.get("breakdown_source")},
+                          "gpu": gpu, "chip": chip, "node": data.get("node"),
+                          "conditions": {"batch": key, "breakdown_source": entry.get("breakdown_source")},
                           "ts": data.get("ended"), "low_confidence": False, "reason": None,
-                          "other_chip": chip not in (None, CHIP)})
+                          "other_chip": apart, "chip_label": chip or CHIP})
         batches.append({"batch": key, "step_ms": _num(ms.get("step")), "parts": parts})
     measured = [p for b in batches for p in b["parts"] if p["value"] is not None]
+    top = None
     if measured and batches and batches[0]["step_ms"]:
         first = batches[0]
-        top = max((p for p in first["parts"] if p["value"] is not None), key=lambda p: p["value"])
+        biggest = max((p for p in first["parts"] if p["value"] is not None), key=lambda p: p["value"])
+        name = biggest["label"].split(",")[0]
+        top = derived(f"derived:step_share:{first['batch']}:{biggest['bucket']}",
+                      f"share of a decode step in {name}, batch {first['batch']}",
+                      round(100 * biggest["value"] / first["step_ms"], 1), "%",
+                      "100 x the bucket's ms per step / the step's ms", [biggest], gpu=gpu, chip=chip)
         reading = (f"At batch {first['batch']}, one decode step takes {first['step_ms']:.1f} ms and the biggest slice, "
-                   f"{top['value'] / first['step_ms']:.0%}, is {top['label'].split(',')[0]}: that is where a faster "
-                   "kernel pays off first.")
+                   f"{top['value']:.0f}%, is {name}: that is where a faster kernel pays off first.")
     else:
         reading = f"{rel} is committed but gives no step breakdown."
     return {**base, "state": "measured" if measured else "empty", "batches": batches, "reading": reading,
-            "file": rel, "other_chip": batches if chip not in (None, CHIP) else []}
+            "top": top, "file": rel, "other_chip": batches if apart else []}
 
 
 # --- section 4: engines side by side ------------------------------------------------------------------------------
@@ -457,41 +657,130 @@ def section_engines(root: Path, ceiling: dict[str, Any]) -> dict[str, Any]:
         families.setdefault(engine_family(a["conditions"]), []).append(a)
     best = {name: max(items, key=lambda a: a["value"]) for name, items in families.items()}
     names = sorted(best)
-    if len(names) >= 2:
+    differences = []
+    if len(names) >= 2:  # were the engines asked the same thing? say so when the rows differ
+        for what, read in (("prompts", asked_of), ("tokens out", lambda c: c.get("max_tokens")),
+                           ("thinking", lambda c: c.get("thinking")),
+                           ("weights", lambda c: c.get("quantization") or c.get("checkpoint"))):
+            seen = {name: read(best[name]["conditions"]) for name in names}
+            if len({json.dumps(v, sort_keys=True, default=str) for v in seen.values()}) > 1:
+                differences.append({"what": what, "by_engine": {n: (v if v is not None else "not recorded")
+                                                                 for n, v in seen.items()}})
         order = sorted(best.values(), key=lambda a: -a["value"])
-        reading = (f"On the same chip and model, {engine_family(order[0]['conditions'])} decodes "
-                   f"{order[0]['value']:.2f} tokens a second against {order[-1]['value']:.2f} for "
-                   f"{engine_family(order[-1]['conditions'])}.")
+        top, low = engine_family(order[0]["conditions"]), engine_family(order[-1]["conditions"])
+        reading = (f"On the same chip, {ENGINE_NAMES.get(top, top)} decodes {order[0]['value']:.2f} tokens a second "
+                   f"against {order[-1]['value']:.2f} for {ENGINE_NAMES.get(low, low)}"
+                   + ("; their rows differ in " + ", ".join(d["what"] for d in differences)
+                      + ", so read the gap with that in mind." if differences else "."))
         state = "measured"
+    elif names:
+        only = names[0]
+        absent = [ENGINE_NAMES.get(e, e) for e in EXPECTED_ENGINES if e != only]
+        reading = (f"Only {ENGINE_NAMES.get(only, only)} has a measured row on this chip so far, at "
+                   f"{best[only]['value']:.2f} tokens a second; {' and '.join(absent)} "
+                   f"{'is' if len(absent) == 1 else 'are'} not measured here yet, and the public prior beside it is "
+                   "other people's numbers, not ours.")
+        state = "partial"
     else:
-        only = names[0] if names else None
-        reading = (f"Only {only} has been measured on this chip so far; the other engines are not measured, and the "
-                   "public prior beside it is other people's numbers, not ours." if only else
-                   "Not measured yet: no engine has a batch-1 decode row from the Strix Halo on main.")
-        state = "partial" if only else "empty"
+        reading = "Not measured yet: no engine has a batch-1 decode row from the Strix Halo on main."
+        state = "empty"
     return {"id": "engines", "title": "Engines side by side", "reading": reading, "state": state,
-            "engines": [{"engine": n, "best": best[n], "rows": families[n]} for n in names],
-            "not_measured": [e for e in ("llama.cpp", "vllm") if e not in best],
-            "priors": ceiling["priors"], "other_chip": ceiling["other_chip"],
-            "awaiting": [a["task"] for a in AWAITED if "engines" in a["sections"]]}
+            "engines": [{"engine": n, "name": ENGINE_NAMES.get(n, n), "best": best[n], "rows": families[n],
+                         "builds": sorted({build_label(a["conditions"]) for a in families[n]}),
+                         "setup": setup_of(best[n]["conditions"])} for n in names],
+            "differences": differences, "not_measured": [e for e in EXPECTED_ENGINES if e not in best],
+            "priors": ceiling["priors"], "other_chip": ceiling["other_chip"], "awaiting": _awaiting("engines")}
 
 
 # --- section 5: the fine-tune run ---------------------------------------------------------------------------------
 
-def section_finetune(rows: list[dict[str, Any]]) -> dict[str, Any]:
+def train_runs(root: Path) -> list[dict[str, Any]]:
+    """Every committed fine-tune run: fixtures/demo/<name>-telemetry.jsonl, one telemetry.train.step event per line
+    (step, loss, step_ms), with <name>-run.json beside it for the device and the run's totals. Oldest first."""
+    folder = root / RUN_DIR
+    runs = []
+    for tel in sorted(folder.glob("*-telemetry.jsonl")) if folder.is_dir() else []:
+        name = tel.name[: -len("-telemetry.jsonl")]
+        run_path = folder / f"{name}-run.json"
+        try:
+            run = json.loads(run_path.read_text(encoding="utf-8")) if run_path.is_file() else {}
+        except ValueError:
+            run = {}
+        refs = run.get("refs") if isinstance(run, dict) and isinstance(run.get("refs"), dict) else {}
+        device = refs.get("device") if isinstance(refs.get("device"), str) else None
+        rel = _rel(root, tel)
+        loss, step_time, run_id, node, last_ts = [], [], None, None, None
+        for n, line in enumerate(tel.read_text(encoding="utf-8").splitlines(), 1):
+            try:
+                ev = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(ev, dict) or ev.get("type") != "telemetry.train.step" or _num(ev.get("step")) is None:
+                continue
+            run_id, node, last_ts = run_id or ev.get("run_id"), node or ev.get("node"), _ts(ev.get("ts")) or last_ts
+            as_row = {"node": ev.get("node"), "ts": ev.get("ts"), "conditions": {"gpu": device} if device else {}}
+            base = {"kind": "measured", "gpu": device, "chip": CHIP if device and CHIP in device else None,
+                    "node": ev.get("node"), "ts": ev.get("ts"), "low_confidence": False, "reason": None,
+                    "source": {"file": rel, "line": n, "ref": f"telemetry.train.step, run {ev.get('run_id')}"},
+                    "conditions": {"step": ev["step"], "run_id": ev.get("run_id"), "tokens": ev.get("tokens")},
+                    "other_chip": other_chip(as_row), "chip_label": chip_of(as_row)}
+            if _num(ev.get("loss")) is not None:
+                loss.append({**base, "id": f"train:{name}:{n}:loss", "label": f"loss at step {ev['step']:g}",
+                             "value": ev["loss"], "unit": "loss", "metric": "telemetry.train.step.loss"})
+            if _num(ev.get("step_ms")) is not None:
+                step_time.append({**base, "id": f"train:{name}:{n}:step_ms", "label": f"step time at step {ev['step']:g}",
+                                  "value": ev["step_ms"], "unit": "ms", "metric": "telemetry.train.step.step_ms"})
+        if not loss and not step_time:
+            continue
+        sample = (loss or step_time)[0]
+        facts = []
+        metrics = run.get("metrics") if isinstance(run, dict) and isinstance(run.get("metrics"), dict) else {}
+        for key, unit in RUN_FACTS:
+            if _num(metrics.get(key)) is not None:
+                facts.append({"id": f"train:{name}:{key}", "label": key, "value": metrics[key], "unit": unit,
+                              "kind": "measured", "metric": key, "gpu": device, "chip": sample["chip"], "node": node,
+                              "source": {"file": _rel(root, run_path), "line": line_of(run_path, f'"{key}"'),
+                                         "ref": f"metrics.{key}, run {run_id}"},
+                              "conditions": {"run_id": run_id, "base_model": refs.get("base_model"),
+                                             "task": refs.get("task")},
+                              "ts": last_ts, "low_confidence": False, "reason": None,
+                              "other_chip": sample["other_chip"], "chip_label": sample["chip_label"]})
+        runs.append({"name": name, "run_id": run_id, "node": node, "gpu": device, "file": rel,
+                     "run_file": _rel(root, run_path) if run_path.is_file() else None, "ts": last_ts,
+                     "other_chip": sample["other_chip"], "chip_label": sample["chip_label"],
+                     "loss": sorted(loss, key=lambda x: x["conditions"]["step"]),
+                     "step_time": sorted(step_time, key=lambda x: x["conditions"]["step"]), "facts": facts})
+    return sorted(runs, key=lambda r: (str(r["ts"]), r["name"]))
+
+
+def section_finetune(root: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
     trainer = [r for r in rows if r["metric"].startswith(("trainer.", "telemetry.train."))]
+
     def curve(word: str) -> list[dict[str, Any]]:
         found = [r for r in trainer if word in r["metric"] and _num(r["conditions"].get("step")) is not None
                  and not other_chip(r)]
         return [from_row(r, f"{r['metric']} at step {r['conditions']['step']}")
                 for r in sorted(found, key=lambda r: (_num(r["conditions"]["step"]), r["_line"]))]
-    loss, step_time = curve("loss"), curve("step_s") or curve("step_time")
+
+    runs = train_runs(root)
+    ours = [r for r in runs if not r["other_chip"]]
+    run = ours[-1] if ours else None  # the newest run on the lab's chip is the one charted
+    loss = run["loss"] if run else curve("loss")
+    step_time = run["step_time"] if run else (curve("step_s") or curve("step_time"))
     singles = [from_row(r, r["metric"]) for r in trainer if _num(r["conditions"].get("step")) is None]
-    here = [s for s in singles if not s["other_chip"]]
+    here = [s for s in singles if not s["other_chip"]] + (run["facts"] if run else [])
     apart = [s for s in singles if s["other_chip"]]
+    apart += [n for r in runs if r["other_chip"] for n in r["facts"] + r["loss"] + r["step_time"]]
+    median = None
+    if step_time and all(n["unit"] == "ms" for n in step_time):
+        median = derived(f"derived:train:{run['name'] if run else 'rows'}:median_step", "median step time",
+                         round(statistics.median(n["value"] for n in step_time) / 1000, 1), "s",
+                         "median of the logged step times, in seconds", step_time,
+                         gpu=step_time[0]["gpu"], chip=step_time[0]["chip"])
     if loss:
-        reading = (f"The fine-tune's loss went from {loss[0]['value']:g} to {loss[-1]['value']:g} over "
-                   f"{len(loss)} logged steps on the Strix Halo.")
+        reading = (f"The fine-tune's loss went from {loss[0]['value']:.3g} to {loss[-1]['value']:.3g} over "
+                   f"{len(loss)} logged steps on the Strix Halo"
+                   + (f", about {median['value']:.0f} seconds a step." if median else "."))
         state = "measured"
     else:
         reading = ("Not measured yet: the first real fine-tune on the Strix Halo (L16) has not committed per-step loss "
@@ -499,8 +788,9 @@ def section_finetune(rows: list[dict[str, Any]]) -> dict[str, Any]:
                                      if apart and not here else "."))
         state = "partial" if here else "empty"
     return {"id": "finetune", "title": "The fine-tune run", "reading": reading, "state": state, "loss": loss,
-            "step_time": step_time, "numbers": here, "other_chip": apart,
-            "awaiting": [a["task"] for a in AWAITED if "finetune" in a["sections"]]}
+            "step_time": step_time, "median_step": median, "numbers": here,
+            "run": {k: run[k] for k in ("name", "run_id", "node", "gpu", "file", "run_file")} if run else None,
+            "other_chip": apart, "awaiting": _awaiting("finetune")}
 
 
 # --- section 6: what was tried and dropped ------------------------------------------------------------------------
@@ -522,10 +812,29 @@ def section_dropped(root: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
                           "verdict": verdict, "note": rec.get("note"), "kind": "measured",
                           "source": {"file": rel, "line": n, "ref": f"ledger seq {rec.get('seq')}"},
                           "gpu": (rec.get("conditions") or {}).get("gpu"), "task": rec.get("task")})
+    ruled_out = []
+    for path in sorted((root / DATA_DIR).glob("searchspace-*.json")):
+        try:
+            space = json.loads(path.read_text(encoding="utf-8"))
+        except ValueError:
+            continue
+        excluded = space.get("excluded") if isinstance(space, dict) else None
+        for i, entry in enumerate(excluded if isinstance(excluded, list) else []):
+            if not isinstance(entry, dict) or not isinstance(entry.get("setting"), str):
+                continue
+            line = (line_of(path, f'"setting": {json.dumps(entry["setting"])}')
+                    or line_of(path, json.dumps(entry["setting"])))
+            ruled_out.append({"what": entry["setting"], "verdict": "left out of the search before any run",
+                              "note": entry.get("why"), "kind": "ruled out",
+                              "source": {"file": _rel(root, path), "line": line,
+                                         "ref": f"excluded[{i}] of {space.get('name') or path.name}"},
+                              "gpu": None, "task": None})
+    items += ruled_out
     slide = root / "lab" / "slide_numbers.py"
     moved_line = line_of(slide, "LAB_MOVED_AT =")
     old = [r for r in rows if chip_of(r) == "R9700 (gfx1201)"]
-    if moved_line and old:
+    moved = bool(moved_line and old)
+    if moved:
         items.append({"what": "the R9700 cards (gfx1201, DUB hub) as the lab",
                       "verdict": "left for the Strix Halo pods (gfx1151, SJC) on 2026-10-10",
                       "note": f"{len(old)} rows on main describe it; every section shows them apart",
@@ -533,9 +842,13 @@ def section_dropped(root: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
                                                    "ref": "LAB_MOVED_AT, the rule every reader uses"},
                       "gpu": "R9700 (gfx1201)", "task": None})
     ledger_items = [i for i in items if i["kind"] == "measured"]
-    reading = (f"{len(ledger_items)} experiments have a recorded verdict." if ledger_items else
-               "The experiments' verdicts are not on main yet (the lab's ledger lives on the lab machine); what is on "
-               "record is the move off the old chip.")
+    if ledger_items:
+        reading = f"{len(ledger_items)} experiments have a recorded verdict."
+    else:
+        record = ([f"{len(ruled_out)} settings ruled out before any pod time was spent on them"] if ruled_out else [])
+        record += ["the move off the old chip"] if moved else []
+        reading = ("The experiments' verdicts are not on main yet (the lab's ledger lives on the lab machine)"
+                   + ("; what is on record is " + " and ".join(record) + "." if record else "."))
     return {"id": "dropped", "title": "What was tried and dropped", "reading": reading,
             "state": "measured" if ledger_items else ("partial" if items else "empty"), "items": items,
             "other_chip": [], "awaiting": []}
@@ -544,16 +857,23 @@ def section_dropped(root: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
 # --- the pack -----------------------------------------------------------------------------------------------------
 
 def _sources(root: Path) -> list[dict[str, Any]]:
-    paths = [root / METRICS, newest(root / DATA_DIR, f"chipsheet-{CHIP}-*.json"),
-             newest(root / DATA_DIR, f"decode-profile-{CHIP}-*.json"), root / DATA_DIR / "public-strix-halo-benchmarks.csv",
-             root / "lab" / "public_prior.py", root / "lab" / "slide_numbers.py",
-             *sorted((root / DATA_DIR).glob("ledger*.jsonl")), *sorted((root / DATA_DIR).glob("sweep-request-gfx1151-*.json"))]
+    data, runs = root / DATA_DIR, root / RUN_DIR
+    spaces = [p for p in sorted(data.glob("searchspace-*.json")) if '"excluded"' in p.read_text(encoding="utf-8")]
+    paths = [("rows", root / METRICS), ("chip sheet", newest(data, f"chipsheet-{CHIP}-*.json")),
+             ("decode profile", newest(data, f"decode-profile-{CHIP}-*.json")),
+             ("public prior data", data / "public-strix-halo-benchmarks.csv"),
+             ("public prior model", root / "lab" / "public_prior.py"), ("chip rule", root / "lab" / "slide_numbers.py"),
+             *(("ledger", p) for p in sorted(data.glob("ledger*.jsonl"))),
+             *(("settings sweep", p) for p in sorted(data.glob("sweep-request-gfx1151-*.json"))),
+             *(("search space", p) for p in spaces),
+             *(("fine-tune run", p) for p in sorted([*runs.glob("*-telemetry.jsonl"), *runs.glob("*-run.json")])),
+             ("demo numbers sheet", newest(root / SHEET_DIR, "demo_numbers_*.md"))]
     out = []
-    for p in paths:
+    for role, p in paths:
         if p is not None and p.is_file():
-            data = p.read_bytes()
-            out.append({"file": _rel(root, p), "sha256": hashlib.sha256(data).hexdigest(),
-                        "lines": data.count(b"\n")})
+            data_bytes = p.read_bytes()
+            out.append({"file": _rel(root, p), "role": role, "sha256": hashlib.sha256(data_bytes).hexdigest(),
+                        "lines": data_bytes.count(b"\n")})
     return out
 
 
@@ -577,15 +897,13 @@ def build_pack(root: Path = REPO) -> dict[str, Any]:
     rows, skipped = read_metrics(root / METRICS)
     ceiling = section_ceiling(root, rows)
     sections = [ceiling, section_frontier(root, rows), section_step(root), section_engines(root, ceiling),
-                section_finetune(rows), section_dropped(root, rows)]
+                section_finetune(root, rows), section_dropped(root, rows)]
     numbers, seen = [], set()
     for s in sections:
         for n in _walk(s):
             if n["id"] not in seen:
                 seen.add(n["id"])
                 numbers.append(n)
-    present = {a["task"]: bool(a["glob"] and list((root / DATA_DIR).glob(a["glob"])))
-               or bool(a.get("path") and (root / a["path"]).is_file()) for a in AWAITED}
     times = sorted(t for t in (_ts(r.get("ts")) for r in rows) if t)
     return {
         "format": FORMAT,
@@ -599,12 +917,17 @@ def build_pack(root: Path = REPO) -> dict[str, Any]:
         "skipped": skipped,
         "sections": sections,
         "numbers": numbers,
-        "awaited": [{k: v for k, v in a.items() if k not in ("glob", "path")} | {"file_present": present[a["task"]]}
-                    for a in AWAITED],
+        "awaited": awaited(root, rows),
     }
 
 
-# --- the page -----------------------------------------------------------------------------------------------------
+# --- the charts ---------------------------------------------------------------------------------------------------
+
+W = 340  # every chart's viewBox width: close to 1:1 on a phone, scaled up by the page's CSS on a wide screen
+STACK_CLS = ("c1", "c2", "c3", "c4", "c5", "cg")  # one fixed colour per decode-step bucket; host side is the gray
+STATE_WORDS = {"measured": "measured", "partial": "partly measured", "empty": NOT_MEASURED}
+PRIOR_NAMES = {"vllm": "vLLM", "llama.cpp-rocm": "llama.cpp ROCm", "llama.cpp-vulkan": "llama.cpp Vulkan"}
+
 
 def esc(text: Any) -> str:
     return html.escape("" if text is None else str(text), quote=True)
@@ -614,325 +937,631 @@ def fmt(value: Any, unit: str | None = None) -> str:
     if value is None:
         return NOT_MEASURED
     v = float(value)
-    text = f"{v:,.0f}" if abs(v) >= 100 else f"{v:.3g}" if abs(v) < 10 else f"{v:.1f}"
+    text = f"{v:,.0f}" if abs(v) >= 100 else f"{v:.1f}" if abs(v) >= 10 else f"{v:.3g}"
+    if unit == "x":
+        return f"{text} times"
     return f"{text} {unit}" if unit else text
 
 
-def gpu_text(n: dict[str, Any]) -> str:
-    if n.get("gpu"):
-        return f"gpu: {n['gpu']}"
-    if n.get("chip"):
-        return f"gpu: not recorded (chip: {n['chip']})"
-    return "gpu: not recorded"
+def _clip(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def _nice(top: float, ticks: int = 4) -> tuple[float, float]:
+    """(step, axis top) of a linear axis from zero that covers `top` in about `ticks` round steps."""
+    if top <= 0:
+        return 1.0, 1.0
+    raw = top / ticks
+    mag = 10 ** math.floor(math.log10(raw))
+    step = next(m * mag for m in (1, 2, 2.5, 5, 10) if raw <= m * mag * (1 + 1e-9))
+    return step, step * math.ceil(top / step - 1e-9)
+
+
+def _open(height: float, title: str) -> str:
+    return (f'<svg viewBox="0 0 {W} {height:.0f}" role="img" aria-label="{esc(title)}" class="chart">'
+            f"<title>{esc(title)}</title>")
+
+
+def _bar(x: float, y: float, w: float, h: float, cls: str, tip: str) -> str:
+    """A horizontal bar from its baseline at x: square at the baseline, rounded at the data end."""
+    r = min(4.0, w / 2, h / 2)
+    return (f'<path d="M{x:.1f},{y:.1f}h{w - r:.1f}a{r:.1f},{r:.1f} 0 0 1 {r:.1f},{r:.1f}v{h - 2 * r:.1f}'
+            f'a{r:.1f},{r:.1f} 0 0 1 -{r:.1f},{r:.1f}h-{w - r:.1f}z" class="{cls}"><title>{esc(tip)}</title></path>')
+
+
+def _column(x: float, base: float, w: float, h: float, cls: str, tip: str) -> str:
+    """A column standing on `base`: square at the baseline, rounded at the top."""
+    r = min(4.0, w / 2, h / 2)
+    return (f'<path d="M{x:.1f},{base:.1f}v-{h - r:.1f}a{r:.1f},{r:.1f} 0 0 1 {r:.1f},-{r:.1f}h{w - 2 * r:.1f}'
+            f'a{r:.1f},{r:.1f} 0 0 1 {r:.1f},{r:.1f}v{h - r:.1f}z" class="{cls}"><title>{esc(tip)}</title></path>')
+
+
+def svg_bars(items: list[dict[str, Any]], ref: tuple[str, float] | None, unit: str, title: str) -> str:
+    """Horizontal bars, each under its own full label. An item is {"label", "sub", "value", "cls"} (a None value
+    says "not measured") or {"header": text} for a group title; `ref` is a (name, value) line across all of them."""
+    left, right, bar_h = 1, 58, 14
+    top = 22 if ref else 2
+    peak = max([i["value"] for i in items if i.get("value")] + ([ref[1]] if ref else []) + [1e-9])
+    scale = (W - left - right) / peak
+    body, y = [], top
+    for it in items:
+        if "header" in it:
+            body.append(f'<text x="{left}" y="{y + 12}" class="hd">{esc(it["header"])}</text>')
+            y += 22
+            continue
+        body.append(f'<text x="{left}" y="{y + 11}" class="lbl">{esc(_clip(it["label"], 50))}'
+                    f'<title>{esc(it["label"])}</title></text>')
+        y += 16
+        if it.get("sub"):
+            body.append(f'<text x="{left}" y="{y + 9}" class="sub">{esc(_clip(it["sub"], 58))}</text>')
+            y += 13
+        y += 2
+        if it.get("value") is None:
+            body.append(f'<text x="{left}" y="{y + 11}" class="nm">{NOT_MEASURED}</text>')
+        else:
+            w = max(2.0, it["value"] * scale)
+            body.append(_bar(left, y, w, bar_h, it["cls"], f'{it["label"]}: {fmt(it["value"], unit)}'))
+            body.append(f'<text x="{left + w + 6:.1f}" y="{y + 11.5}" class="val">{esc(fmt(it["value"]))}</text>')
+        y += bar_h + 12
+    out = [_open(y, title)]
+    if ref:  # drawn first, so every bar and value sits over it
+        x = left + ref[1] * scale
+        out.append(f'<line x1="{x:.1f}" y1="18" x2="{x:.1f}" y2="{y - 8}" class="ref"/>')
+        anchor = "end" if x > W * 0.55 else "start"
+        out.append(f'<text x="{x:.1f}" y="12" text-anchor="{anchor}" class="val">{esc(ref[0])} '
+                   f'{esc(fmt(ref[1], unit))}</text>')
+    return "".join(out + body) + "</svg>"
+
+
+def svg_xy(series: list[dict[str, Any]], *, xlog: bool, xname: str, yname: str, yfmt: Any, title: str,
+           ref: float | None = None, note: tuple[str, str] | None = None, height: int = 232) -> str:
+    """Lines over one y axis from zero. A series is {"points": [(x, y)], "line": class, "fill": class}; the first
+    one's first and last points carry their values. `ref` is a dashed level, `note` two lines at the top right."""
+    left, right, top, bottom = 36, 14, 34, 38
+    xs = sorted({x for s in series for x, _ in s["points"]})
+    fx = math.log2 if xlog else float
+    lo, span = fx(xs[0]), (fx(xs[-1]) - fx(xs[0])) or 1.0
+    step, ymax = _nice(max(y for s in series for _, y in s["points"]))
+
+    def px(x: float) -> float:
+        return left + (fx(x) - lo) / span * (W - left - right)
+
+    def py(y: float) -> float:
+        return top + (1 - y / ymax) * (height - top - bottom)
+
+    out = [_open(height, title), f'<text x="0" y="12" class="ax">{esc(yname)}</text>']
+    for i in range(int(round(ymax / step)) + 1):
+        t = i * step
+        out.append(f'<line x1="{left}" y1="{py(t):.1f}" x2="{W - right}" y2="{py(t):.1f}" '
+                   f'class="{"base" if i == 0 else "grid"}"/>')
+        out.append(f'<text x="{left - 5}" y="{py(t) + 4:.1f}" text-anchor="end" class="ax">{t:g}</text>')
+    every = math.ceil(len(xs) / 7)
+    for i, x in enumerate(xs):
+        if i % every == 0 or x == xs[-1]:
+            out.append(f'<text x="{px(x):.1f}" y="{height - bottom + 15}" text-anchor="middle" class="ax">{x:g}</text>')
+    out.append(f'<text x="{(left + W - right) / 2:.1f}" y="{height - 4}" text-anchor="middle" class="ax">'
+               f"{esc(xname)}</text>")
+    if ref is not None:
+        out.append(f'<line x1="{left}" y1="{py(ref):.1f}" x2="{W - right}" y2="{py(ref):.1f}" class="ref"/>')
+    for s in series:
+        path = " ".join(f"{'M' if i == 0 else 'L'}{px(x):.1f},{py(y):.1f}" for i, (x, y) in enumerate(s["points"]))
+        out.append(f'<path d="{path}" class="ln {s["line"]}"/>')
+        for x, y in s["points"]:
+            out.append(f'<circle cx="{px(x):.1f}" cy="{py(y):.1f}" r="4" class="dot {s["fill"]}">'
+                       f"<title>{x:g} {esc(xname)}: {esc(yfmt(y))}</title></circle>")
+    (x0, y0), (x1, y1) = series[0]["points"][0], series[0]["points"][-1]
+    out.append(f'<text x="{px(x0) + 9:.1f}" y="{py(y0) + 4:.1f}" class="val">{esc(yfmt(y0))}</text>')
+    out.append(f'<text x="{px(x1):.1f}" y="{py(y1) - 10:.1f}" text-anchor="end" class="val">{esc(yfmt(y1))}</text>')
+    if note:
+        out.append(f'<text x="{W - right}" y="{top + 12}" text-anchor="end" class="val">{esc(note[0])}</text>')
+        out.append(f'<text x="{W - right}" y="{top + 27}" text-anchor="end" class="ax">{esc(note[1])}</text>')
+    return "".join(out) + "</svg>"
+
+
+def svg_columns(points: list[tuple[float, float]], *, xname: str, yname: str, title: str, cls: str = "c1",
+                height: int = 176) -> str:
+    """One column per x, its value on the cap."""
+    left, right, top, bottom = 4, 4, 34, 36
+    slot = (W - left - right) / len(points)
+    width = min(24.0, slot * 0.6)
+    peak = max(v for _, v in points) or 1e-9
+    base = height - bottom
+    out = [_open(height, title), f'<text x="0" y="12" class="ax">{esc(yname)}</text>',
+           f'<line x1="{left}" y1="{base}" x2="{W - right}" y2="{base}" class="base"/>']
+    for i, (x, v) in enumerate(points):
+        cx = left + slot * (i + 0.5)
+        h = max(2.0, v / peak * (base - top))
+        out.append(_column(cx - width / 2, base, width, h, cls, f"{x:g} {xname}: {fmt(v)}"))
+        out.append(f'<text x="{cx:.1f}" y="{base - h - 5:.1f}" text-anchor="middle" class="val">{esc(fmt(v))}</text>')
+        out.append(f'<text x="{cx:.1f}" y="{base + 15}" text-anchor="middle" class="ax">{x:g}</text>')
+    out.append(f'<text x="{W / 2:.0f}" y="{height - 4}" text-anchor="middle" class="ax">{esc(xname)}</text>')
+    return "".join(out) + "</svg>"
+
+
+def svg_stack(batches: list[dict[str, Any]], title: str) -> str:
+    """One stacked bar per batch size: milliseconds of a decode step by bucket, a gap between the slices."""
+    left, bar_h = 1, 22
+    peak = max([max(b["step_ms"] or 0, sum(p["value"] or 0 for p in b["parts"])) for b in batches] + [1e-9])
+    scale = (W - 2 * left) / peak
+    body, y = [], 2
+    for b in batches:
+        body.append(f'<text x="{left}" y="{y + 12}" class="lbl">batch {esc(b["batch"])}: '
+                    f'{esc(fmt(b["step_ms"], "ms"))} a step</text>')
+        y += 20
+        x = float(left)
+        for i, p in enumerate(b["parts"]):
+            if p["value"]:
+                w = p["value"] * scale
+                body.append(f'<rect x="{x:.1f}" y="{y}" width="{max(w - 2, 0.6):.1f}" height="{bar_h}" rx="2" '
+                            f'class="{STACK_CLS[i]}"><title>{esc(p["label"])}: {esc(fmt(p["value"], "ms"))}</title></rect>')
+                x += w
+        y += bar_h + 14
+    return _open(y, title) + "".join(body) + "</svg>"
+
+
+# --- the page -----------------------------------------------------------------------------------------------------
+
+LIGHT = {"page": "#f9f9f7", "card": "#fcfcfb", "ink": "#0b0b0b", "ink2": "#52514e", "mute": "#6f6d68",
+         "line": "#e1e0d9", "axis": "#c3c2b7", "s1": "#2a78d6", "s2": "#eb6834", "s3": "#1baf7a", "s4": "#eda100",
+         "s5": "#e87ba4", "gray": "#898781", "link": "#1c5cab", "flag": "#a3301f"}
+DARK = {"page": "#0d0d0d", "card": "#1a1a19", "ink": "#f0efec", "ink2": "#c3c2b7", "mute": "#a3a199",
+        "line": "#2c2c2a", "axis": "#4a4a46", "s1": "#3987e5", "s2": "#d95926", "s3": "#199e70", "s4": "#c98500",
+        "s5": "#d55181", "gray": "#898781", "link": "#86b6ef", "flag": "#f0906f"}
+
+
+def _vars(theme: dict[str, str]) -> str:
+    return ";".join(f"--{k}:{v}" for k, v in theme.items())
+
+
+CSS = (
+    f":root{{{_vars(LIGHT)}}}"
+    f"@media (prefers-color-scheme:dark){{:root:not([data-theme=\"light\"]){{{_vars(DARK)}}}}}"
+    f":root[data-theme=\"dark\"]{{{_vars(DARK)}}}"
+    f"body:has(#day:checked){{{_vars(LIGHT)}}}body:has(#night:checked){{{_vars(DARK)}}}"
+    """
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%;font-size:16px}
+body{margin:0;min-height:100vh;background:var(--page);color:var(--ink);
+font:1rem/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:1180px;margin:0 auto;padding:18px 16px 64px}
+h1{font-size:clamp(1.6rem,4.2vw,2.5rem);line-height:1.15;margin:.3em 0}
+h2{font-size:clamp(1.2rem,2.6vw,1.6rem);line-height:1.25;margin:0 0 .35em}
+h3{font-size:.95rem;margin:0 0 .4em}a{color:var(--link)}
+.lede{color:var(--ink2);max-width:74ch;margin:.2em 0 1em}
+.theme{float:right;font-size:.85rem;color:var(--ink2);margin:.5em 0 .4em 1em}.theme input{accent-color:var(--s1)}
+.toc{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0;padding:0;list-style:none;clear:both}
+.toc a{display:block;padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:var(--card);
+color:var(--ink);text-decoration:none;font-size:.9rem}.toc b{color:var(--ink2);margin-right:.35em}
+.toc .st{display:table;margin:2px 0 0}
+.st{display:inline-block;font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;
+padding:1px 7px;border-radius:99px;border:1px solid var(--axis);color:var(--ink2);vertical-align:middle;
+margin-left:.5em;white-space:nowrap}.st-measured{border-color:var(--s1);color:var(--ink)}
+.st-empty{border-color:var(--flag);color:var(--flag)}
+section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 16px;margin:18px 0}
+.n{color:var(--ink2);font-weight:600;margin-right:.4em}
+.say{font-size:clamp(1.1rem,2.3vw,1.4rem);line-height:1.35;font-weight:500;margin:.2em 0 .9em;max-width:62ch}
+.body{display:grid;gap:4px 18px;align-items:start}figure{margin:0 0 14px}
+figcaption{font-size:.8rem;color:var(--ink2);margin-top:6px;overflow-wrap:anywhere}
+.chart{width:100%;max-width:640px;height:auto;display:block}
+.chart text{font-size:13px;fill:var(--ink)}.chart .sub,.chart .ax{font-size:11.5px;fill:var(--mute)}
+.chart .hd{font-size:11px;font-weight:700;fill:var(--ink2);letter-spacing:.04em;text-transform:uppercase}
+.chart .val{font-weight:650;paint-order:stroke;stroke:var(--card);stroke-width:4px;stroke-linejoin:round}
+.chart .nm{fill:var(--flag);font-style:italic}.chart .grid{stroke:var(--line)}.chart .base{stroke:var(--axis)}
+.chart .ref{stroke:var(--ink2);stroke-width:1.5;stroke-dasharray:5 4;fill:none}
+.chart .c1{fill:var(--s1)}.chart .c2{fill:var(--s2)}.chart .c3{fill:var(--s3)}.chart .c4{fill:var(--s4)}
+.chart .c5{fill:var(--s5)}.chart .cg{fill:var(--gray)}
+.chart .ln{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.chart .l1{stroke:var(--s1)}.chart .l2{stroke:var(--s2)}.chart .lg{stroke:var(--gray)}
+.chart .dot{stroke:var(--card);stroke-width:2}
+.key{border-left:4px solid var(--s1);padding:2px 0 2px 14px;margin:0 0 14px}
+.key .big{font-size:clamp(2.2rem,6vw,3.4rem);font-weight:700;line-height:1.05}
+.key .kl{max-width:38ch;margin:.2em 0 .3em}
+.note{font-size:.88rem;color:var(--ink2);margin:.5em 0;max-width:72ch}
+.cite{display:block;font-size:.78rem;color:var(--ink2);overflow-wrap:anywhere}
+.tag{display:inline-block;font-size:.7rem;border:1px solid var(--axis);border-radius:4px;padding:0 5px;
+white-space:nowrap}.tag.oc{border-style:dashed}
+.empty{border-left:4px solid var(--flag);padding:6px 12px;margin:0 0 14px;font-weight:600}
+.coming{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:0 0 12px;font-size:.9rem}
+.coming h3 span{font-weight:400;color:var(--ink2)}
+.coming ul{margin:0;padding-left:1.1em}.coming li{margin:.3em 0}.coming .when{color:var(--ink2)}
+.items{list-style:none;margin:0 0 16px;padding:0}
+.items li{padding:9px 0;border-top:1px solid var(--line)}.items li:first-child{border-top:0}
+.items .k{font-weight:600}.items .verdict{color:var(--ink2);font-size:.9rem}.items .why{font-size:.92rem}
+details{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+summary{cursor:pointer;font-size:.9rem;color:var(--ink2)}
+.nums{list-style:none;margin:8px 0 0;padding:0}
+.nums li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;padding:8px 0;
+border-top:1px solid var(--line);align-items:baseline}.nums li:first-child{border-top:0}
+.nums .k{font-size:.9rem}.nums .v{font-weight:650;white-space:nowrap;font-variant-numeric:tabular-nums}
+.nums .cite{grid-column:1/-1}
+.legend{list-style:none;margin:8px 0 0;padding:0;font-size:.85rem;display:flex;flex-wrap:wrap;gap:4px 16px}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px}
+.sw.c1{background:var(--s1)}.sw.c2{background:var(--s2)}.sw.c3{background:var(--s3)}.sw.c4{background:var(--s4)}
+.sw.c5{background:var(--s5)}.sw.cg{background:var(--gray)}
+.apart{border:1px dashed var(--gray);border-radius:10px;padding:12px;margin-top:14px}
+.apart h3{color:var(--ink2)}.apart details{border-top:0;margin-top:6px;padding-top:0}
+table{border-collapse:collapse;width:100%;font-size:.85rem}
+td,th{border-bottom:1px solid var(--line);padding:6px 10px 6px 0;text-align:left;vertical-align:top}
+td.num{white-space:nowrap;font-variant-numeric:tabular-nums}.wrap{overflow-x:auto}
+footer{color:var(--ink2);font-size:.85rem;margin-top:28px}
+@media (min-width:900px){
+.toc{grid-template-columns:repeat(6,minmax(0,1fr))}
+.nums li{grid-template-columns:minmax(0,1.1fr) 9em minmax(0,1.9fr)}.nums .cite{grid-column:auto}
+.body{grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr);grid-template-rows:auto 1fr;gap:4px 30px;
+grid-template-areas:"viz keys" "viz more"}.viz{grid-area:viz}.keys{grid-area:keys}.more{grid-area:more}
+.body.one{grid-template-columns:minmax(0,1fr);grid-template-rows:auto;grid-template-areas:"keys" "more"}
+.items li{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.5fr);gap:2px 28px}
+section{padding:24px 26px}}
+@media (min-width:1600px){html{font-size:20px}main{max-width:1560px}.chart{max-width:680px}}
+""")
 
 
 def href(page_dir: Path, root: Path, rel: str) -> str:
     """A relative link from the page's folder to a committed file, so it opens from disk."""
-    import os
     return Path(os.path.relpath(root / rel, page_dir)).as_posix()
 
 
 class Page:
-    def __init__(self, root: Path, page_dir: Path):
-        self.root, self.page_dir = root, page_dir
+    def __init__(self, root: Path, page_dir: Path, pack: dict[str, Any]):
+        self.root, self.page_dir, self.pack = root, page_dir, pack
 
-    def cite(self, n: dict[str, Any]) -> str:
-        """The source line under a number: file and line as a link, the row's gpu, and its flags."""
+    def link(self, rel: str, line: Any = None, text: str | None = None) -> str:
+        where = text or (f"{rel}:{line}" if line else rel)
+        return (f'<a href="{esc(href(self.page_dir, self.root, rel))}" data-line="{esc(line or "")}">'
+                f"{esc(where)}</a>")
+
+    @staticmethod
+    def chip_text(n: dict[str, Any]) -> str:
+        if n.get("kind") == "stated":
+            return "not a measurement, so no gpu"
+        if n.get("gpu"):
+            return f"gpu: {n['gpu']}"
+        if n.get("chip"):
+            return f"chip: {n['chip']} (the row records no gpu)"
+        if n.get("other_chip") and n.get("chip_label"):
+            return f"gpu: not recorded in the row; {n['chip_label']} by the date it was measured"
+        return "gpu: not recorded"
+
+    def cite(self, n: dict[str, Any], reason: bool = True) -> str:
+        """The source line under a number: file and line as a link, the row's gpu, its conditions and its flags."""
         src = n.get("source") or {}
         if not src.get("file"):
             return f'<span class="cite">{esc(n.get("why") or NOT_MEASURED)}</span>'
-        where = f"{src['file']}:{src['line']}" if src.get("line") else src["file"]
-        bits = [f'<a href="{esc(href(self.page_dir, self.root, src["file"]))}" data-line="{esc(src.get("line") or "")}">'
-                f'{esc(where)}</a>', esc(gpu_text(n))]
+        if n.get("kind") in ("ruled out", "record"):  # a decision on file, not a number: the line is the citation
+            return f'<span class="cite">{self.link(src["file"], src.get("line"))}</span>'
+        bits = [self.link(src["file"], src.get("line")), esc(self.chip_text(n))]
+        setup = setup_of(n.get("conditions") or {})
+        if setup:
+            bits.append(esc(setup))
         if n.get("kind") in ("derived", "prior", "stated"):
-            bits.append(esc(n["kind"]))
+            bits.append(esc(n["kind"]) + (": " + esc(n["formula"]) if n.get("formula") else ""))
         if n.get("low_confidence"):
-            bits.append(f'<span class="flag">low confidence{": " + esc(n["reason"]) if n.get("reason") else ""}</span>')
+            why = ": " + esc(n["reason"]) if reason and n.get("reason") else ""
+            bits.append(f'<span class="tag">low confidence</span>{why}')
         if n.get("other_chip"):
-            bits.append('<span class="flag">other chip</span>')
+            bits.append('<span class="tag oc">other chip</span>')
         return f'<span class="cite">{" · ".join(bits)}</span>'
 
-    def stat(self, n: dict[str, Any]) -> str:
-        return (f'<div class="stat"><div class="k">{esc(n["label"])}</div>'
-                f'<div class="v">{esc(fmt(n["value"], n.get("unit")))}</div>{self.cite(n)}</div>')
+    def nums(self, numbers: list[dict[str, Any]], summary: str | None = None) -> str:
+        """Every number with its source row, as a list; under a summary line it folds away until asked for.
+        A low-confidence reason every row shares is said once above the list instead of on each row."""
+        if not numbers:
+            return ""
+        reasons = {n.get("reason") for n in numbers if n.get("low_confidence")}
+        shared = reasons.pop() if len(reasons) == 1 and sum(bool(n.get("low_confidence")) for n in numbers) > 2 else None
+        rows = "".join(f'<li><span class="k">{esc(n["label"])}</span>'
+                       f'<span class="v">{esc(fmt(n["value"], n.get("unit")))}</span>{self.cite(n, not shared)}</li>'
+                       for n in numbers)
+        note = f'<p class="note">The rows marked low confidence share one reason: {esc(shared)}.</p>' if shared else ""
+        inner = f'{note}<ul class="nums">{rows}</ul>'
+        if summary is None:
+            return inner
+        return (f"<details><summary>{esc(summary)} ({len(numbers)} numbers, each with its file, line and chip)"
+                f"</summary>{inner}</details>")
+
+    def sources(self, numbers: list[dict[str, Any]]) -> str:
+        """The files a set of numbers came from, each with its line or line range, as links."""
+        files: dict[str, list[int]] = {}
+        for n in numbers:
+            src = n.get("source") or {}
+            if src.get("file"):
+                files.setdefault(src["file"], []).extend([src["line"]] if src.get("line") else [])
+        parts = []
+        for rel, lines in files.items():  # the file's name is enough under a chart; the list below has the path
+            lines, name = sorted(set(lines)), rel.rsplit("/", 1)[-1]
+            text = name if not lines else (f"{name}:{lines[0]}" + (f" to :{lines[-1]}" if len(lines) > 1 else ""))
+            parts.append(self.link(rel, lines[0] if lines else None, text))
+        return ", ".join(parts)
+
+    @staticmethod
+    def chips(numbers: list[dict[str, Any]]) -> str:
+        names: list[str] = []
+        for n in numbers:
+            label = n.get("chip_label")
+            name = CHIP_NAME if label == CHIP else (label or n.get("gpu") or n.get("chip") or "a chip the row does not name")
+            if name not in names:
+                names.append(name)
+        return " and ".join(names)
+
+    def measured_on(self, numbers: list[dict[str, Any]], lead: str = "Measured on") -> str:
+        return f"{esc(lead)} {esc(self.chips(numbers))}: {self.sources(numbers)}." if numbers else ""
+
+    def key(self, big: str, label: str, n: dict[str, Any] | None = None) -> str:
+        return (f'<div class="key"><div class="big">{esc(big)}</div><div class="kl">{esc(label)}</div>'
+                f'{self.cite(n) if n else ""}</div>')
+
+    def coming(self, s: dict[str, Any]) -> str:
+        """The runs that will fill this section and have not landed, with what each was doing on the stated date."""
+        names = [a for a in self.pack["awaited"] if a["task"] in s.get("awaiting", []) and not a["landed"]]
+        if not names:
+            return ""
+        lis = "".join(f'<li><b>{esc(a["task"])}</b>: {esc(a["what"])}. <span class="when">{esc(a["status"])}.</span>'
+                      "</li>" for a in names)
+        return (f'<div class="coming"><h3>Still coming <span>(as of {esc(names[0]["as_of"])}; {NOT_MEASURED} here '
+                f"until the rows are committed)</span></h3><ul>{lis}</ul></div>")
+
+    def apart(self, numbers: list[dict[str, Any]], what: str, extra: dict[str, str] | None = None) -> str:
+        """One dashed panel per other chip, named, so its rows never sit on a Strix Halo chart."""
+        chips: dict[str, list[dict[str, Any]]] = {}
+        for n in numbers:
+            chips.setdefault(n.get("chip_label") or "other chip", []).append(n)
+        out = []
+        for chip, items in chips.items():
+            inner = self.nums(items) if len(items) <= 4 else self.nums(items, "The rows from this chip")
+            out.append(f'<div class="apart"><h3>Other chip, shown apart: {esc(chip)}</h3>'
+                       f'<p class="note">{esc(what)}</p>{(extra or {}).get(chip, "")}{inner}</div>')
+        return "".join(out)
 
 
-def svg_bars(items: list[tuple[str, float | None, str]], line: tuple[str, float] | None, unit: str,
-             title: str) -> str:
-    """Horizontal bars (label, value, class) with an optional vertical reference line; a None value says so."""
-    width, left, right, bar_h, gap = 520, 210, 56, 24, 10
-    height = 30 + len(items) * (bar_h + gap) + 24
-    peak = max([v for _, v, _ in items if v] + ([line[1]] if line else []) + [1e-9])
-    scale = (width - left - right) / (peak * 1.05)
-    out = [f'<svg viewBox="0 0 {width} {height}" role="img" aria-label="{esc(title)}" class="chart">',
-           f'<title>{esc(title)}</title>']
-    y = 20
-    for label, value, cls in items:
-        short = label if len(label) <= 24 else label[:23] + "\u2026"
-        out.append(f'<text x="{left - 8}" y="{y + bar_h * 0.7:.1f}" text-anchor="end" class="lbl">{esc(short)}'
-                   f'<title>{esc(label)}</title></text>')
-        if value is None:
-            out.append(f'<text x="{left + 4}" y="{y + bar_h * 0.7:.1f}" class="nm">{NOT_MEASURED}</text>')
-        else:
-            w = max(1.0, value * scale)
-            out.append(f'<rect x="{left}" y="{y}" width="{w:.1f}" height="{bar_h}" rx="3" class="{cls}"/>')
-            out.append(f'<text x="{left + w + 6:.1f}" y="{y + bar_h * 0.7:.1f}" class="val">{esc(fmt(value))}</text>')
-        y += bar_h + gap
-    if line:
-        x = left + line[1] * scale
-        out.append(f'<line x1="{x:.1f}" y1="12" x2="{x:.1f}" y2="{y}" class="ref"/>')
-        out.append(f'<text x="{x:.1f}" y="{y + 16}" text-anchor="middle" class="reft">{esc(line[0])} '
-                   f'{esc(fmt(line[1], unit))}</text>')
-    out.append("</svg>")
-    return "".join(out)
+def _figure(svg: str, caption: str) -> str:
+    return f"<figure>{svg}<figcaption>{caption}</figcaption></figure>"
 
 
-def svg_frontier(points: list[tuple[float, float]], second: list[tuple[float, float]], ratio: float | None,
-                 title: str) -> str:
-    """Joules per token (left axis, line) against streams on a log2 axis, aggregate tok/s as bars behind it."""
-    width, height, left, right, top, bottom = 520, 300, 48, 44, 24, 44
-    xs = [x for x, _ in points]
-    lo, hi = math.log2(min(xs)), math.log2(max(xs))
-    span = (hi - lo) or 1.0
-    def px(x: float) -> float:
-        return left + (math.log2(x) - lo) / span * (width - left - right)
-    ymax = max(y for _, y in points) * 1.1
-    def py(y: float) -> float:
-        return top + (1 - y / ymax) * (height - top - bottom)
-    out = [f'<svg viewBox="0 0 {width} {height}" role="img" aria-label="{esc(title)}" class="chart">',
-           f'<title>{esc(title)}</title>',
-           f'<line x1="{left}" y1="{height - bottom}" x2="{width - right}" y2="{height - bottom}" class="axis"/>',
-           f'<line x1="{left}" y1="{top}" x2="{left}" y2="{height - bottom}" class="axis"/>']
-    if second:
-        smax = max(y for _, y in second) * 1.1
-        for x, y in second:
-            h = y / smax * (height - top - bottom)
-            out.append(f'<rect x="{px(x) - 9:.1f}" y="{height - bottom - h:.1f}" width="18" height="{h:.1f}" class="b2"/>')
-            out.append(f'<text x="{px(x):.1f}" y="{height - bottom - h - 4:.1f}" text-anchor="middle" class="val2">'
-                       f'{esc(fmt(y))}</text>')
-        out.append(f'<text x="{width - right + 6}" y="{top + 10}" class="lbl2">tok/s total (bars)</text>')
-    path = " ".join(f"{'M' if i == 0 else 'L'}{px(x):.1f},{py(y):.1f}" for i, (x, y) in enumerate(points))
-    out.append(f'<path d="{path}" class="ln"/>')
-    for x, y in points:
-        out.append(f'<circle cx="{px(x):.1f}" cy="{py(y):.1f}" r="4.5" class="dot"/>')
-        out.append(f'<text x="{px(x) + 7:.1f}" y="{py(y) - 7:.1f}" class="val">{esc(fmt(y))} J</text>')
-        out.append(f'<text x="{px(x):.1f}" y="{height - bottom + 16}" text-anchor="middle" class="lbl">{x:g}</text>')
-    if ratio:
-        y_last = py(points[-1][1])
-        out.append(f'<line x1="{left}" y1="{y_last:.1f}" x2="{width - right}" y2="{y_last:.1f}" class="ref"/>')
-        out.append(f'<text x="{width - right:.1f}" y="{top + 14}" text-anchor="end" class="reft">'
-                   f'{ratio:g} times less energy</text>')
-        out.append(f'<text x="{width - right:.1f}" y="{top + 32}" text-anchor="end" class="reft">'
-                   f'per token than 1 stream (dashed)</text>')
-    out.append(f'<text x="{(left + width - right) / 2:.1f}" y="{height - 8}" text-anchor="middle" class="lbl">'
-               'concurrent streams</text>')
-    out.append(f'<text x="14" y="{top + (height - top - bottom) / 2:.1f}" class="lbl" transform="rotate(-90 14 '
-               f'{top + (height - top - bottom) / 2:.1f})" text-anchor="middle">joules per token</text>')
-    out.append("</svg>")
-    return "".join(out)
-
-
-def svg_stack(batches: list[dict[str, Any]], title: str) -> str:
-    """One stacked bar per batch size: ms per decode step by bucket."""
-    width, left, right, bar_h, gap = 520, 70, 16, 28, 34
-    height = 20 + len(batches) * (bar_h + gap) + 40
-    peak = max([sum(p["value"] or 0 for p in b["parts"]) for b in batches] + [1e-9])
-    scale = (width - left - right) / peak
-    out = [f'<svg viewBox="0 0 {width} {height}" role="img" aria-label="{esc(title)}" class="chart">',
-           f'<title>{esc(title)}</title>']
-    y = 20
-    for b in batches:
-        out.append(f'<text x="{left - 8}" y="{y + bar_h * 0.7:.1f}" text-anchor="end" class="lbl">batch {esc(b["batch"])}</text>')
-        x = left
-        for i, p in enumerate(b["parts"]):
-            if p["value"]:
-                w = p["value"] * scale
-                out.append(f'<rect x="{x:.1f}" y="{y}" width="{w:.1f}" height="{bar_h}" class="s{i}">'
-                           f'<title>{esc(p["label"])}: {esc(fmt(p["value"], "ms"))}</title></rect>')
-                x += w
-        out.append(f'<text x="{left}" y="{y + bar_h + 16}" class="val">{esc(fmt(b["step_ms"], "ms per step"))}</text>')
-        y += bar_h + gap
-    lx = left
-    for i, (_, label) in enumerate(STEP_BUCKETS):
-        out.append(f'<rect x="{lx}" y="{y}" width="10" height="10" class="s{i}"/><text x="{lx + 14}" y="{y + 9}" '
-                   f'class="lbl">{esc(label)}</text>')
-        lx += 14 + len(label) * 6.2 + 12
-    out.append("</svg>")
-    return "".join(out)
-
-
-CSS = """
-:root{--bg:#f7f6f2;--card:#fff;--ink:#1d1d1b;--mute:#5d5d58;--line:#d9d6cc;--a:#2f6fb2;--b:#c2620a;--c:#2c8a5a;
---old:#8a8a84;--prior:#9a7bb8;--flag:#a03a1c;--s0:#2f6fb2;--s1:#c2620a;--s2:#2c8a5a;--s3:#9a7bb8;--s4:#b0912c;--s5:#8a8a84}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121416;--card:#1b1e21;--ink:#ecebe6;
---mute:#a9a8a1;--line:#33373b;--a:#6aa6e6;--b:#f0954a;--c:#5cc58f;--old:#7d7d78;--prior:#b99ad8;--flag:#f08a6a;
---s0:#6aa6e6;--s1:#f0954a;--s2:#5cc58f;--s3:#b99ad8;--s4:#d8b84e;--s5:#7d7d78}}
-:root[data-theme="dark"]{--bg:#121416;--card:#1b1e21;--ink:#ecebe6;--mute:#a9a8a1;--line:#33373b;--a:#6aa6e6;
---b:#f0954a;--c:#5cc58f;--old:#7d7d78;--prior:#b99ad8;--flag:#f08a6a;--s0:#6aa6e6;--s1:#f0954a;--s2:#5cc58f;
---s3:#b99ad8;--s4:#d8b84e;--s5:#7d7d78}
-body:has(#day:checked){--bg:#f7f6f2;--card:#fff;--ink:#1d1d1b;--mute:#5d5d58;--line:#d9d6cc;--a:#2f6fb2;--b:#c2620a;
---c:#2c8a5a;--old:#8a8a84;--prior:#9a7bb8;--flag:#a03a1c;--s0:#2f6fb2;--s1:#c2620a;--s2:#2c8a5a;--s3:#9a7bb8;
---s4:#b0912c;--s5:#8a8a84}
-body:has(#night:checked){--bg:#121416;--card:#1b1e21;--ink:#ecebe6;--mute:#a9a8a1;--line:#33373b;--a:#6aa6e6;
---b:#f0954a;--c:#5cc58f;--old:#7d7d78;--prior:#b99ad8;--flag:#f08a6a;--s0:#6aa6e6;--s1:#f0954a;--s2:#5cc58f;
---s3:#b99ad8;--s4:#d8b84e;--s5:#7d7d78}
-*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-main{max-width:1040px;margin:0 auto;padding:24px 16px 64px}
-h1{font-size:clamp(1.6rem,4vw,2.6rem);line-height:1.15;margin:.2em 0}h2{font-size:clamp(1.2rem,3vw,1.7rem);margin:0 0 .3em}
-.lede{color:var(--mute);max-width:70ch}.theme{float:right;font-size:.9rem;color:var(--mute)}
-.theme input{accent-color:var(--a)}
-section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px 18px;margin:20px 0}
-.n{color:var(--mute);font-weight:600;margin-right:.4em}
-.say{font-size:clamp(1.05rem,2.4vw,1.35rem);font-weight:500;margin:.2em 0 1em;max-width:62ch}
-.state{display:inline-block;font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;padding:2px 8px;
-border-radius:99px;border:1px solid var(--line);color:var(--mute);vertical-align:middle;margin-left:.5em}
-.chart{width:100%;height:auto;display:block;margin:8px 0 12px}
-.chart text{font-size:16px;fill:var(--ink)}.chart .lbl{fill:var(--mute)}.chart .val{font-weight:600}
-.chart .nm{fill:var(--flag);font-style:italic}.chart .reft{fill:var(--b);font-weight:600}
-.chart .lbl2,.chart .val2{fill:var(--mute);font-size:13px}
-.chart .cur{fill:var(--a)}.chart .old{fill:var(--old)}.chart .prior{fill:var(--prior);opacity:.75}
-.chart .ceil{fill:var(--c)}.chart .ref{stroke:var(--b);stroke-width:2;stroke-dasharray:6 4}
-.chart .axis{stroke:var(--line)}.chart .ln{fill:none;stroke:var(--a);stroke-width:3}.chart .dot{fill:var(--a)}
-.chart .b2{fill:var(--c);opacity:.35}
-.chart .s0{fill:var(--s0)}.chart .s1{fill:var(--s1)}.chart .s2{fill:var(--s2)}.chart .s3{fill:var(--s3)}
-.chart .s4{fill:var(--s4)}.chart .s5{fill:var(--s5)}
-.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
-.stat{border-top:2px solid var(--line);padding-top:6px}.stat .k{font-size:.85rem;color:var(--mute)}
-.stat .v{font-size:1.4rem;font-weight:650}
-a{color:var(--a)}
-.cite{display:block;font-size:.75rem;color:var(--mute);overflow-wrap:anywhere}.cite a{color:var(--a)}
-.flag{color:var(--flag)}
-.apart{border:1px dashed var(--old);border-radius:10px;padding:12px;margin-top:14px}
-.apart h3{font-size:.95rem;margin:0 0 6px;color:var(--old)}
-.empty{border-left:4px solid var(--flag);padding:8px 12px;background:transparent;color:var(--ink)}
-table{border-collapse:collapse;width:100%;font-size:.85rem}td,th{border-bottom:1px solid var(--line);padding:6px 4px;
-text-align:left;vertical-align:top}.wrap{overflow-x:auto}
-footer{color:var(--mute);font-size:.8rem}
-@media (min-width:1600px){body{font-size:19px}main{max-width:1400px}.chart text{font-size:14px}}
-"""
+def _body(viz: str, key: str, more: str) -> str:
+    """A section's body: the key figure, the chart and the rest. On a phone they stack in that order; on a wide
+    screen the chart takes the left column and the key figure sits beside it with the rest under it."""
+    parts = "".join(f'<div class="{cls}">{inner}</div>' for cls, inner in (("keys", key), ("viz", viz), ("more", more))
+                    if inner)
+    return f'<div class="body{"" if viz else " one"}">{parts}</div>'
 
 
 def render_html(pack: dict[str, Any], root: Path = REPO, page_dir: Path | None = None) -> str:
     """The self-contained page: inline CSS and SVG, no script, no font, no network reference."""
     root = Path(root)
-    page = Page(root, page_dir or root / OUT_DIR)
+    page = Page(root, page_dir or root / OUT_DIR, pack)
     secs = {s["id"]: s for s in pack["sections"]}
     body: list[str] = []
 
     def head(i: int, s: dict[str, Any]) -> str:
         return (f'<section id="{s["id"]}"><h2><span class="n">{i}</span>{esc(s["title"])}'
-                f'<span class="state">{esc(s["state"])}</span></h2><p class="say">{esc(s["reading"])}</p>')
+                f'<span class="st st-{esc(s["state"])}">{esc(STATE_WORDS[s["state"]])}</span></h2>'
+                f'<p class="say">{esc(s["reading"])}</p>')
 
-    def awaiting(s: dict[str, Any]) -> str:
-        names = [a for a in pack["awaited"] if a["task"] in s.get("awaiting", [])]
-        if not names:
-            return ""
-        lis = "".join(f"<li><b>{esc(a['task'])}</b>: {esc(a['what'])} ({esc(a['where'])}): "
-                      f"{'file present' if a['file_present'] else NOT_MEASURED}</li>" for a in names)
-        return f'<details><summary>Runs that fill this section when their rows land</summary><ul>{lis}</ul></details>'
+    def empty(text: str) -> str:
+        return f'<p class="empty">{NOT_MEASURED}: {esc(text)}</p>'
 
-    def apart(numbers: list[dict[str, Any]], what: str) -> str:
-        """One dashed panel per other chip, named, so its rows never sit on a Strix Halo chart."""
-        chips: dict[str, list[dict[str, Any]]] = {}
-        for n in numbers:
-            chips.setdefault(n.get("chip_label") or "other chip", []).append(n)
-        return "".join(f'<div class="apart"><h3>Other chip, shown apart: {esc(chip)}, {esc(what)}</h3>'
-                       '<div class="stats">' + "".join(page.stat(n) for n in items) + "</div></div>"
-                       for chip, items in chips.items())
+    def notes(lines: list[str]) -> str:
+        return "".join(f'<p class="note">{esc(line)}</p>' for line in lines)
 
-    # 1
+    # 1: the ceiling against each build
     s = secs["ceiling"]
     body.append(head(1, s))
-    bars = [(a["label"], a["value"], "cur") for a in s["achieved"]]
-    bars += [(p["label"], p["value"], "prior") for p in s["priors"]]
+    bars: list[dict[str, Any]] = []
+    if s["builds"]:
+        bars.append({"header": "Our builds, measured on the Strix Halo"})
+        for b in s["builds"]:
+            n = b["best"]
+            sub = ", ".join(x for x in (asked_of(n["conditions"]), n.get("node")) if x)
+            bars.append({"label": b["build"], "value": n["value"], "cls": "c1",
+                         "sub": f"best of {len(b['rows'])} rows: {sub}" if len(b["rows"]) > 1 else sub})
+    if s["priors"]:
+        bars.append({"header": "Public prior: other people's runs, not ours"})
+        bars += [{"label": PRIOR_NAMES.get(p["backend"], p["backend"]), "value": p["value"], "cls": "cg"}
+                 for p in s["priors"]]
+    viz = key = more = ""
     if s["achieved"] or s["ceiling"]["value"]:
-        line = ("ceiling", s["ceiling"]["value"]) if s["ceiling"]["value"] else None
-        body.append(svg_bars(bars, line, "tok/s", "Decode tokens per second at batch 1 against the bandwidth ceiling"))
-    else:
-        body.append(f'<p class="empty">{NOT_MEASURED}: no batch-1 decode row and no chip sheet on main.</p>')
-    body.append('<div class="stats">' + "".join(page.stat(n) for n in [*s["inputs"], s["ceiling"], *s["shares"],
-                                                                       *s["achieved"], *s["priors"]]) + "</div>")
-    body.append(apart(s["other_chip"], "teacher decode at batch 1 on a different card and memory"))
-    body.append(awaiting(s) + "</section>")
-
-    # 2
-    s = secs["frontier"]
-    body.append(head(2, s))
-    if s["energy"]:
-        sweep = s["energy"][0]
-        pts = [(p["batch"], p["number"]["value"]) for p in sweep["points"]]
-        thr = next((t for t in s["throughput"] if t["node"] == sweep["node"] and t["session"] == sweep["session"]), None)
-        second = [(p["batch"], p["number"]["value"]) for p in thr["points"]] if thr else []
-        ratio = s["ratios"][0]["value"] if s["ratios"] else None
-        body.append(svg_frontier(pts, [], ratio, "Joules per token against concurrent streams"))
-        if second:
-            body.append(svg_bars([(f"{x:g} streams", y, "ceil") for x, y in second], None, "tok/s",
-                                 "Tokens per second across all streams together"))
-        nums = [p["number"] for p in sweep["points"]] + ([p["number"] for p in thr["points"]] if thr else [])
-        body.append('<div class="stats">' + "".join(page.stat(n) for n in [*s["ratios"], *nums]) + "</div>")
-        for extra in s["energy"][1:]:
-            body.append('<div class="stats">' + "".join(page.stat(p["number"]) for p in extra["points"]) + "</div>")
-    else:
-        body.append(f'<p class="empty">{NOT_MEASURED}: no stream-count sweep with joules per token on main.</p>')
-    if s["pending_files"]:
-        body.append(f'<p class="cite">Committed but not charted yet: {esc(", ".join(s["pending_files"]))}</p>')
-    body.append(apart([p["number"] for o in s["other_chip"] for p in o["points"]], "the same sweep on that chip"))
-    body.append(awaiting(s) + "</section>")
-
-    # 3
-    s = secs["step"]
-    body.append(head(3, s))
+        ref = ("ceiling", s["ceiling"]["value"]) if s["ceiling"]["value"] else None
+        caption = page.measured_on([b["best"] for b in s["builds"]], "Blue bars: measured on")
+        if ref:
+            caption += f" Dashed line: the ceiling, worked out from {page.sources(s['inputs'])}."
+        if s["priors"]:
+            caption += (" Gray bars: a fit to published runs on other people's machines with this chip, never a "
+                        f"measurement of ours ({page.sources(s['priors'])}).")
+        viz = _figure(svg_bars(bars, ref, "tok/s", "Decode tokens per second at batch 1, each build against the "
+                                                    "ceiling the chip's memory allows"), caption)
     if s["state"] == "measured":
-        body.append(svg_stack(s["batches"], "Milliseconds per decode step by where the time goes"))
-        body.append('<div class="stats">' + "".join(page.stat(p) for b in s["batches"] for p in b["parts"]) + "</div>")
+        best = max(s["achieved"], key=lambda a: a["value"])
+        share = next(f for f in s["shares"] if f["inputs"][0] == best["id"])
+        key = page.key(f"{best['value'] / s['ceiling']['value']:.0%}", f"of the ceiling: {best['value']:.2f} of about "
+                       f"{s['ceiling']['value']:.1f} tokens a second at batch 1", share)
     else:
-        body.append(f'<p class="empty">{NOT_MEASURED}: {esc(s.get("why") or s["reading"])}.</p>')
-    body.append(awaiting(s) + "</section>")
-
-    # 4
-    s = secs["engines"]
-    body.append(head(4, s))
-    bars = [(e["engine"], e["best"]["value"], "cur") for e in s["engines"]]
-    bars += [(name, None, "cur") for name in s["not_measured"]]
-    bars += [(p["label"], p["value"], "prior") for p in s["priors"]]
-    if bars:
-        body.append(svg_bars(bars, None, "tok/s", "Best batch-1 decode per engine on the Strix Halo, ours and the prior"))
-    body.append('<div class="stats">' + "".join(page.stat(e["best"]) for e in s["engines"])
-                + "".join(page.stat(missing(f"engine:{n}", f"{n} on the Strix Halo, batch 1",
-                                            "no row on main for this engine")) for n in s["not_measured"])
-                + "</div>")
-    body.append(awaiting(s) + "</section>")
-
-    # 5
-    s = secs["finetune"]
-    body.append(head(5, s))
-    if s["loss"]:
-        pts = [(float(n["conditions"]["step"]), n["value"]) for n in s["loss"]]
-        body.append(svg_bars([(f"step {x:g}", y, "cur") for x, y in pts], None, "", "Training loss per logged step"))
-        body.append('<div class="stats">' + "".join(page.stat(n) for n in s["loss"] + s["step_time"]) + "</div>")
-    else:
-        body.append(f'<p class="empty">{NOT_MEASURED}: no per-step loss or step time from the Strix Halo on main.</p>')
-    if s["numbers"]:
-        body.append('<div class="stats">' + "".join(page.stat(n) for n in s["numbers"]) + "</div>")
-    body.append(apart(s["other_chip"], "trainer rows"))
-    body.append(awaiting(s) + "</section>")
-
-    # 6
-    s = secs["dropped"]
-    body.append(head(6, s))
-    if s["items"]:
-        rows = "".join(f"<tr><td>{esc(i['what'])}</td><td>{esc(i['verdict'])}</td><td>{esc(i['note'] or '')}</td>"
-                       f"<td>{page.cite(i)}</td></tr>" for i in s["items"])
-        body.append(f'<div class="wrap"><table><tr><th>Tried</th><th>Verdict</th><th>Note</th><th>Source</th></tr>'
-                    f"{rows}</table></div>")
-    if s["state"] != "measured":
-        body.append(f'<p class="empty">{NOT_MEASURED}: no experiment verdict is committed; the lab ledger '
-                    "(lab/state/ledger.jsonl) stays on the lab machine.</p>")
+        key = empty("no batch-1 decode row from the Strix Halo, or no chip sheet, is on main.")
+    more = notes(s["notes"]) + page.coming(s)
+    body.append(_body(viz, key, more))
+    body.append(page.nums([*s["inputs"], s["ceiling"], *s["shares"], *s["achieved"], *s["priors"]],
+                          "The numbers behind this chart"))
+    body.append(page.apart(s["other_chip"], "The teacher's batch-1 decode on a different card and memory; not "
+                                            "comparable bar for bar with the Strix Halo."))
     body.append("</section>")
 
-    srcs = "".join(f"<tr><td><a href=\"{esc(href(page.page_dir, root, x['file']))}\">{esc(x['file'])}</a></td>"
-                   f"<td>{x['lines']}</td><td><code>{esc(x['sha256'][:12])}</code></td></tr>" for x in pack["sources"])
+    # 2: the batching frontier
+    s = secs["frontier"]
+    body.append(head(2, s))
+    viz = key = more = ""
+    shown: list[dict[str, Any]] = []
+    if s["energy"]:
+        first = s["energy"][0]
+        series = [{"points": [(p["batch"], p["number"]["value"]) for p in sw["points"]], "line": f"l{i + 1}",
+                   "fill": f"c{i + 1}", "label": sw["label"]} for i, sw in enumerate(s["energy"][:2])]
+        ratio = s["ratios"][0] if s["ratios"] else None
+        last = first["points"][-1]
+        note = (f"{ratio['value']:g} times less", f"energy per token at {last['batch']:g} streams (dashed)") if ratio else None
+        chart = svg_xy(series, xlog=True, xname="concurrent streams", yname="joules per token",
+                       yfmt=lambda v: f"{fmt(v)} J", title="Joules per token against concurrent streams",
+                       ref=last["number"]["value"], note=note)
+        legend = ""
+        if len(series) > 1:
+            legend = '<ul class="legend">' + "".join(f'<li><span class="sw c{i + 1}"></span>{esc(x["label"])}</li>'
+                                                     for i, x in enumerate(series)) + "</ul>"
+        energy_numbers = [p["number"] for sw in s["energy"][:2] for p in sw["points"]]
+        viz = _figure(chart + legend, page.measured_on(energy_numbers))
+        shown += [*s["ratios"], *s["more_work"], *energy_numbers]
+        if ratio:
+            key = page.key(f"{ratio['value']:g}×", f"less energy for each token at {last['batch']:g} streams than "
+                           f"at {first['points'][0]['batch']:g}: {fmt(first['points'][0]['number']['value'])} J down "
+                           f"to {fmt(last['number']['value'])} J", ratio)
+        words = mate(first, s["throughput"])
+        if words:
+            numbers = [p["number"] for p in words["points"]]
+            more += _figure(svg_columns([(p["batch"], p["number"]["value"]) for p in words["points"]],
+                                        xname="concurrent streams", yname="tokens per second, all streams together",
+                                        title="Tokens per second across all streams together"),
+                            page.measured_on(numbers))
+            shown += numbers
+        watts = mate(first, s["power"])
+        shown += [p["number"] for p in watts["points"]] if watts else []
+        for extra in s["throughput"] + s["power"]:
+            shown += [p["number"] for p in extra["points"] if p["number"] not in shown]
+        for extra in s["energy"][2:]:
+            shown += [p["number"] for p in extra["points"]]
+        shown += s["changes"]
+    else:
+        key = empty("no stream-count sweep with joules per token from the Strix Halo is on main.")
+    if s["pending_files"]:
+        more += (f'<p class="note">Committed and not charted here: {esc(", ".join(s["pending_files"]))}; its headline '
+                 "rows are in the list below when the metrics file carries them.</p>")
+    more += page.coming(s)
+    body.append(_body(viz, key, more))
+    body.append(page.nums(shown, "The numbers behind these charts"))
+    charts: dict[str, str] = {}
+    for sw in s["other_chip"]:
+        if sw["metric"].endswith(".joules_per_token") and sw["chip_label"] not in charts:
+            pts = [(p["batch"], p["number"]["value"]) for p in sw["points"]]
+            r = next((x for x in s["other_ratios"] if x["inputs"][0] == sw["points"][0]["number"]["id"]), None)
+            note = (f"{r['value']:g} times less", f"at {pts[-1][0]:g} streams, on this other chip") if r else None
+            charts[sw["chip_label"]] = _figure(
+                svg_xy([{"points": pts, "line": "lg", "fill": "cg"}], xlog=True, xname="concurrent streams",
+                       yname="joules per token", yfmt=lambda v: f"{fmt(v)} J", height=190, note=note,
+                       title=f"Joules per token against concurrent streams on {sw['chip_label']}"),
+                page.measured_on([p["number"] for p in sw["points"]]))
+    body.append(page.apart([*s["other_ratios"], *(p["number"] for o in s["other_chip"] for p in o["points"])],
+                           "The same sweep on another chip, drawn on its own axes.", charts))
+    body.append("</section>")
+
+    # 3: where a decode step goes
+    s = secs["step"]
+    body.append(head(3, s))
+    if s["state"] == "measured" and not s["other_chip"]:
+        parts = [p for b in s["batches"] for p in b["parts"]]
+        cells = "".join(
+            f'<tr><td><span class="sw {STACK_CLS[i]}"></span>{esc(label)}</td>'
+            + "".join(f'<td class="num">{esc(fmt(b["parts"][i]["value"], "ms"))}'
+                      + (f' ({b["parts"][i]["value"] / b["step_ms"]:.0%})' if b["parts"][i]["value"] is not None
+                         and b["step_ms"] else "") + "</td>" for b in s["batches"]) + "</tr>"
+            for i, (_, label) in enumerate(STEP_BUCKETS))
+        heads = "".join(f"<th>batch {esc(b['batch'])}</th>" for b in s["batches"])
+        table = f'<div class="wrap"><table><tr><th>Where the step goes</th>{heads}</tr>{cells}</table></div>'
+        viz = _figure(svg_stack(s["batches"], "Milliseconds of one decode step by where the time goes") + table,
+                      page.measured_on(parts))
+        key = page.key(f"{s['top']['value']:.0f}%", s["top"]["label"], s["top"]) if s.get("top") else ""
+        body.append(_body(viz, key, page.coming(s)))
+        body.append(page.nums(parts, "The numbers behind this chart"))
+    else:
+        body.append(_body("", empty((s.get("why") or s["reading"]) + "."), page.coming(s)))
+        if s["other_chip"]:
+            body.append(page.apart([p for b in s["other_chip"] for p in b["parts"]],
+                                   "A decode profile from another chip."))
+    body.append("</section>")
+
+    # 4: engines side by side
+    s = secs["engines"]
+    body.append(head(4, s))
+    bars = []
+    if s["engines"] or s["not_measured"]:
+        bars.append({"header": "Measured on the Strix Halo, best batch-1 row"})
+        bars += [{"label": e["name"], "sub": e["best"]["label"], "value": e["best"]["value"], "cls": "c1"}
+                 for e in s["engines"]]
+        bars += [{"label": ENGINE_NAMES.get(n, n), "value": None, "cls": "c1"} for n in s["not_measured"]]
+    if s["priors"]:
+        bars.append({"header": "Public prior: other people's runs, not ours"})
+        bars += [{"label": PRIOR_NAMES.get(p["backend"], p["backend"]), "value": p["value"], "cls": "cg"}
+                 for p in s["priors"]]
+    caption = page.measured_on([e["best"] for e in s["engines"]], "Blue bars: measured on")
+    if s["priors"]:
+        caption += f" Gray bars: the public prior, never a measurement of ours ({page.sources(s['priors'])})."
+    viz = _figure(svg_bars(bars, None, "tok/s", "Best batch-1 decode per engine on the Strix Halo, with the public "
+                                                 "prior beside it"), caption)
+    key = more = ""
+    if len(s["engines"]) >= 2:
+        order = sorted(s["engines"], key=lambda e: -e["best"]["value"])
+        key = page.key(f"{fmt(order[0]['best']['value'])} tok/s", f"{order[0]['name']}, the fastest engine measured "
+                       "on this chip at batch 1", order[0]["best"])
+        more += notes([f"The rows differ in {d['what']}: "
+                       + "; ".join(f"{ENGINE_NAMES.get(k, k)} {v}" for k, v in d["by_engine"].items()) + "."
+                       for d in s["differences"]])
+    elif s["engines"]:
+        only = s["engines"][0]
+        key = page.key(f"{fmt(only['best']['value'])} tok/s", f"{only['name']}, the one engine measured on this "
+                       "chip so far", only["best"])
+    if s["not_measured"]:
+        more += empty(", ".join(ENGINE_NAMES.get(n, n) for n in s["not_measured"])
+                      + ": no committed row from the Strix Halo for this engine.")
+    more += page.coming(s)
+    body.append(_body(viz if bars else "", key, more))
+    body.append(page.nums([n for e in s["engines"] for n in e["rows"]], "Every engine row on this chip"))
+    body.append("</section>")
+
+    # 5: the fine-tune run
+    s = secs["finetune"]
+    body.append(head(5, s))
+    viz = key = more = ""
+    if s["loss"]:
+        pts = [(float(n["conditions"]["step"]), n["value"]) for n in s["loss"]]
+        viz = _figure(svg_xy([{"points": pts, "line": "l1", "fill": "c1"}], xlog=False, xname="training step",
+                             yname="training loss", yfmt=fmt, title="Training loss at each logged step"),
+                      page.measured_on(s["loss"]))
+        key = page.key(f"{fmt(pts[0][1])} to {fmt(pts[-1][1])}", f"training loss, first to last of {len(pts)} "
+                       "logged steps", s["loss"][-1])
+        if len(s["step_time"]) > 1 and all(n["unit"] == "ms" for n in s["step_time"]):
+            times = [(float(n["conditions"]["step"]), n["value"] / 1000) for n in s["step_time"]]
+            more += _figure(svg_xy([{"points": times, "line": "l1", "fill": "c1"}], xlog=False, xname="training step",
+                                   yname="seconds per step", yfmt=lambda v: f"{fmt(v)} s", height=190,
+                                   title="Seconds per training step"), page.measured_on(s["step_time"]))
+    else:
+        key = empty("no per-step loss or step time from the Strix Halo is on main.")
+    more += page.coming(s)
+    body.append(_body(viz, key, more))
+    body.append(page.nums([*([s["median_step"]] if s["median_step"] else []), *s["numbers"], *s["loss"],
+                           *s["step_time"]], "The numbers behind this run"))
+    body.append(page.apart(s["other_chip"], "Trainer rows from another chip; a different card, so not a baseline "
+                                            "for the Strix Halo run."))
+    body.append("</section>")
+
+    # 6: tried and dropped
+    s = secs["dropped"]
+    body.append(head(6, s))
+    groups = (("measured", "Measured, with a recorded verdict"), ("ruled out", "Ruled out before any run"),
+              ("record", "On record"))
+    for kind, title in groups:
+        items = [i for i in s["items"] if i["kind"] == kind]
+        if kind == "measured" and not items:
+            body.append(f"<h3>{esc(title)}</h3>" + empty("no experiment verdict is committed; the lab ledger "
+                                                         "(lab/state/ledger.jsonl) stays on the lab machine."))
+        if items:
+            lis = "".join(f'<li><div><div class="k">{esc(i["what"])}</div>'
+                          + (f'<div class="verdict">{esc(i["verdict"])}</div>' if kind != "ruled out" else "")
+                          + f'</div><div><div class="why">{esc(i["note"] or "")}</div>{page.cite(i)}</div></li>'
+                          for i in items)
+            body.append(f'<h3>{esc(title)} ({len(items)})</h3><ul class="items">{lis}</ul>')
+    body.append("</section>")
+
+    toc = "".join(f'<li><a href="#{s["id"]}"><b>{i}</b>{esc(short)}<span class="st st-{esc(s["state"])}">'
+                  f'{esc(STATE_WORDS[s["state"]])}</span></a></li>'
+                  for i, (s, short) in enumerate(zip(pack["sections"], ("Ceiling", "Batching", "Decode step", "Engines",
+                                                                        "Fine-tune", "Dropped")), 1))
+    as_of = (pack["data_as_of"] or "unknown").replace("T", " ").replace("Z", " UTC")
+    sheet = next((x["file"] for x in pack["sources"] if x.get("role") == "demo numbers sheet"), None)
+    srcs = "".join(f"<tr><td>{page.link(x['file'])}</td><td>{esc(x['role'])}</td><td class=\"num\">{x['lines']}</td>"
+                   f"<td><code>{esc(x['sha256'][:12])}</code></td></tr>" for x in pack["sources"])
     return (
         "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">"
         "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
@@ -941,12 +1570,16 @@ def render_html(pack: dict[str, Any], root: Path = REPO, page_dir: Path | None =
         'Auto</label> <label><input type="radio" name="t" id="night"> Night</label> '
         '<label><input type="radio" name="t" id="day"> Day</label></div>'
         f"<h1>{esc(pack['title'])}</h1>"
-        f'<p class="lede">Every number below is read from a file committed in this repository and links to its line. '
-        f"Rows from the old chip (R9700, gfx1201) are kept apart; a measurement that does not exist yet says "
-        f"&ldquo;{NOT_MEASURED}&rdquo;. Data as of {esc(pack['data_as_of'] or 'unknown')}.</p>"
+        f'<p class="lede">Every number below is read from a file committed in this repository and names its file and '
+        f"line. The lab's chip is the {esc(CHIP_NAME)}; rows from any other chip (the R9700 the lab left, the A100 "
+        f"reference) sit in dashed panels of their own. A measurement that does not exist yet says "
+        f"&ldquo;{NOT_MEASURED}&rdquo;. Newest row: {esc(as_of)}.</p>"
+        f'<ul class="toc">{toc}</ul>'
         + "".join(body)
-        + f'<footer><h2>Sources</h2><div class="wrap"><table><tr><th>File</th><th>Lines</th><th>sha256</th></tr>{srcs}'
-          "</table></div><p>Built by <code>python -m lab report</code>; the data pack beside this page is "
+        + f'<footer><h2>Sources</h2><div class="wrap"><table><tr><th>File</th><th>Used for</th><th>Lines</th>'
+          f"<th>sha256</th></tr>{srcs}</table></div>"
+        + (f"<p>The slide sentences that use these numbers are in {page.link(sheet)}.</p>" if sheet else "")
+        + "<p>Built by <code>python -m lab report</code>; the data pack beside this page is "
           f"<code>{PACK_NAME}</code> ({FORMAT}).</p></footer></main></body></html>\n")
 
 

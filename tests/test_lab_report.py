@@ -32,6 +32,18 @@ def section(pack: dict, sid: str) -> dict:
     return next(s for s in pack["sections"] if s["id"] == sid)
 
 
+def links_resolve(page: str, folder: Path) -> None:
+    """Every link on the page opens from disk: a file link reaches a file, an in-page link an element's id."""
+    ids = set(re.findall(r'\bid="([^"]+)"', page))
+    hrefs = re.findall(r'href="([^"]+)"', page)
+    assert hrefs
+    for h in hrefs:
+        if h.startswith("#"):
+            assert h[1:] in ids, h
+        else:
+            assert (folder / h).resolve().is_file(), h
+
+
 def test_the_fixture_builds_every_section_from_its_rows():
     pack = report.build_pack(FIXTURE)
     assert pack["format"] == report.FORMAT
@@ -93,10 +105,7 @@ def test_the_page_has_no_external_reference_and_its_links_resolve(tmp_path):
     page = Path(result["html"]).read_text(encoding="utf-8")
     assert not EXTERNAL.search(page)
     assert page.startswith("<!doctype html>") and 'name="viewport"' in page
-    hrefs = re.findall(r'href="([^"]+)"', page)
-    assert hrefs
-    for h in hrefs:
-        assert (tmp_path / "out" / h).resolve().is_file(), h
+    links_resolve(page, tmp_path / "out")
     assert "metrics.jsonl:2" in page and "metrics.jsonl:1" in page  # the old-chip row is shown, apart
     assert page.index("metrics.jsonl:1<") > page.index("Other chip, shown apart: R9700 (gfx1201)")
     assert page.index("metrics.jsonl:8<") > page.index("Other chip, shown apart: NVIDIA A100-SXM4-40GB")
@@ -115,8 +124,7 @@ def test_the_page_built_from_this_repository_stays_self_contained(tmp_path):
     result = report.write(REPO_ROOT, tmp_path / report.OUT_DIR)
     page = Path(result["html"]).read_text(encoding="utf-8")
     assert not EXTERNAL.search(page)
-    for h in re.findall(r'href="([^"]+)"', page):
-        assert (Path(result["html"]).parent / h).resolve().is_file(), h
+    links_resolve(page, Path(result["html"]).parent)
     pack = json.loads(Path(result["pack"]).read_text(encoding="utf-8"))
     for n in pack["numbers"]:
         src = n["source"]
