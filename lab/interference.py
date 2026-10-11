@@ -146,14 +146,14 @@ def _pct(new: float | None, old: float | None) -> float | None:
 def slot_estimate(*, decode_s: float = DEFAULT_DECODE_S, steps: int = DEFAULT_STEPS,
                   train_batch: int = DEFAULT_TRAIN_BATCH, grad_accum: int = DEFAULT_GRAD_ACCUM,
                   cold: bool = True) -> dict[str, Any]:
-    """The slot's minutes, part by part, from SLOT_FACTS. The both arm is costed as the train arm at half speed,
-    the worst a shared chip should do before sharing stops paying."""
+    """The slot's minutes, part by part, from SLOT_FACTS. The both arm is costed as the train arm with its steps
+    taking half as long again; a slower shared run uses the one 15-minute extension."""
     engine = SLOT_FACTS["engine_cold_s" if cold else "engine_warm_s"]["value"]
     rate = SLOT_FACTS["train_examples_per_s"]["value"]
     load = SLOT_FACTS["train_load_s"]["value"]
     train_s = steps * train_batch * grad_accum / rate
     parts = {"paste_and_gate_s": 60.0, "server_start_s": engine, "warmup_s": 60.0, "decode_arm_s": decode_s,
-             "train_arm_s": load + train_s, "both_arm_s": load + 2.0 * train_s, "stop_and_bundle_s": 60.0}
+             "train_arm_s": load + train_s, "both_arm_s": load + 1.5 * train_s, "stop_and_bundle_s": 60.0}
     total = sum(parts.values())
     minutes = int(-(-total // 60))
     slot = 15 if minutes <= 15 else 30 if minutes <= 30 else 60
@@ -1023,8 +1023,8 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--prompts", default=None)
     run.add_argument("--python", default="python3")
     run.add_argument("--serve-dir", default=None)
-    run.add_argument("--serve-cmd", nargs="+", default=None, help=argparse.SUPPRESS)
-    run.add_argument("--train-cmd", nargs="+", default=None, help=argparse.SUPPRESS)
+    run.add_argument("--serve-cmd", type=json.loads, default=None, help=argparse.SUPPRESS)   # tests: a JSON argv
+    run.add_argument("--train-cmd", type=json.loads, default=None, help=argparse.SUPPRESS)
     collect = sub.add_parser("collect", help="the data file, its table and the ledger rows from the pod's output")
     collect.add_argument("input", help="the saved terminal output (or the result_bundle.b64)")
     collect.add_argument("--out", default=None, help=f"default {DATA_DIR.relative_to(REPO)}")
