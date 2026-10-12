@@ -1,0 +1,1204 @@
+{
+  "rule": "lab/L16V2_RULES.md, amendment 2 (the search, the finalists and the choice), as committed before any trial had a result",
+  "dataset_id": "tool-calling-v2",
+  "split_sha256": "4776164b103cd9af8ffb877243cb3694cc7c75b22c7e81f78e5ff64351924377",
+  "validation_examples": 126,
+  "validation_groups": 13,
+  "base_validation_agreement": {
+    "correct": 69,
+    "n": 126,
+    "rate": 0.5476190476190477,
+    "names": 121,
+    "parsed": 126,
+    "seconds": 87.8,
+    "groups": 13,
+    "rule_sha256": "c49f6ffbeb7d15413aa3a24ea6fcd245a9bb0c67b53fd9db525c93782ff60740",
+    "split_sha256": "4776164b103cd9af8ffb877243cb3694cc7c75b22c7e81f78e5ff64351924377"
+  },
+  "decode": "transformers greedy, bf16 weights with the adapter attached, max 512 new tokens, prompts of equal token length batched (no padding), on the Colab A100 that trained the adapter",
+  "full_length_runs": [
+    {
+      "name": "r01-lr0.0001-rank16-drop0.05",
+      "place": 1,
+      "from_trial": null,
+      "trial_kind": null,
+      "trial_value": null,
+      "lr": 0.0001,
+      "rank": 16,
+      "alpha": 32,
+      "dropout": 0.05,
+      "warmup_ratio": 0.1,
+      "steps": 62,
+      "passes": 992,
+      "best_step": 62,
+      "best_passes": 992,
+      "best_val": 0.008126460015773773,
+      "final_val": 0.008126460015773773,
+      "wall_s": 660.0,
+      "worker": "l16v2-a100",
+      "val_agreement": {
+        "correct": 110,
+        "n": 126,
+        "rate": 0.873015873015873,
+        "names": 126,
+        "parsed": 126,
+        "seconds": 159.0,
+        "groups": 13,
+        "rule_sha256": "c49f6ffbeb7d15413aa3a24ea6fcd245a9bb0c67b53fd9db525c93782ff60740",
+        "split_sha256": "4776164b103cd9af8ffb877243cb3694cc7c75b22c7e81f78e5ff64351924377"
+      },
+      "adapter_path": "C:/Users/hackathon/Code/Knighthacks26/work/L16v2-out/colab/x-fallback-r01/adapter",
+      "adapter_sha256": "9806d7771ed6d4cf675e79211c59e99c4fde369c11ca7a2a8b0770759f70dec6",
+      "product_sha256": "99538d1342349217d475a070f418263b4b6106f61d2d699f4fe0db4930db0762",
+      "device": "NVIDIA A100-SXM4-40GB (NVIDIA A100-SXM4-40GB)",
+      "settings": null
+    },
+    {
+      "name": "final2-t12-lr0.000428-rank4-a8-drop0.136-warm0.009",
+      "place": 2,
+      "from_trial": 12,
+      "trial_kind": "model",
+      "trial_value": 0.014204905368387699,
+      "lr": 0.00042762713469811294,
+      "rank": 4,
+      "alpha": 8,
+      "dropout": 0.13597838737316514,
+      "warmup_ratio": 0.009291998467795798,
+      "steps": 48,
+      "passes": 768,
+      "best_step": 32,
+      "best_passes": 512,
+      "best_val": 0.009839565493166447,
+      "final_val": 0.01031906995922327,
+      "wall_s": 528.9,
+      "worker": "l16v2-a100",
+      "val_agreement": {
+        "correct": 113,
+        "n": 126,
+        "rate": 0.8968253968253969,
+        "names": 126,
+        "parsed": 126,
+        "seconds": 158.5,
+        "groups": 13,
+        "rule_sha256": "c49f6ffbeb7d15413aa3a24ea6fcd245a9bb0c67b53fd9db525c93782ff60740",
+        "split_sha256": "4776164b103cd9af8ffb877243cb3694cc7c75b22c7e81f78e5ff64351924377"
+      },
+      "adapter_path": "C:/Users/hackathon/Code/Knighthacks26/work/L16v2-out/colab/runs/final2-t12-lr0.000428-rank4-a8-drop0.136-warm0.009/adapter",
+      "adapter_sha256": "80bad80b3f8b5203094eee98451b0f972dc6c6e1cd8186d826bd84d221801c13",
+      "product_sha256": "d1253d8cd9fee564e5f0319d934144e383d16cb7b92b811b559282fa94a82d01",
+      "device": "NVIDIA A100-SXM4-40GB (NVIDIA A100-SXM4-40GB)",
+      "settings": "{\"aotriton_experimental\":false,\"blas_backend\":\"default\",\"causal_conv1d_kernel\":\"torch\",\"gdn_kernel\":\"torch\",\"gradient_accumulation_steps\":4,\"gradient_checkpointing\":true,\"group_by_length\":false,\"packing\":false,\"per_device_train_batch_size\":4,\"torch_compile\":false,\"tunableop\":false}"
+    },
+    {
+      "name": "final3-t09-lr0.000248-rank16-a32-drop0.084-warm0.041",
+      "place": 3,
+      "from_trial": 9,
+      "trial_kind": "model",
+      "trial_value": 0.014956917613744736,
+      "lr": 0.00024836150872989204,
+      "rank": 16,
+      "alpha": 32,
+      "dropout": 0.08429904401233239,
+      "warmup_ratio": 0.04139199829099734,
+      "steps": 48,
+      "passes": 768,
+      "best_step": 32,
+      "best_passes": 512,
+      "best_val": 0.010702050291001797,
+      "final_val": 0.011196743696928024,
+      "wall_s": 534.1,
+      "worker": "l16v2-a100-b",
+      "val_agreement": {
+        "correct": 111,
+        "n": 126,
+        "rate": 0.8809523809523809,
+        "names": 126,
+        "parsed": 126,
+        "seconds": 160.0,
+        "groups": 13,
+        "rule_sha256": "c49f6ffbeb7d15413aa3a24ea6fcd245a9bb0c67b53fd9db525c93782ff60740",
+        "split_sha256": "4776164b103cd9af8ffb877243cb3694cc7c75b22c7e81f78e5ff64351924377"
+      },
+      "adapter_path": "C:/Users/hackathon/Code/Knighthacks26/work/L16v2-out/colab/runs/final3-t09-lr0.000248-rank16-a32-drop0.084-warm0.041/adapter",
+      "adapter_sha256": "41c5f3ad5c768f80e8dd8e5f57849917d4533edfbf06f4d0278d10cc3c6c04be",
+      "product_sha256": "d64f17569343625a50ce2a7c70ec7118f13bd9ee26da6b6163ca25c689279ec8",
+      "device": "NVIDIA A100-SXM4-80GB (NVIDIA A100-SXM4-80GB)",
+      "settings": "{\"aotriton_experimental\":false,\"blas_backend\":\"default\",\"causal_conv1d_kernel\":\"torch\",\"gdn_kernel\":\"torch\",\"gradient_accumulation_steps\":4,\"gradient_checkpointing\":true,\"group_by_length\":false,\"packing\":false,\"per_device_train_batch_size\":4,\"torch_compile\":false,\"tunableop\":false}"
+    }
+  ],
+  "top": [
+    {
+      "name": "r01-lr0.0001-rank16-drop0.05",
+      "best_val": 0.008126460015773773,
+      "val_agreement": {
+        "correct": 110,
+        "n": 126,
+        "rate": 0.873015873015873,
+        "names": 126,
+        "parsed": 126,
+        "seconds": 159.0,
+        "groups": 13,
+        "rule_sha256": "c49f6ffbeb7d15413aa3a24ea6fcd245a9bb0c67b53fd9db525c93782ff60740",
+        "split_sha256": "4776164b103cd9af8ffb877243cb3694cc7c75b22c7e81f78e5ff64351924377"
+      }
+    },
+    {
+      "name": "final2-t12-lr0.000428-rank4-a8-drop0.136-warm0.009",
+      "best_val": 0.009839565493166447,
+      "val_agreement": {
+        "correct": 113,
+        "n": 126,
+        "rate": 0.8968253968253969,
+        "names": 126,
+        "parsed": 126,
+        "seconds": 158.5,
+        "groups": 13,
+        "rule_sha256": "c49f6ffbeb7d15413aa3a24ea6fcd245a9bb0c67b53fd9db525c93782ff60740",
+        "split_sha256": "4776164b103cd9af8ffb877243cb3694cc7c75b22c7e81f78e5ff64351924377"
+      }
+    },
+    {
+      "name": "final3-t09-lr0.000248-rank16-a32-drop0.084-warm0.041",
+      "best_val": 0.010702050291001797,
+      "val_agreement": {
+        "correct": 111,
+        "n": 126,
+        "rate": 0.8809523809523809,
+        "names": 126,
+        "parsed": 126,
+        "seconds": 160.0,
+        "groups": 13,
+        "rule_sha256": "c49f6ffbeb7d15413aa3a24ea6fcd245a9bb0c67b53fd9db525c93782ff60740",
+        "split_sha256": "4776164b103cd9af8ffb877243cb3694cc7c75b22c7e81f78e5ff64351924377"
+      }
+    }
+  ],
+  "chosen": {
+    "name": "x04-repeat-seed43-of-x02-lr0.0002-rank32-a64-drop",
+    "lr": 0.0002,
+    "rank": 32,
+    "alpha": 64,
+    "dropout": 0.05,
+    "warmup_ratio": 0.05,
+    "max_steps": 62,
+    "best_step": 62,
+    "best_passes": 992,
+    "best_val": 0.00675625167787075,
+    "final_val": 0.00675625167787075,
+    "passes": 992,
+    "wall_s": 729.7,
+    "val_agreement": {
+      "correct": 117,
+      "n": 126,
+      "rate": 0.9285714285714286,
+      "names": 126,
+      "parsed": 126,
+      "seconds": 154.5,
+      "groups": 13,
+      "rule_sha256": "c49f6ffbeb7d15413aa3a24ea6fcd245a9bb0c67b53fd9db525c93782ff60740",
+      "split_sha256": "4776164b103cd9af8ffb877243cb3694cc7c75b22c7e81f78e5ff64351924377"
+    },
+    "worker": "l16v2-a100-b",
+    "from_trial": 12,
+    "trial_kind": "model",
+    "adapter_path": "C:/Users/hackathon/Code/Knighthacks26/work/L16v2-out/colab/runs/x04-repeat-seed43-of-x02-lr0.0002-rank32-a64-drop/adapter",
+    "adapter_sha256": "4938fbddfc40f55ab372c4beeeb0c83e26963fa6b90e8430350c2828a8566c8c",
+    "seed": 43,
+    "mean_val_agreement_over_seeds": 116.0,
+    "seeds_run": 2
+  },
+  "differences_a100_vs_pod": "none in the recipe: batch 4 by accumulation 4, gradient checkpointing and the torch fallback kernels on both; the chip and the torch build differ (CUDA here, ROCm there)",
+  "recipe_flags": [
+    "--max-steps",
+    "62",
+    "--stop-step",
+    "62",
+    "--lr",
+    "0.0002",
+    "--rank",
+    "32",
+    "--alpha",
+    "64",
+    "--dropout",
+    "0.0500",
+    "--warmup-ratio",
+    "0.0500",
+    "--batch",
+    "4",
+    "--grad-accum",
+    "4",
+    "--seed",
+    "43"
+  ],
+  "made_utc": "2026-10-11T10:42:44Z",
+  "previous_choice": "final2-t12-lr0.000428-rank4-a8-drop0.136-warm0.009",
+  "extended_search": {
+    "runs": [
+      {
+        "name": "r01-lr0.0001-rank16-drop0.05",
+        "place": 1,
+        "from_trial": null,
+        "trial_kind": null,
+        "trial_value": null,
+        "lr": 0.0001,
+        "rank": 16,
+        "alpha": 32,
+        "dropout": 0.05,
+        "warmup_ratio": 0.1,
+        "steps": 62,
+        "passes": 992,
+        "best_step": 62,
+        "best_passes": 992,
+        "best_val": 0.008126460015773773,
+        "final_val": 0.008126460015773773,
+        "wall_s": 660.0,
+        "worker": "l16v2-a100",
+        "val_agreement": {
+          "correct": 110,
+          "n": 126,
+          "rate": 0.873015873015873,
+          "names": 126,
+          "parsed": 126,
+          "seconds": 159.0,
+          "groups": 13,
+          "rule_sha256": "c49f6ffbeb7d15413aa3a24ea6fcd245a9bb0c67b53fd9db525c93782ff60740",
+          "split_sha256": "4776164b103cd9af8ffb877243cb3694cc7c75b22c7e81f78e5ff64351924377"
+        },
+        "adapter_path": "C:/Users/hackathon/Code/Knighthacks26/work/L16v2-out/colab/x-fallback-r01/adapter",
+        "adapter_sha256": "9806d7771ed6d4cf675e79211c59e99c4fde369c11ca7a2a8b0770759f70dec6",
+        "product_sha256": "99538d1342349217d475a070f418263b4b6106f61d2d699f4fe0db4930db0762",
+        "device": "NVIDIA A100-SXM4-40GB (NVIDIA A100-SXM4-40GB)",
+        "settings": null,
+        "seed": 42,
+        "kind": "earlier",
+        "agree": 110,
+        "number": 0,
+        "ok": true
+      },
+      {
+        "name": "final2-t12-lr0.000428-rank4-a8-drop0.136-warm0.009",
+        "place": 2,
+        "from_trial": 12,
+        "trial_kind": "model",
+        "trial_value": 0.014204905368387699,
+        "lr": 0.00042762713469811294,
+        "rank": 4,
+        "alpha": 8,
+        "dropout": 0.13597838737316514,
+        "warmup_ratio": 0.009291998467795798,
+        "steps": 48,
+        "passes": 768,
+        "best_step": 32,
+        "best_passes": 512,
+        "best_val": 0.009839565493166447,
+        "final_val": 0.01031906995922327,
+        "wall_s": 528.9,
+        "worker": "l16v2-a100",
+        "val_agreement": {
+          "correct": 113,
+          "n": 126,
+          "rate": 0.8968253968253969,
+          "names": 126,
+          "parsed": 126,
+          "seconds": 158.5,
+          "groups": 13,
+          "rule_sha256": "c49f6ffbeb7d15413aa3a24ea6fcd245a9bb0c67b53fd9db525c93782ff60740",
+          "split_sha256": "4776164b103cd9af8ffb877243cb3694cc7c75b22c7e81f78e5ff64351924377"
+        },
+        "adapter_path": "C:/Users/hackathon/Code/Knighthacks26/work/L16v2-out/colab/runs/final2-t12-lr0.000428-rank4-a8-drop0.136-warm0.009/adapter",
+        "adapter_sha256": "80bad80b3f8b5203094eee98451b0f972dc6c6e1cd8186d826bd84d221801c13",
+        "product_sha256": "d1253d8cd9fee564e5f0319d934144e383d16cb7b92b811b559282fa94a82d01",
+        "device": "NVIDIA A100-SXM4-40GB (NVIDIA A100-SXM4-40GB)",
+        "settings": "{\"aotriton_experimental\":false,\"blas_backend\":\"default\",\"causal_conv1d_kernel\":\"torch\",\"gdn_kernel\":\"torch\",\"gradient_accumulation_steps\":4,\"gradient_checkpointing\":true,\"group_by_length\":false,\"packing\":false,\"per_device_train_batch_size\":4,\"torch_compile\":false,\"tunableop\":false}",
+        "seed": 42,
+        "kind": "earlier",
+        "agree": 113,
+        "number": 0,
+        "ok": true
+      },
+      {
+        "name": "final3-t09-lr0.000248-rank16-a32-drop0.084-warm0.041",
+        "place": 3,
+        "from_trial": 9,
+        "trial_kind": "model",
+        "trial_value": 0.014956917613744736,
+        "lr": 0.00024836150872989204,
+        "rank": 16,
+        "alpha": 32,
+        "dropout": 0.08429904401233239,
+        "warmup_ratio": 0.04139199829099734,
+        "steps": 48,
+        "passes": 768,
+        "best_step": 32,
+        "best_passes": 512,
+        "best_val": 0.010702050291001797,
+        "final_val": 0.011196743696928024,
+        "wall_s": 534.1,
+        "worker": "l16v2-a100-b",
+        "val_agreement": {
+          "correct": 111,
+          "n": 126,
+          "rate": 0.8809523809523809,
+          "names": 126,
+          "parsed": 126,
+          "seconds": 160.0,
+          "groups": 13,
+          "rule_sha256": "c49f6ffbeb7d15413aa3a24ea6fcd245a9bb0c67b53fd9db525c93782ff60740",
+          "split_sha256": "4776164b103cd9af8ffb877243cb3694cc7c75b22c7e81f78e5ff64351924377"
+        },
+        "adapter_path": "C:/Users/hackathon/Code/Knighthacks26/work/L16v2-out/colab/runs/final3-t09-lr0.000248-rank16-a32-drop0.084-warm0.041/adapter",
+        "adapter_sha256": "41c5f3ad5c768f80e8dd8e5f57849917d4533edfbf06f4d0278d10cc3c6c04be",
+        "product_sha256": "d64f17569343625a50ce2a7c70ec7118f13bd9ee26da6b6163ca25c689279ec8",
+        "device": "NVIDIA A100-SXM4-80GB (NVIDIA A100-SXM4-80GB)",
+        "settings": "{\"aotriton_experimental\":false,\"blas_backend\":\"default\",\"causal_conv1d_kernel\":\"torch\",\"gdn_kernel\":\"torch\",\"gradient_accumulation_steps\":4,\"gradient_checkpointing\":true,\"group_by_length\":false,\"packing\":false,\"per_device_train_batch_size\":4,\"torch_compile\":false,\"tunableop\":false}",
+        "seed": 42,
+        "kind": "earlier",
+        "agree": 111,
+        "number": 0,
+        "ok": true
+      },
+      {
+        "name": "ext01-repeat-choice-seed43",
+        "kind": "repeat",
+        "seed": 43,
+        "repeat_of": "final2-t12-lr0.000428-rank4-a8-drop0.136-warm0.009",
+        "why": "the current choice",
+        "lr": 0.00042762713469811294,
+        "rank": 4,
+        "alpha": 8,
+        "dropout": 0.13597838737316514,
+        "warmup_ratio": 0.009291998467795798,
+        "number": 1,
+        "seen": 3,
+        "worker": "l16v2-a100",
+        "max_steps": 62,
+        "full_length": true,
+        "wall_s": 677.5,
+        "step_s": 6.81,
+        "evaluations": [
+          {
+            "step": 8,
+            "eval_loss": 0.023285120725631714
+          },
+          {
+            "step": 16,
+            "eval_loss": 0.012299166060984135
+          },
+          {
+            "step": 24,
+            "eval_loss": 0.01241226214915514
+          },
+          {
+            "step": 32,
+            "eval_loss": 0.009509035386145115
+          },
+          {
+            "step": 40,
+            "eval_loss": 0.009162232279777527
+          },
+          {
+            "step": 48,
+            "eval_loss": 0.008063225075602531
+          },
+          {
+            "step": 56,
+            "eval_loss": 0.007277301978319883
+          },
+          {
+            "step": 62,
+            "eval_loss": 0.007638480048626661
+          }
+        ],
+        "product": "run-ext01-repeat-choice-seed43.tar.gz",
+        "product_sha256": "5a4a3e7955471b2104963ba5c4ba34fc12ce43281c968be2291ef89658a7f304",
+        "local": "C:/Users/hackathon/Code/Knighthacks26/work/L16v2-out/colab/runs/ext01-repeat-choice-seed43",
+        "outcome": "trained",
+        "ok": true,
+        "error": null,
+        "steps": 62,
+        "passes": 992,
+        "val_at_12": null,
+        "val_at_24": 0.01241226214915514,
+        "best_step": 56,
+        "best_passes": 896,
+        "best_val": 0.007277301978319883,
+        "final_val": 0.007638480048626661,
+        "loss_last": 0.001077659660950303,
+        "train_s": 637.5441009850001,
+        "peak_mem_gb": 11.142318725585938,
+        "device": "NVIDIA A100-SXM4-40GB (NVIDIA A100-SXM4-40GB)",
+        "settings": "{\"aotriton_experimental\":false,\"blas_backend\":\"default\",\"causal_conv1d_kernel\":\"torch\",\"gdn_kernel\":\"torch\",\"gradient_accumulation_steps\":4,\"gradient_checkpointing\":true,\"group_by_length\":false,\"packing\":false,\"per_device_train_batch_size\":4,\"torch_compile\":false,\"tunableop\":false}",
+        "loss_head": "trl triton kernel",
+        "torch": "2.11.0+cu130",
+        "gradient_checkpointing": true,
+        "batch": 4,
+        "grad_accum": 4,
+        "val_agreement": {
+          "correct": 106,
+          "n": 126,
+          "rate": 0.8412698412698413,
+          "names": 126,
+          "parsed": 126,
+          "seconds": 145.5,
+          "groups": 13,
+          "rule_sha256": "c49f6ffbeb7d15413aa3a24ea6fcd245a9bb0c67b53fd9db525c93782ff60740",
+          "split_sha256": "4776164b103cd9af8ffb877243cb3694cc7c75b22c7e81f78e5ff64351924377"
+        },
+        "agree": 106
+      },
+      {
+        "kind": "edge",
+        "seed": 42,
+        "lr": 0.0002,
+        "rank": 32,
+        "alpha": 64,
+        "dropout": 0.05,
+        "warmup_ratio": 0.05,
+        "name": "x02-lr0.0002-rank32-a64-drop0.05-warm0.05",
+        "number": 2,
+        "seen": 3,
+        "worker": "l16v2-a100-b",
+        "max_steps": 62,
+        "full_length": true,
+        "wall_s": 848.2,
+        "step_s": 8.96,
+        "evaluations": [
+          {
+            "step": 8,
+            "eval_loss": 0.037341006100177765
+          },
+          {
+            "step": 16,
+            "eval_loss": 0.015032049268484116
+          },
+          {
+            "step": 24,
+            "eval_loss": 0.013050701469182968
+          },
+          {
+            "step": 32,
+            "eval_loss": 0.010684136301279068
+          },
+          {
+            "step": 40,
+            "eval_loss": 0.010487197898328304
+          },
+          {
+            "step": 48,
+            "eval_loss": 0.009032796137034893
+          },
+          {
+            "step": 56,
+            "eval_loss": 0.008701120503246784
+          },
+          {
+            "step": 62,
+            "eval_loss": 0.008678620681166649
+          }
+        ],
+        "product": "run-x02-lr0.0002-rank32-a64-drop0.05-warm0.05.tar.gz",
+        "product_sha256": "23b85261d9e8546ffa7e6ea5a4e50f5c5459dde07082ad243f98071901da7bf6",
+        "local": "C:/Users/hackathon/Code/Knighthacks26/work/L16v2-out/colab/runs/x02-lr0.0002-rank32-a64-drop0.05-warm0.05",
+        "outcome": "trained",
+        "ok": true,
+        "error": null,
+        "steps": 62,
+        "passes": 992,
+        "val_at_12": null,
+        "val_at_24": 0.013050701469182968,
+        "best_step": 62,
+        "best_passes": 992,
+        "best_val": 0.008678620681166649,
+        "final_val": 0.008678620681166649,
+        "loss_last": 0.0012663283850997686,
+        "train_s": 806.9179991649999,
+        "peak_mem_gb": 12.055769443511963,
+        "device": "NVIDIA A100-SXM4-80GB (NVIDIA A100-SXM4-80GB)",
+        "settings": "{\"aotriton_experimental\":false,\"blas_backend\":\"default\",\"causal_conv1d_kernel\":\"torch\",\"gdn_kernel\":\"torch\",\"gradient_accumulation_steps\":4,\"gradient_checkpointing\":true,\"group_by_length\":false,\"packing\":false,\"per_device_train_batch_size\":4,\"torch_compile\":false,\"tunableop\":false}",
+        "loss_head": "trl triton kernel",
+        "torch": "2.11.0+cu130",
+        "gradient_checkpointing": true,
+        "batch": 4,
+        "grad_accum": 4,
+        "val_agreement": {
+          "correct": 115,
+          "n": 126,
+          "rate": 0.9126984126984127,
+          "names": 126,
+          "parsed": 126,
+          "seconds": 151.6,
+          "groups": 13,
+          "rule_sha256": "c49f6ffbeb7d15413aa3a24ea6fcd245a9bb0c67b53fd9db525c93782ff60740",
+          "split_sha256": "4776164b103cd9af8ffb877243cb3694cc7c75b22c7e81f78e5ff64351924377"
+        },
+        "agree": 115,
+        "adapter_path": "C:/Users/hackathon/Code/Knighthacks26/work/L16v2-out/colab/runs/x02-lr0.0002-rank32-a64-drop0.05-warm0.05/adapter",
+        "adapter_sha256": "1c888026557063e5bdb6a052e0352f4cf56d3c3e7c02fb253a79d1698ac666e8"
+      },
+      {
+        "name": "x03-repeat-seed43-of-final3-t09-lr0.000248-rank16",
+        "kind": "repeat",
+        "seed": 43,
+        "repeat_of": "final3-t09-lr0.000248-rank16-a32-drop0.084-warm0.041",
+        "why": "a challenger",
+        "lr": 0.00024836150872989204,
+        "rank": 16,
+        "alpha": 32,
+        "dropout": 0.08429904401233239,
+        "warmup_ratio": 0.04139199829099734,
+        "number": 3,
+        "seen": 3,
+        "worker": "l16v2-a100",
+        "max_steps": 62,
+        "full_length": true,
+        "wall_s": 678.0,
+        "step_s": 6.81,
+        "evaluations": [
+          {
+            "step": 8,
+            "eval_loss": 0.019848501309752464
+          },
+          {
+            "step": 16,
+            "eval_loss": 0.012412209063768387
+          },
+          {
+            "step": 24,
+            "eval_loss": 0.01693134382367134
+          },
+          {
+            "step": 32,
+            "eval_loss": 0.009185229428112507
+          },
+          {
+            "step": 40,
+            "eval_loss": 0.005914634093642235
+          },
+          {
+            "step": 48,
+            "eval_loss": 0.004902984481304884
+          },
+          {
+            "step": 56,
+            "eval_loss": 0.005158315412700176
+          },
+          {
+            "step": 62,
+            "eval_loss": 0.0049271113239228725
+          }
+        ],
+        "product": "run-x03-repeat-seed43-of-final3-t09-lr0.000248-rank16.tar.gz",
+        "product_sha256": "9863b38cc31c45f40cd2b15c384a9d4b9810eef1ae3bdec0aae35ce73bb18598",
+        "local": "C:/Users/hackathon/Code/Knighthacks26/work/L16v2-out/colab/runs/x03-repeat-seed43-of-final3-t09-lr0.000248-rank16",
+        "outcome": "trained",
+        "ok": true,
+        "error": null,
+        "steps": 62,
+        "passes": 992,
+        "val_at_12": null,
+        "val_at_24": 0.01693134382367134,
+        "best_step": 48,
+        "best_passes": 768,
+        "best_val": 0.004902984481304884,
+        "final_val": 0.0049271113239228725,
+        "loss_last": 0.0013543397653847933,
+        "train_s": 637.7804230660004,
+        "peak_mem_gb": 11.507229804992676,
+        "device": "NVIDIA A100-SXM4-40GB (NVIDIA A100-SXM4-40GB)",
+        "settings": "{\"aotriton_experimental\":false,\"blas_backend\":\"default\",\"causal_conv1d_kernel\":\"torch\",\"gdn_kernel\":\"torch\",\"gradient_accumulation_steps\":4,\"gradient_checkpointing\":true,\"group_by_length\":false,\"packing\":false,\"per_device_train_batch_size\":4,\"torch_compile\":false,\"tunableop\":false}",
+        "loss_head": "trl triton kernel",
+        "torch": "2.11.0+cu130",
+        "gradient_checkpointing": true,
+        "batch": 4,
+        "grad_accum": 4,
+        "val_agreement": {
+          "correct": 113,
+          "n": 126,
+          "rate": 0.8968253968253969,
+          "names": 126,
+          "parsed": 126,
+          "seconds": 147.7,
+          "groups": 13,
+          "rule_sha256": "c49f6ffbeb7d15413aa3a24ea6fcd245a9bb0c67b53fd9db525c93782ff60740",
+          "split_sha256": "4776164b103cd9af8ffb877243cb3694cc7c75b22c7e81f78e5ff64351924377"
+        },
+        "agree": 113,
+        "adapter_path": "C:/Users/hackathon/Code/Knighthacks26/work/L16v2-out/colab/runs/x03-repeat-seed43-of-final3-t09-lr0.000248-rank16/adapter",
+        "adapter_sha256": "a3fc02c23c369dea82b99dc53cfc8fce91fdf76f281ba8d6006744da0052082c"
+      },
+      {
+        "name": "x04-repeat-seed43-of-x02-lr0.0002-rank32-a64-drop",
+        "kind": "repeat",
+        "seed": 43,
+        "repeat_of": "x02-lr0.0002-rank32-a64-drop0.05-warm0.05",
+        "why": "a challenger",
+        "lr": 0.0002,
+        "rank": 32,
+        "alpha": 64,
+        "dropout": 0.05,
+        "warmup_ratio": 0.05,
+        "number": 4,
+        "seen": 4,
+        "worker": "l16v2-a100-b",
+        "max_steps": 62,
+        "full_length": true,
+        "wall_s": 729.7,
+        "step_s": 6.36,
+        "evaluations": [
+          {
+            "step": 8,
+            "eval_loss": 0.01865181140601635
+          },
+          {
+            "step": 16,
+            "eval_loss": 0.014406942762434483
+          },
+          {
+            "step": 24,
+            "eval_loss": 0.017453590407967567
+          },
+          {
+            "step": 32,
+            "eval_loss": 0.010404684580862522
+          },
+          {
+            "step": 40,
+            "eval_loss": 0.007697184104472399
+          },
+          {
+            "step": 48,
+            "eval_loss": 0.008022669702768326
+          },
+          {
+            "step": 56,
+            "eval_loss": 0.006923991721123457
+          },
+          {
+            "step": 62,
+            "eval_loss": 0.00675625167787075
+          }
+        ],
+        "product": "run-x04-repeat-seed43-of-x02-lr0.0002-rank32-a64-drop.tar.gz",
+        "product_sha256": "9ffe9913b7551b545b70f192f0ffc0f624c19806351bd857975dc1a3b6efde59",
+        "local": "C:/Users/hackathon/Code/Knighthacks26/work/L16v2-out/colab/runs/x04-repeat-seed43-of-x02-lr0.0002-rank32-a64-drop",
+        "outcome": "trained",
+        "ok": true,
+        "error": null,
+        "steps": 62,
+        "passes": 992,
+        "val_at_12": null,
+        "val_at_24": 0.017453590407967567,
+        "best_step": 62,
+        "best_passes": 992,
+        "best_val": 0.00675625167787075,
+        "final_val": 0.00675625167787075,
+        "loss_last": 0.0015498916618525982,
+        "train_s": 610.307937689,
+        "peak_mem_gb": 12.05215835571289,
+        "device": "NVIDIA A100-SXM4-80GB (NVIDIA A100-SXM4-80GB)",
+        "settings": "{\"aotriton_experimental\":false,\"blas_backend\":\"default\",\"causal_conv1d_kernel\":\"torch\",\"gdn_kernel\":\"torch\",\"gradient_accumulation_steps\":4,\"gradient_checkpointing\":true,\"group_by_length\":false,\"packing\":false,\"per_device_train_batch_size\":4,\"torch_compile\":false,\"tunableop\":false}",
+        "loss_head": "trl triton kernel",
+        "torch": "2.11.0+cu130",
+        "gradient_checkpointing": true,
+        "batch": 4,
+        "grad_accum": 4,
+        "val_agreement": {
+          "correct": 117,
+          "n": 126,
+          "rate": 0.9285714285714286,
+          "names": 126,
+          "parsed": 126,
+          "seconds": 154.5,
+          "groups": 13,
+          "rule_sha256": "c49f6ffbeb7d15413aa3a24ea6fcd245a9bb0c67b53fd9db525c93782ff60740",
+          "split_sha256": "4776164b103cd9af8ffb877243cb3694cc7c75b22c7e81f78e5ff64351924377"
+        },
+        "agree": 117,
+        "adapter_path": "C:/Users/hackathon/Code/Knighthacks26/work/L16v2-out/colab/runs/x04-repeat-seed43-of-x02-lr0.0002-rank32-a64-drop/adapter",
+        "adapter_sha256": "4938fbddfc40f55ab372c4beeeb0c83e26963fa6b90e8430350c2828a8566c8c"
+      },
+      {
+        "name": "x05-repeat-seed43-of-r01-lr0.0001-rank16-drop0.05",
+        "kind": "repeat",
+        "seed": 43,
+        "repeat_of": "r01-lr0.0001-rank16-drop0.05",
+        "why": "a challenger",
+        "lr": 0.0001,
+        "rank": 16,
+        "alpha": 32,
+        "dropout": 0.05,
+        "warmup_ratio": 0.1,
+        "number": 5,
+        "seen": 4,
+        "worker": "l16v2-a100",
+        "max_steps": 62,
+        "full_length": true,
+        "wall_s": 673.7,
+        "step_s": 6.75,
+        "evaluations": [
+          {
+            "step": 8,
+            "eval_loss": 0.03421954810619354
+          },
+          {
+            "step": 16,
+            "eval_loss": 0.014753749594092369
+          },
+          {
+            "step": 24,
+            "eval_loss": 0.011578984558582306
+          },
+          {
+            "step": 32,
+            "eval_loss": 0.01141939964145422
+          },
+          {
+            "step": 40,
+            "eval_loss": 0.010699442587792873
+          },
+          {
+            "step": 48,
+            "eval_loss": 0.00970487855374813
+          },
+          {
+            "step": 56,
+            "eval_loss": 0.009248844347894192
+          },
+          {
+            "step": 62,
+            "eval_loss": 0.009223531000316143
+          }
+        ],
+        "product": "run-x05-repeat-seed43-of-r01-lr0.0001-rank16-drop0.05.tar.gz",
+        "product_sha256": "5238a478e650d3ba8b6160d0607bcdfa974c787a4b2654f67c745e91dbe08eef",
+        "local": "C:/Users/hackathon/Code/Knighthacks26/work/L16v2-out/colab/runs/x05-repeat-seed43-of-r01-lr0.0001-rank16-drop0.05",
+        "outcome": "trained",
+        "ok": true,
+        "error": null,
+        "steps": 62,
+        "passes": 992,
+        "val_at_12": null,
+        "val_at_24": 0.011578984558582306,
+        "best_step": 62,
+        "best_passes": 992,
+        "best_val": 0.009223531000316143,
+        "final_val": 0.009223531000316143,
+        "loss_last": 0.0007480265339836478,
+        "train_s": 634.5482257930016,
+        "peak_mem_gb": 11.507229804992676,
+        "device": "NVIDIA A100-SXM4-40GB (NVIDIA A100-SXM4-40GB)",
+        "settings": "{\"aotriton_experimental\":false,\"blas_backend\":\"default\",\"causal_conv1d_kernel\":\"torch\",\"gdn_kernel\":\"torch\",\"gradient_accumulation_steps\":4,\"gradient_checkpointing\":true,\"group_by_length\":false,\"packing\":false,\"per_device_train_batch_size\":4,\"torch_compile\":false,\"tunableop\":false}",
+        "loss_head": "trl triton kernel",
+        "torch": "2.11.0+cu130",
+        "gradient_checkpointing": true,
+        "batch": 4,
+        "grad_accum": 4,
+        "val_agreement": {
+          "correct": 110,
+          "n": 126,
+          "rate": 0.873015873015873,
+          "names": 126,
+          "parsed": 126,
+          "seconds": 146.8,
+          "groups": 13,
+          "rule_sha256": "c49f6ffbeb7d15413aa3a24ea6fcd245a9bb0c67b53fd9db525c93782ff60740",
+          "split_sha256": "4776164b103cd9af8ffb877243cb3694cc7c75b22c7e81f78e5ff64351924377"
+        },
+        "agree": 110
+      },
+      {
+        "kind": "edge",
+        "seed": 42,
+        "lr": 0.0004,
+        "rank": 16,
+        "alpha": 32,
+        "dropout": 0.05,
+        "warmup_ratio": 0.05,
+        "name": "x06-lr0.0004-rank16-a32-drop0.05-warm0.05",
+        "number": 6,
+        "seen": 4,
+        "worker": "l16v2-a100-b",
+        "max_steps": 62,
+        "full_length": true,
+        "wall_s": 638.5,
+        "step_s": 6.36,
+        "evaluations": [
+          {
+            "step": 8,
+            "eval_loss": 0.040740493685007095
+          },
+          {
+            "step": 16,
+            "eval_loss": 0.016548532992601395
+          },
+          {
+            "step": 24,
+            "eval_loss": 0.012979242950677872
+          },
+          {
+            "step": 32,
+            "eval_loss": 0.010503466241061687
+          },
+          {
+            "step": 40,
+            "eval_loss": 0.011747882701456547
+          },
+          {
+            "step": 48,
+            "eval_loss": 0.009446808136999607
+          },
+          {
+            "step": 56,
+            "eval_loss": 0.008685239590704441
+          },
+          {
+            "step": 62,
+            "eval_loss": 0.008704709820449352
+          }
+        ],
+        "product": "run-x06-lr0.0004-rank16-a32-drop0.05-warm0.05.tar.gz",
+        "product_sha256": "a7a77419bb88578cd6a04938f2497b5cc442dfc4b6fc75ddf1de6409ebfd3d5d",
+        "local": "C:/Users/hackathon/Code/Knighthacks26/work/L16v2-out/colab/runs/x06-lr0.0004-rank16-a32-drop0.05-warm0.05",
+        "outcome": "trained",
+        "ok": true,
+        "error": null,
+        "steps": 62,
+        "passes": 992,
+        "val_at_12": null,
+        "val_at_24": 0.012979242950677872,
+        "best_step": 56,
+        "best_passes": 896,
+        "best_val": 0.008685239590704441,
+        "final_val": 0.008704709820449352,
+        "loss_last": 0.002966534812003374,
+        "train_s": 609.7288304720005,
+        "peak_mem_gb": 11.50678014755249,
+        "device": "NVIDIA A100-SXM4-80GB (NVIDIA A100-SXM4-80GB)",
+        "settings": "{\"aotriton_experimental\":false,\"blas_backend\":\"default\",\"causal_conv1d_kernel\":\"torch\",\"gdn_kernel\":\"torch\",\"gradient_accumulation_steps\":4,\"gradient_checkpointing\":true,\"group_by_length\":false,\"packing\":false,\"per_device_train_batch_size\":4,\"torch_compile\":false,\"tunableop\":false}",
+        "loss_head": "trl triton kernel",
+        "torch": "2.11.0+cu130",
+        "gradient_checkpointing": true,
+        "batch": 4,
+        "grad_accum": 4,
+        "val_agreement": {
+          "correct": 108,
+          "n": 126,
+          "rate": 0.8571428571428571,
+          "names": 126,
+          "parsed": 126,
+          "seconds": 148.5,
+          "groups": 13,
+          "rule_sha256": "c49f6ffbeb7d15413aa3a24ea6fcd245a9bb0c67b53fd9db525c93782ff60740",
+          "split_sha256": "4776164b103cd9af8ffb877243cb3694cc7c75b22c7e81f78e5ff64351924377"
+        },
+        "agree": 108
+      },
+      {
+        "kind": "edge",
+        "seed": 42,
+        "lr": 0.0001,
+        "rank": 32,
+        "alpha": 64,
+        "dropout": 0.05,
+        "warmup_ratio": 0.05,
+        "name": "x07-lr0.0001-rank32-a64-drop0.05-warm0.05",
+        "number": 7,
+        "seen": 4,
+        "worker": "l16v2-a100",
+        "max_steps": 62,
+        "full_length": true,
+        "wall_s": 530.8,
+        "step_s": 6.77,
+        "evaluations": [
+          {
+            "step": 8,
+            "eval_loss": 0.032360952347517014
+          },
+          {
+            "step": 16,
+            "eval_loss": 0.02766919694840908
+          },
+          {
+            "step": 24,
+            "eval_loss": 0.011883570812642574
+          },
+          {
+            "step": 32,
+            "eval_loss": 0.008472460322082043
+          },
+          {
+            "step": 40,
+            "eval_loss": 0.010462174192070961
+          },
+          {
+            "step": 48,
+            "eval_loss": 0.009003030136227608
+          }
+        ],
+        "product": "run-x07-lr0.0001-rank32-a64-drop0.05-warm0.05.tar.gz",
+        "product_sha256": "4a6c652af313db7a720fc796f247db6748ed1ed70997274ec562f78c921b2e8a",
+        "local": "C:/Users/hackathon/Code/Knighthacks26/work/L16v2-out/colab/runs/x07-lr0.0001-rank32-a64-drop0.05-warm0.05",
+        "outcome": "trained",
+        "ok": true,
+        "error": null,
+        "steps": 48,
+        "passes": 768,
+        "val_at_12": null,
+        "val_at_24": 0.011883570812642574,
+        "best_step": 32,
+        "best_passes": 512,
+        "best_val": 0.008472460322082043,
+        "final_val": 0.009003030136227608,
+        "loss_last": 0.0039029745385050774,
+        "train_s": 482.05905543799963,
+        "peak_mem_gb": 12.055769443511963,
+        "device": "NVIDIA A100-SXM4-40GB (NVIDIA A100-SXM4-40GB)",
+        "settings": "{\"aotriton_experimental\":false,\"blas_backend\":\"default\",\"causal_conv1d_kernel\":\"torch\",\"gdn_kernel\":\"torch\",\"gradient_accumulation_steps\":4,\"gradient_checkpointing\":true,\"group_by_length\":false,\"packing\":false,\"per_device_train_batch_size\":4,\"torch_compile\":false,\"tunableop\":false}",
+        "loss_head": "trl triton kernel",
+        "torch": "2.11.0+cu130",
+        "gradient_checkpointing": true,
+        "batch": 4,
+        "grad_accum": 4,
+        "val_agreement": {
+          "correct": 108,
+          "n": 126,
+          "rate": 0.8571428571428571,
+          "names": 126,
+          "parsed": 126,
+          "seconds": 147.0,
+          "groups": 13,
+          "rule_sha256": "c49f6ffbeb7d15413aa3a24ea6fcd245a9bb0c67b53fd9db525c93782ff60740",
+          "split_sha256": "4776164b103cd9af8ffb877243cb3694cc7c75b22c7e81f78e5ff64351924377"
+        },
+        "agree": 108
+      },
+      {
+        "kind": "edge",
+        "seed": 42,
+        "lr": 0.0008,
+        "rank": 4,
+        "alpha": 8,
+        "dropout": 0.05,
+        "warmup_ratio": 0.05,
+        "name": "x09-lr0.0008-rank4-a8-drop0.05-warm0.05",
+        "number": 9,
+        "seen": 6,
+        "worker": "l16v2-a100",
+        "max_steps": 62,
+        "full_length": true,
+        "wall_s": 662.9,
+        "step_s": 6.74,
+        "evaluations": [
+          {
+            "step": 8,
+            "eval_loss": 0.03648539260029793
+          },
+          {
+            "step": 16,
+            "eval_loss": 0.02139385975897312
+          },
+          {
+            "step": 24,
+            "eval_loss": 0.014446359127759933
+          },
+          {
+            "step": 32,
+            "eval_loss": 0.011936141178011894
+          },
+          {
+            "step": 40,
+            "eval_loss": 0.012568192556500435
+          },
+          {
+            "step": 48,
+            "eval_loss": 0.009603329934179783
+          },
+          {
+            "step": 56,
+            "eval_loss": 0.008791070431470871
+          },
+          {
+            "step": 62,
+            "eval_loss": 0.008448595181107521
+          }
+        ],
+        "product": "run-x09-lr0.0008-rank4-a8-drop0.05-warm0.05.tar.gz",
+        "product_sha256": "5c51464f963a64503566dffa9790578e11ec4900b6bbe832aa7ad5cdaa522c2c",
+        "local": "C:/Users/hackathon/Code/Knighthacks26/work/L16v2-out/colab/runs/x09-lr0.0008-rank4-a8-drop0.05-warm0.05",
+        "outcome": "trained",
+        "ok": true,
+        "error": null,
+        "steps": 62,
+        "passes": 992,
+        "val_at_12": null,
+        "val_at_24": 0.014446359127759933,
+        "best_step": 62,
+        "best_passes": 992,
+        "best_val": 0.008448595181107521,
+        "final_val": 0.008448595181107521,
+        "loss_last": 0.0032685822807252407,
+        "train_s": 633.8141117570012,
+        "peak_mem_gb": 11.141869068145752,
+        "device": "NVIDIA A100-SXM4-40GB (NVIDIA A100-SXM4-40GB)",
+        "settings": "{\"aotriton_experimental\":false,\"blas_backend\":\"default\",\"causal_conv1d_kernel\":\"torch\",\"gdn_kernel\":\"torch\",\"gradient_accumulation_steps\":4,\"gradient_checkpointing\":true,\"group_by_length\":false,\"packing\":false,\"per_device_train_batch_size\":4,\"torch_compile\":false,\"tunableop\":false}",
+        "loss_head": "trl triton kernel",
+        "torch": "2.11.0+cu130",
+        "gradient_checkpointing": true,
+        "batch": 4,
+        "grad_accum": 4,
+        "val_agreement": {
+          "correct": 114,
+          "n": 126,
+          "rate": 0.9047619047619048,
+          "names": 126,
+          "parsed": 126,
+          "seconds": 146.0,
+          "groups": 13,
+          "rule_sha256": "c49f6ffbeb7d15413aa3a24ea6fcd245a9bb0c67b53fd9db525c93782ff60740",
+          "split_sha256": "4776164b103cd9af8ffb877243cb3694cc7c75b22c7e81f78e5ff64351924377"
+        },
+        "agree": 114
+      },
+      {
+        "kind": "edge",
+        "seed": 42,
+        "lr": 0.0001,
+        "rank": 64,
+        "alpha": 128,
+        "dropout": 0.05,
+        "warmup_ratio": 0.05,
+        "name": "x08-lr0.0001-rank64-a128-drop0.05-warm0.05",
+        "number": 8,
+        "seen": 5,
+        "worker": "l16v2-a100-b",
+        "max_steps": 62,
+        "full_length": true,
+        "wall_s": 788.1,
+        "step_s": 6.41,
+        "evaluations": [
+          {
+            "step": 8,
+            "eval_loss": 0.03728456050157547
+          },
+          {
+            "step": 16,
+            "eval_loss": 0.013921050354838371
+          },
+          {
+            "step": 24,
+            "eval_loss": 0.011248962953686714
+          },
+          {
+            "step": 32,
+            "eval_loss": 0.010456342250108719
+          },
+          {
+            "step": 40,
+            "eval_loss": 0.01186338346451521
+          },
+          {
+            "step": 48,
+            "eval_loss": 0.009320273995399475
+          },
+          {
+            "step": 56,
+            "eval_loss": 0.008783894591033459
+          },
+          {
+            "step": 62,
+            "eval_loss": 0.008590979501605034
+          }
+        ],
+        "product": "run-x08-lr0.0001-rank64-a128-drop0.05-warm0.05.tar.gz",
+        "product_sha256": "711ef4934b54e62a21c53354fdb847a13114cdf44dd2c5f4c05775803defcd1f",
+        "local": "C:/Users/hackathon/Code/Knighthacks26/work/L16v2-out/colab/runs/x08-lr0.0001-rank64-a128-drop0.05-warm0.05",
+        "outcome": "trained",
+        "ok": true,
+        "error": null,
+        "steps": 62,
+        "passes": 992,
+        "val_at_12": null,
+        "val_at_24": 0.011248962953686714,
+        "best_step": 62,
+        "best_passes": 992,
+        "best_val": 0.008590979501605034,
+        "final_val": 0.008590979501605034,
+        "loss_last": 0.001961055211722851,
+        "train_s": 617.4573886020007,
+        "peak_mem_gb": 12.997002124786377,
+        "device": "NVIDIA A100-SXM4-80GB (NVIDIA A100-SXM4-80GB)",
+        "settings": "{\"aotriton_experimental\":false,\"blas_backend\":\"default\",\"causal_conv1d_kernel\":\"torch\",\"gdn_kernel\":\"torch\",\"gradient_accumulation_steps\":4,\"gradient_checkpointing\":true,\"group_by_length\":false,\"packing\":false,\"per_device_train_batch_size\":4,\"torch_compile\":false,\"tunableop\":false}",
+        "loss_head": "trl triton kernel",
+        "torch": "2.11.0+cu130",
+        "gradient_checkpointing": true,
+        "batch": 4,
+        "grad_accum": 4,
+        "val_agreement": {
+          "correct": 116,
+          "n": 126,
+          "rate": 0.9206349206349206,
+          "names": 126,
+          "parsed": 126,
+          "seconds": 149.4,
+          "groups": 13,
+          "rule_sha256": "c49f6ffbeb7d15413aa3a24ea6fcd245a9bb0c67b53fd9db525c93782ff60740",
+          "split_sha256": "4776164b103cd9af8ffb877243cb3694cc7c75b22c7e81f78e5ff64351924377"
+        },
+        "agree": 116
+      },
+      {
+        "kind": "edge",
+        "seed": 42,
+        "lr": 0.0004,
+        "rank": 2,
+        "alpha": 4,
+        "dropout": 0.05,
+        "warmup_ratio": 0.05,
+        "name": "x10-lr0.0004-rank2-a4-drop0.05-warm0.05",
+        "number": 10,
+        "seen": 7,
+        "worker": "l16v2-a100",
+        "max_steps": 62,
+        "full_length": true,
+        "outcome": "lost",
+        "ok": false
+      },
+      {
+        "kind": "edge",
+        "seed": 42,
+        "lr": 0.0002,
+        "rank": 8,
+        "alpha": 16,
+        "dropout": 0.05,
+        "warmup_ratio": 0.05,
+        "name": "x11-lr0.0002-rank8-a16-drop0.05-warm0.05",
+        "number": 11,
+        "seen": 8,
+        "worker": "l16v2-a100-b",
+        "max_steps": 62,
+        "full_length": true,
+        "outcome": "lost",
+        "ok": false
+      }
+    ],
+    "choice": {
+      "key": "lr0.0002-rank32-a64-drop0.0500-warm0.0500",
+      "first": "final2-t12-lr0.000428-rank4-a8-drop0.136-warm0.009",
+      "replaced": [
+        {
+          "key": "lr0.000427627-rank4-a8-drop0.1360-warm0.0093",
+          "mean": 109.5,
+          "by": "lr0.000248362-rank16-a32-drop0.0843-warm0.0414",
+          "mean_by": 112.0
+        },
+        {
+          "key": "lr0.000248362-rank16-a32-drop0.0843-warm0.0414",
+          "mean": 112.0,
+          "by": "lr0.0002-rank32-a64-drop0.0500-warm0.0500",
+          "mean_by": 116.0
+        }
+      ]
+    },
+    "until_utc": "2026-10-11T11:00:00Z"
+  }
+}
