@@ -1,0 +1,14 @@
+[Unit]
+Description=Atlas deploy: pull the newest prod bundle from GitHub and deploy it (jetson/deploy-pull.sh)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=@USER@
+# A copy outside the repo, so a deploy that replaces jetson/deploy-pull.sh never edits the script while it runs.
+ExecStartPre=/usr/bin/install -m 755 @REPO@/jetson/deploy-pull.sh /tmp/atlas-deploy-pull.sh
+ExecStart=/tmp/atlas-deploy-pull.sh
+Environment=ATLAS_DEPLOY_DIR=@REPO@
+TimeoutStartSec=15min
+Nice=10

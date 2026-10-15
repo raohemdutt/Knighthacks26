@@ -1,0 +1,10 @@
+[Unit]
+Description=Check for a new prod bundle every minute (atlas-deploy.service)
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=60s
+Persistent=false
+
+[Install]
+WantedBy=timers.target

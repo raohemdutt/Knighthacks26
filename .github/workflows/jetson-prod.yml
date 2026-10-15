@@ -1,0 +1,62 @@
+name: jetson-prod
+
+# The `prod` branch is what the Jetson runs. A push to it runs the suite, builds the phone app (the box has no node),
+# and publishes one bundle to the `jetson-prod` release. The box's atlas-deploy timer (jetson/deploy-pull.sh) polls
+# that release's manifest.json and deploys a new bundle within a minute or two. Nothing here reaches the box: it pulls.
+on:
+  push:
+    branches: [prod]
+  workflow_dispatch:
+
+permissions:
+  contents: write  # create the release and upload its assets
+
+concurrency:
+  group: jetson-prod
+  cancel-in-progress: false
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: python -m pytest -q
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Build the phone app (web/out)
+        working-directory: web
+        run: npm ci --no-audit --no-fund && npm run build
+      - name: Pack the bundle
+        run: |
+          sha="$(git rev-parse HEAD)"
+          name="atlas-${sha:0:12}.tgz"
+          git archive --format=tar -o atlas.tar HEAD   # tracked files only: no .env, data/, engines or models
+          tar rf atlas.tar web/out
+          gzip -9 -c atlas.tar > "$name"
+          sum="$(sha256sum "$name" | cut -d' ' -f1)"
+          printf '{"sha": "%s", "bundle": "%s", "sha256": "%s", "built_at": "%s", "run": "%s"}\n' \
+            "$sha" "$name" "$sum" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${{ github.run_id }}" > manifest.json
+          cat manifest.json
+          echo "BUNDLE=$name" >> "$GITHUB_ENV"
+      - name: Publish to the jetson-prod release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view jetson-prod >/dev/null 2>&1 || gh release create jetson-prod --prerelease --target "$GITHUB_SHA" \
+            --title "Jetson prod" --notes "What the Jetson runs: the newest bundle built from the prod branch. Written by .github/workflows/jetson-prod.yml; read by jetson/deploy-pull.sh."
+          # the bundle first, the manifest last: the box never sees a manifest naming a bundle that is not there yet
+          gh release upload jetson-prod "$BUNDLE" --clobber
+          gh release upload jetson-prod manifest.json --clobber
+          # keep the five newest bundles (the box keeps its own copies for rollback too)
+          gh release view jetson-prod --json assets \
+            --jq '.assets | map(select(.name | startswith("atlas-"))) | sort_by(.createdAt) | reverse | .[5:] | .[].name' \
+            | xargs -r -n1 gh release delete-asset jetson-prod -y

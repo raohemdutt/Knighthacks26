@@ -25,6 +25,17 @@ if [ "${1:-}" = "voice" ]; then
     exit 0
 fi
 
+# `sudo ./jetson/jetson_setup.sh deploy` installs only the deploy timer (the box pulls the prod branch's bundle).
+if [ "${1:-}" = "deploy" ]; then
+    for unit in atlas-deploy.service atlas-deploy.timer; do
+        sed -e "s|@USER@|$user|g" -e "s|@REPO@|$repo|g" "$repo/jetson/$unit" > "/etc/systemd/system/$unit"
+    done
+    systemctl daemon-reload
+    systemctl enable --now atlas-deploy.timer
+    echo "installed atlas-deploy.timer; follow it with: journalctl -u atlas-deploy -f (pause: touch ~/.atlas-deploy-paused)"
+    exit 0
+fi
+
 chmod +x "$repo/jetson/atlas-llm.sh"
 for unit in atlas-llm atlas-gateway atlas-egress; do
     sed -e "s|@USER@|$user|g" -e "s|@REPO@|$repo|g" -e "s|@VENV@|$venv|g" "$repo/jetson/$unit.service" > "/etc/systemd/system/$unit.service"
